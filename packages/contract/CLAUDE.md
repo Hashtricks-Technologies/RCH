@@ -28,6 +28,7 @@ src/schemas/documents.ts  every document shape (Item, Ticket, StockRequest, Bill
 src/schemas/writes.ts     request bodies, result shapes, CollectionSchema, writeResponse()
 src/schemas/snapshot.ts   SnapshotSchema and the narrow read responses; BILL_DAYS
 src/schemas/{auth,admin,events,reports}.ts
+src/schemas/permissions.ts FeatureSchema, LevelSchema, GrantLevelSchema, ActionSchema, PermissionsSchema
 src/schemas/audit.ts      AuditEventSchema (the API → audit service event), AuditRow/Entry/Page/Query schemas
 src/schemas/images.ts     ITEM_IMAGE_PATH, itemImagePath() - the photo's own path, not a manifest route
 src/fixtures/*            the demo hospital: master data and seeded documents
@@ -49,9 +50,14 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   - `"public"`: no token needed.
   - `"any"`: any signed-in role.
   - `"admin"`: checks the JWT's admin claim, not its role.
-  - an array of roles.
+  - an array of roles (the legacy form every role-gated route still uses).
+  - `{ needs }`, built with `need(feature, level)`, `act(action)` and `anyOf(...)`: any one need met
+    opens it, the hospital-wide need listed first. `admits` in `@rch/domain` reads it.
+  - `{ desk }`, built with `desk(...roles)`: a door that belongs to a desk, not a permission.
 
-  A caller outside `access` gets a 404.
+  A caller outside `access` gets a 404; one who holds the feature at view where edit is needed gets
+  a 403 with `permissionRefusal`'s sentence. `admitAdmin: true` lets the super admin through a
+  route that is not `access: "admin"`.
 - **`write`** defaults to `method !== "GET"`. A write carries an `Idempotency-Key`. The auth routes set
   `write: false`. `isWriteRoute(r)` is the one runtime reading of that rule, and `defineRoute` keeps `method`
   and `write` as literal types so `AuditAction` can apply the same rule at the type level.

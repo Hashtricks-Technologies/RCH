@@ -9,6 +9,7 @@ export * from "./schemas/images.js";
 export * from "./schemas/reports.js";
 export * from "./schemas/receivables.js";
 export * from "./schemas/admin.js";
+export * from "./schemas/permissions.js";
 export * from "./schemas/audit.js";
 export * from "./routes.js";
 export * from "./audit.js";

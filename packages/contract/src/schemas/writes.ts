@@ -15,7 +15,7 @@ import { AdjustmentRequestSchema, AdjustmentSchema, AdjustReasonSchema, GrnSchem
  *  manager's Credit screen - who owes what and every payment behind it, derived at read time
  *  rather than stored, which is why it is one collection over two narrow reads. `"shifts"` is the
  *  counter operators' closed shifts - the manager's Shift reports card and bell. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "payers", "terms", "receivables", "adjustments", "adjReq", "accounts", "audit", "shifts"]);
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "payers", "terms", "receivables", "adjustments", "adjReq", "accounts", "audit", "shifts", "roles"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 

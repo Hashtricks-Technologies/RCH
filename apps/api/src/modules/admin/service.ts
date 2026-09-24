@@ -99,7 +99,7 @@ export function createAdminService(db: Db) {
       const postings = await adminRepo.postingsByUser(db, rows.map((u) => u.id));
       return rows.map((u) => toAdminUser(u, postings[u.id]));
     },
-    async actions(kind: "accounts" | "outlets" | "payers"): Promise<AdminAction[]> {
+    async actions(kind: "accounts" | "outlets" | "payers" | "roles"): Promise<AdminAction[]> {
       return adminRepo.recentActions(db, kind);
     },
 

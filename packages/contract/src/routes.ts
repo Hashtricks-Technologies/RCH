@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Role } from "./types.js";
+import type { Action, Feature, Level, Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
 import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, TermsResponseSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
@@ -15,8 +15,22 @@ import { ActivatePriceListResultSchema, AddToProcurementListBodySchema, AnswerPr
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 /** "public" needs no token; "any" needs a token of any role; "admin" needs the `admin` claim
  *  (an ordinary account flagged for account management, `pnpm --filter @rch/api users
- *  set-admin` - never a role); a list names the roles whose sidebar has the module. */
-export type Access = "public" | "any" | "admin" | readonly Role[];
+ *  set-admin` - never a role); `{ needs }` names the permissions any one of which opens it
+ *  (`need`, `act`, `anyOf`); `{ desk }` names the desks whose door it is (`desk`). A bare list
+ *  of roles is the form every role-gated route still uses until it moves to `needs`. */
+export type Access = "public" | "any" | "admin" | readonly Role[] | { needs: readonly Need[] } | { desk: readonly Role[] };
+
+/** One thing a route may be reached by: a feature held at a level (edit implies view), or an
+ *  action. A route's `needs` is any-of, the hospital-wide need listed first, so the first one met
+ *  is the one whose scope the request runs under (`admits` in `@rch/domain`). */
+export type Need = { f: Feature; l: Level } | { a: Action };
+export const need = (f: Feature, l: Level): { needs: readonly Need[] } => ({ needs: [{ f, l }] });
+export const act = (a: Action): { needs: readonly Need[] } => ({ needs: [{ a }] });
+/** Any of these, in the order given - each a `Need` or a `need(...)`/`act(...)` of its own. */
+export const anyOf = (...parts: readonly (Need | { needs: readonly Need[] })[]): { needs: readonly Need[] } =>
+  ({ needs: parts.flatMap((p) => ("needs" in p ? p.needs : [p])) });
+/** For the few doors that belong to a desk rather than a permission - a counter's own shift. */
+export const desk = (...roles: readonly Role[]): { desk: readonly Role[] } => ({ desk: roles });
 
 /** The deployable that answers a route. `apps/api` mounts only `"api"` routes and `apps/audit`
  *  only `"audit"` ones; each refuses the other's at `mount()`. */
@@ -34,6 +48,9 @@ export interface Route<P extends z.ZodTypeAny, Q extends z.ZodTypeAny, B extends
   allowMcp?: boolean;
   /** Which deployable answers the route. Absent means `"api"` (`serviceOf`). */
   service?: S;
+  /** Let the super admin through a route that is not `access: "admin"`, past every permission -
+   *  the register's X, Z list and close, which the super admin reaches for any outlet it names. */
+  admitAdmin?: true;
 }
 export type AnyRoute = Route<z.ZodTypeAny, z.ZodTypeAny, z.ZodTypeAny, z.ZodTypeAny>;
 export const defineRoute = <P extends z.ZodTypeAny = z.ZodNever, Q extends z.ZodTypeAny = z.ZodNever, B extends z.ZodTypeAny = z.ZodNever, R extends z.ZodTypeAny = z.ZodTypeAny, M extends Method = Method, W extends boolean | undefined = undefined, S extends Service | undefined = undefined>(r: Route<P, Q, B, R, M, W, S>) => r;

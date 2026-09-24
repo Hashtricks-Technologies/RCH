@@ -1,6 +1,7 @@
 import fp from "fastify-plugin";
 import type { FastifyRequest } from "fastify";
 import type { Access, LocKey } from "@rch/contract";
+import { admits, DESK_DEFAULTS } from "@rch/domain";
 import { ForbiddenError, NotFoundError } from "../lib/errors.js";
 
 declare module "fastify" {
@@ -25,7 +26,13 @@ export default fp(async (app) => {
     // the doors a must-change-password token may also use (sign-in, password, `/me`), and any
     // route that asks for it by name; everything else is the same 404 a missing module is.
     if (req.user.admin && access !== "admin" && !allowMcp && !opts.admitAdmin) throw new NotFoundError(`There is nothing at ${req.method} ${req.url}.`);
-    if (Array.isArray(access) && !access.includes(req.user.role)) throw new NotFoundError(`There is nothing at ${req.method} ${req.url}.`);
+    // A role list, or the permission forms (`needs`, `desk`) read against the desk's seeded role
+    // until each account's own role is resolved per request.
+    if (typeof access === "object") {
+      const r = admits(access, req.user.role, DESK_DEFAULTS[req.user.role].perms);
+      if (!r.ok && r.status === 404) throw new NotFoundError(`There is nothing at ${req.method} ${req.url}.`);
+      if (!r.ok) throw new ForbiddenError(r.message);
+    }
     // Same shape as the role check above, on a different claim: an ordinary account without the
     // flag gets the same "nothing here" a role lacking the module gets, never a 403 that would
     // confirm the route exists.

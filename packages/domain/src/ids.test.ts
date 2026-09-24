@@ -101,3 +101,21 @@ describe("a shift's number", () => {
     expect(SEQUENCE_START.shift).toBe(1);
   });
 });
+
+describe("a settlement's and a Z's number", () => {
+  it("carry the year and four digits, and each series starts at one", () => {
+    expect(formatId("settlement", 7, at)).toBe("STL-2026-0007");
+    expect(formatId("z_report", 12, at)).toBe("Z-2026-0012");
+    expect(SEQUENCE_START.settlement).toBe(1);
+    expect(SEQUENCE_START.z_report).toBe(1);
+  });
+});
+
+// ---- roles
+describe("a role's id", () => {
+  it("is ROLE- and three digits, continuing past the five seeded roles", () => {
+    expect(formatId("role", 6, at)).toBe("ROLE-006");
+    expect(formatId("role", 1, at)).toBe("ROLE-001");
+    expect(SEQUENCE_START.role).toBe(6);
+  });
+});

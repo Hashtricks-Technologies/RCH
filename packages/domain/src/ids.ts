@@ -17,7 +17,9 @@ export type IdKind =
   | "settlement"
   // ---- shifts: one counter operator's stint at one counter, opened by their sign-in there and
   // closed by Close Shift. Numbered so the manager's list and a printed hand-over name the same one.
-  | "shift";
+  | "shift"
+  // ---- roles: a named set of permissions the super admin sets up, numbered like a vendor.
+  | "role";
 
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
 const ymd = (d: Date) => {
@@ -59,6 +61,7 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
     case "z_report":    return `Z-${year(at)}-${pad(n, 4)}`;
     // ---- shifts. Padded to four for the same reason as `adj`.
     case "shift":       return `SH-${year(at)}-${pad(n, 4)}`;
+    case "role":        return `ROLE-${pad(n, 3)}`;
   }
 }
 
@@ -125,4 +128,6 @@ export const SEQUENCE_START: Record<IdKind, number> = {
   z_report: 1,
   // ---- shifts: nobody has ever closed one, so the series starts at one.
   shift: 1,
+  // ---- roles: the five seeded roles are ROLE-001 to ROLE-005, so the series continues past them.
+  role: 6,
 };

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListIdSchema, Qty, RoleSchema, SourceSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { PermissionsSchema } from "./permissions.js";
 
 export const ReqStatusSchema = z.enum(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received", "Closed", "Rejected", "Cancelled"]);
 // A ticket that was issued and never collected is withdrawn rather than left open: the hold it
@@ -72,6 +73,12 @@ export const UserSchema = z.object({
   // refresh, change-password, snapshot.user); a colleague is always `UserMinSchema`, which does
   // not carry this, so nobody sees whether anyone but themselves has it.
   admin: z.boolean(),
+  // ---- configurable roles. The account's role (`ROLE-00n`) and what it holds, resolved by the
+  // server at the time of the answer - never from the token, so a change the super admin makes
+  // reaches the next read. Both absent for the super admin, who holds no role; `r` stays the
+  // desk and `rl` the role's name.
+  rid: z.string().optional(),
+  perms: PermissionsSchema.optional(),
 });
 /** What one colleague sees of another. Email, employee number and phone belong to the person
  *  they describe: the caller's own record travels whole, in `snapshot.user`, and nobody else's does. */

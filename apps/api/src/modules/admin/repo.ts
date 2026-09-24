@@ -19,7 +19,8 @@ export type LocationRow = typeof locations.$inferSelect;
 const ACTIONS = AdminActionSchema.shape.action.options;
 const OUTLET_ACTIONS: AdminAction["action"][] = ACTIONS.filter((a) => a.startsWith("outlet_"));
 const PAYER_ACTIONS: AdminAction["action"][] = ACTIONS.filter((a) => a.startsWith("payer_"));
-const NOT_ACCOUNT_ACTIONS: AdminAction["action"][] = [...OUTLET_ACTIONS, ...PAYER_ACTIONS];
+const ROLE_ACTIONS: AdminAction["action"][] = ACTIONS.filter((a) => a.startsWith("role_"));
+const NOT_ACCOUNT_ACTIONS: AdminAction["action"][] = [...OUTLET_ACTIONS, ...PAYER_ACTIONS, ...ROLE_ACTIONS];
 
 export const adminRepo = {
   /** Every account, active and inactive alike, employee number ascending. */
@@ -59,7 +60,7 @@ export const adminRepo = {
    *  target is a left join onto its current name, falling back to the name stored on the line:
    *  a deleted account has no row to join, and the log still says who it was. One feed serves
    *  two tabs: `kind` picks account actions or outlet actions, never both at once. */
-  async recentActions(db: Reader, kind: "accounts" | "outlets" | "payers"): Promise<AdminAction[]> {
+  async recentActions(db: Reader, kind: "accounts" | "outlets" | "payers" | "roles"): Promise<AdminAction[]> {
     const actor = alias(users, "actor");
     const target = alias(users, "target");
     const rows = await db.select({
@@ -71,6 +72,7 @@ export const adminRepo = {
       .leftJoin(target, eq(target.id, adminActions.targetId))
       .where(kind === "outlets" ? inArray(adminActions.action, OUTLET_ACTIONS)
         : kind === "payers" ? inArray(adminActions.action, PAYER_ACTIONS)
+          : kind === "roles" ? inArray(adminActions.action, ROLE_ACTIONS)
           : notInArray(adminActions.action, NOT_ACCOUNT_ACTIONS))
       .orderBy(desc(adminActions.at))
       .limit(50);

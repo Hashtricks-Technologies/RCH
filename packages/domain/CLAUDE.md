@@ -61,8 +61,18 @@ need more context than their names give:
   nothing, which is emphatically not a ceiling of zero.
 - `settlement.ts`'s `allocateSettlement` lays a payment over the open bills oldest first. At most one line
   is ever a part payment and it is always the last, and the lines always add back up to what was allocated.
+- `permissions.ts` is roles & permissions: `FEATURES` (the catalogue - label, section, which desks
+  may be given each level, and whether it reads hospital-wide), `ACTIONS`, `can`/`holds`,
+  `DESK_DEFAULTS` (the five seeded roles, which reproduce each desk's access before roles were
+  configurable, except that nobody holds `z_report`), `grantRefusal`, `admits` (a route's `Access`
+  against a desk and permissions: `{ ok, wide }` or a 404/403), `readsHospitalWide` and
+  `permissionRefusal`. `permissions.test.ts` pins the seeded roles to every role-listed route in the
+  manifest, route by route and desk by desk.
+- `items.ts`'s `ITEM_FIELD_FEATURES` is `ITEM_FIELD_ROLES` in permissions: `mayEditItemField`,
+  `unauthorisedItemFields` and `mayEditItemImage` take either a desk (read as its seeded role) or a
+  role's permissions.
 - `items.ts`'s photo section is the one place the 700 KB limit, the three accepted types and every photo
-  refusal sentence are written. `mayEditItemImage(role)` is `manager` or `counter` only - not an `ItemField`,
+  refusal sentence are written. `mayEditItemImage` is `item_photos` at edit (the seeded manager and counter) - not an `ItemField`,
   because a photo has a door of its own (`PUT /items/:it/image`), not one of the patch's nine boxes.
   `sniffImageType` reads magic bytes only (JPEG, PNG, WebP; SVG and everything else is `null` - SVG is a
   document that can carry script, not a picture), and `checkPhoto` checks size before type so both sides print

@@ -22,6 +22,8 @@ const DID: Record<AdminAction["action"], string> = {
   delete: "deleted",
   outlet_create: "opened", outlet_update: "edited", outlet_close: "closed", outlet_reopen: "reopened",
   payer_create: "added", payer_update: "renamed", payer_deactivate: "switched off", payer_reactivate: "switched back on",
+  role_create: "created the role", role_update: "edited the role", role_deactivate: "switched off the role",
+  role_reactivate: "switched back on the role", role_delete: "deleted the role",
 };
 
 const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "" as LocKey, also: [] as string[] };

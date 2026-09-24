@@ -25,7 +25,7 @@ export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate, mayReply, m
 export { ledgerRow, type LedgerRow } from "./reports.js";
 // ---- item patch ----
 export {
-  ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField,
+  ITEM_FIELD_FEATURES, ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField,
   counterName, itemCodePrefix, nextItemCode,
   // ---- item photos ----
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO, checkPhoto, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,
@@ -35,3 +35,5 @@ export {
 export { REASON_LABEL } from "./adjustments.js";
 export { HSN_CODES, gstForHsn, hsnGroups, type HsnEntry } from "./hsn.js";
 export { defaultSourceFor, sourceOf } from "./routing.js";
+// ---- roles & permissions: the feature catalogue, the seeded roles, and who may use which door.
+export { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsHospitalWide } from "./permissions.js";

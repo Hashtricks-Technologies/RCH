@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IsoTime, LocKeySchema, Money, RoleSchema } from "./common.js";
 import { LocationSchema, PayerKindSchema } from "./documents.js";
+import { PermissionsSchema } from "./permissions.js";
 
 /**
  * The account-management module's own wire shape for a colleague - deliberately not
@@ -16,6 +17,8 @@ export const AdminUserSchema = z.strictObject({
   /** Every counter this account may work, `loc` included. A consultant takes shifts at more than
    *  one outlet and picks which at sign-in; one entry is the ordinary case for everyone else. */
   postings: z.array(LocKeySchema).max(32).default([]),
+  /** The account's role (`ROLE-00n`). Absent for the super admin, who holds none. */
+  rid: z.string().optional(),
 });
 
 /** A generated password is on the wire exactly once - the create and reset-password responses -
@@ -46,6 +49,7 @@ export const AdminActionSchema = z.strictObject({
     "create", "reset_password", "deactivate", "reactivate", "update_role_loc", "update_postings", "delete",
     "outlet_create", "outlet_update", "outlet_close", "outlet_reopen",
     "payer_create", "payer_update", "payer_deactivate", "payer_reactivate",
+    "role_create", "role_update", "role_deactivate", "role_reactivate", "role_delete",
   ]),
   target: z.string(), details: z.record(z.string(), z.unknown()),
 });
@@ -76,7 +80,7 @@ export const CreateOutletBodySchema = z.strictObject(outletFields);
 export const UpdateOutletBodySchema = z.strictObject(outletFields).partial();
 export const OutletKeyParamsSchema = z.strictObject({ key: LocKeySchema });
 /** Each tab reads the same log filtered to its own kind, so each shows its own fifty. */
-export const AdminActionsQuerySchema = z.strictObject({ kind: z.enum(["accounts", "outlets", "payers"]).default("accounts") });
+export const AdminActionsQuerySchema = z.strictObject({ kind: z.enum(["accounts", "outlets", "payers", "roles"]).default("accounts") });
 
 // ---- the payer register. Who a bill may be posted to: consultants, staff, and wards or cost
 // centres. Opened, renamed and switched off by the super admin, never deleted -
@@ -104,3 +108,24 @@ export const UpdatePayerBodySchema = z.strictObject({
   name: z.string().trim().min(2).max(120), active: z.boolean(),
 }).partial();
 export const AdminPayerParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(64) });
+
+// ---- roles & permissions. A role is a named set of permissions on top of one desk, set up by the
+// super admin; every account holds exactly one. Deactivated, and deleted only if never given to
+// anybody - an account's history names the role it worked under.
+
+const roleName = z.string().trim().min(2).max(60);
+/** A role as the admin page manages it. `holders` is how many active accounts hold it - the
+ *  number a deactivation waits on; `everAssigned` is whether it may still be deleted. */
+export const AdminRoleSchema = z.strictObject({
+  id: z.string(), name: z.string(), desk: RoleSchema, active: z.boolean(), perms: PermissionsSchema,
+  holders: z.number().int().min(0), everAssigned: z.boolean(), updatedAt: IsoTime,
+});
+/** No `id`: the server numbers a role (`ROLE-00n`). Whether each grant suits the desk is the
+ *  domain's `grantRefusal`, refused as a sentence rather than a 400. */
+export const CreateRoleBodySchema = z.strictObject({ name: roleName, desk: RoleSchema, perms: PermissionsSchema });
+/** Every field optional, one by one and with no defaults, so a field left out is never reset.
+ *  A desk change is refused by the service once the role has been given to anybody. */
+export const UpdateRoleBodySchema = z.strictObject({
+  name: roleName.optional(), desk: RoleSchema.optional(), perms: PermissionsSchema.optional(),
+});
+export const RoleIdParamsSchema = z.strictObject({ id: z.string().min(1).max(40) });

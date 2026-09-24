@@ -5,6 +5,7 @@ import type * as R from "./schemas/reports.js";
 import type * as A from "./schemas/admin.js";
 import type * as V from "./schemas/receivables.js";
 import type * as Auth from "./schemas/auth.js";
+import type * as P from "./schemas/permissions.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
 export type Source = z.infer<typeof C.SourceSchema>;
@@ -100,6 +101,16 @@ export type UpdateOutletBody = z.infer<typeof A.UpdateOutletBodySchema>;
 export type AdminPayer = z.infer<typeof A.AdminPayerSchema>;
 export type CreatePayerBody = z.infer<typeof A.CreatePayerBodySchema>;
 export type UpdatePayerBody = z.infer<typeof A.UpdatePayerBodySchema>;
+
+// ---- roles & permissions: a named set of permissions on top of a desk.
+export type Feature = z.infer<typeof P.FeatureSchema>;
+export type Level = z.infer<typeof P.LevelSchema>;
+export type GrantLevel = z.infer<typeof P.GrantLevelSchema>;
+export type Action = z.infer<typeof P.ActionSchema>;
+export type Permissions = z.infer<typeof P.PermissionsSchema>;
+export type AdminRole = z.infer<typeof A.AdminRoleSchema>;
+export type CreateRoleBody = z.infer<typeof A.CreateRoleBodySchema>;
+export type UpdateRoleBody = z.infer<typeof A.UpdateRoleBodySchema>;
 
 // ---- what each party is charged, and what they owe.
 export type ClassTerms = z.infer<typeof V.ClassTermsSchema>;

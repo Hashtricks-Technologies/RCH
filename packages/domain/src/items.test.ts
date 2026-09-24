@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField, counterName, itemCodePrefix, nextItemCode,
+  ITEM_FIELD_FEATURES, ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField, counterName, itemCodePrefix, nextItemCode,
   // ---- item photos ----
   mayEditItemImage, sniffImageType, checkPhoto, imageRetiredMessage, imageOffMenuMessage, imageNoneMessage,
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO,
 } from "./items.js";
 import { routes } from "@rch/contract";
+import { DESK_DEFAULTS } from "./permissions.js";
 
 const ALL_FIELDS: ItemField[] = ["n", "dn", "mrp", "cost", "gst", "hsn", "rl", "grp", "sl", "active", "src"];
 
@@ -58,6 +59,39 @@ describe("who owns which field on the item master", () => {
     expect(commercial).toEqual(["dn", "mrp", "cost", "gst", "active"]);
     expect(operational).toEqual(["n", "hsn", "rl", "grp", "sl", "active", "src"]);
     expect(commercial.filter((f) => operational.includes(f))).toEqual(["active"]);
+  });
+});
+
+describe("the item master's split, read from permissions", () => {
+  it("puts the commercial half on items_stock, the operational half on item_master, and active on either", () => {
+    expect(ITEM_FIELD_FEATURES.mrp).toEqual(["items_stock"]);
+    expect(ITEM_FIELD_FEATURES.dn).toEqual(["items_stock"]);
+    expect(ITEM_FIELD_FEATURES.hsn).toEqual(["item_master"]);
+    expect(ITEM_FIELD_FEATURES.src).toEqual(["item_master"]);
+    expect(ITEM_FIELD_FEATURES.active).toEqual(["items_stock", "item_master"]);
+  });
+
+  it("answers for a role's permissions, needing edit rather than view", () => {
+    const commercial = { f: { items_stock: "edit" as const }, a: [] };
+    const viewer = { f: { items_stock: "view" as const, item_master: "view" as const }, a: [] };
+    const both = { f: { items_stock: "edit" as const, item_master: "edit" as const }, a: [] };
+    expect(mayEditItemField(commercial, "mrp")).toBe(true);
+    expect(mayEditItemField(commercial, "n")).toBe(false);
+    expect(mayEditItemField(viewer, "active")).toBe(false);
+    expect(unauthorisedItemFields(commercial, ["mrp", "n", "active", "hsn"])).toEqual(["n", "hsn"]);
+    expect(unauthorisedItemFields(both, ["mrp", "n", "active", "hsn"])).toEqual([]);
+  });
+
+  it("agrees with ITEM_FIELD_ROLES for every seeded role", () => {
+    for (const role of ["counter", "manager", "store", "prod", "buyer"] as const) {
+      for (const f of ALL_FIELDS) expect(mayEditItemField(DESK_DEFAULTS[role].perms, f), `${role} ${f}`).toBe(ITEM_FIELD_ROLES[f].includes(role));
+    }
+  });
+
+  it("gives a photo to whoever holds item_photos at edit", () => {
+    expect(mayEditItemImage({ f: { item_photos: "edit" }, a: [] })).toBe(true);
+    expect(mayEditItemImage({ f: { menu: "edit" }, a: [] })).toBe(false);
+    expect(mayEditItemImage(DESK_DEFAULTS.store.perms)).toBe(false);
   });
 });
 
