@@ -61,7 +61,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);   // jsdom has none
   localStorage.clear();
-  window.Razorpay = class { open() { /* the checkout would take over the screen here */ } } as unknown as typeof window.Razorpay;
+  window.Razorpay = class { open() { /* the checkout would take over the screen here */ } on() { /* no failures here */ } } as unknown as typeof window.Razorpay;
 });
 afterEach(() => {
   ui?.unmount();

@@ -29,6 +29,9 @@ export const NETWORK_MENU = "Could not load the menu - check your connection and
 export const NETWORK_PLACE = "Could not place your order - check your connection and try again.";
 export const CHECKOUT_FAILED = "Could not open the payment page - check your connection and try again.";
 export const PAYMENT_DISMISSED = "Payment was not completed. Tap Pay to try again - you have not been charged.";
+/** A payment the gateway turned down. Its sheet stays open to try again, so this is a note, not an error. */
+export const paymentFailedNote = (why?: string): string =>
+  `${why ? `Your payment did not go through: ${why.replace(/\.?$/, ".")}` : "Your payment did not go through."} Tap Pay to try again - you have not been charged.`;
 export const VERIFY_PENDING = "We could not confirm your payment yet. This page will update as soon as it goes through.";
 
 type LoadState = "idle" | "loading" | "ready" | "missing" | "error";
@@ -44,7 +47,9 @@ type RazorpayOptions = {
   timeout: number;
   handler: (r: RazorpaySuccess) => void; modal: { ondismiss: () => void };
 };
-type RazorpayCtor = new (o: RazorpayOptions) => { open: () => void };
+/** What checkout.js hands a `payment.failed` listener; only the sentence is read. */
+export type RazorpayFailure = { error?: { description?: string; reason?: string } };
+type RazorpayCtor = new (o: RazorpayOptions) => { open: () => void; on: (event: "payment.failed", cb: (r: RazorpayFailure) => void) => void };
 declare global { interface Window { Razorpay?: RazorpayCtor } }
 
 /** An order placed and waiting for the gateway, with the signature of what was sent - a Pay
@@ -162,7 +167,11 @@ export function loadRazorpay(): Promise<void> {
 /** The checkout's accent: the page's brand amber, the same in either theme. */
 const BRAND_AMBER = "#E07B00";
 /** Fifteen minutes, well inside the thirty an unpaid order is kept for. */
-const CHECKOUT_TIMEOUT_S = 900;
+export const CHECKOUT_TIMEOUT_S = 900;
+/** If the gateway never calls back at all (a sheet torn down under it), Pay comes back this long after its own timeout. */
+export const CHECKOUT_BACKSTOP_MS = (CHECKOUT_TIMEOUT_S + 30) * 1000;
+let backstop: ReturnType<typeof setTimeout> | undefined;
+const clearBackstop = () => { if (backstop) clearTimeout(backstop); backstop = undefined; };
 
 const bodyOf = (s: PublicOrderState) => {
   const lines = cartLines(s.menu, s.cart).map((l) => ({ it: l.item.it, qty: l.qty }));
@@ -265,16 +274,35 @@ export const usePublicOrder = create<PublicOrderState>()((set, get) => {
       }
       const Rzp = window.Razorpay!;
       const c = p.checkout;
-      new Rzp({
-        key: c.keyId, order_id: c.orderId, amount: c.amount, currency: c.currency,
-        name: get().menu?.outlet.name ?? p.order.outletName,
-        description: `Order ${p.order.id}`,
-        prefill: c.prefill,
-        theme: { color: BRAND_AMBER },
-        timeout: CHECKOUT_TIMEOUT_S,
-        handler: (r) => { void get().verify(r); },
-        modal: { ondismiss: () => { set({ paying: false, note: PAYMENT_DISMISSED }); } },
-      }).open();
+      // The last reason the gateway gave for turning a payment down; its sheet stays open to try again.
+      let failed: string | null = null;
+      const finish = (patch: Partial<PublicOrderState>) => { clearBackstop(); set({ paying: false, ...patch }); };
+      try {
+        const rzp = new Rzp({
+          key: c.keyId, order_id: c.orderId, amount: c.amount, currency: c.currency,
+          name: get().menu?.outlet.name ?? p.order.outletName,
+          description: `Order ${p.order.id}`,
+          prefill: c.prefill,
+          theme: { color: BRAND_AMBER },
+          timeout: CHECKOUT_TIMEOUT_S,
+          handler: (r) => { clearBackstop(); void get().verify(r); },
+          modal: { ondismiss: () => { finish({ note: failed ?? PAYMENT_DISMISSED }); } },
+        });
+        rzp.on("payment.failed", (r) => {
+          failed = paymentFailedNote(r.error?.description ?? r.error?.reason);
+          set({ note: failed });
+        });
+        rzp.open();
+      } catch {
+        finish({ error: CHECKOUT_FAILED });
+        return;
+      }
+      // Pay never stays locked: should the gateway say nothing at all, the button comes back.
+      clearBackstop();
+      backstop = setTimeout(() => {
+        backstop = undefined;
+        if (get().paying) set({ paying: false, note: failed ?? PAYMENT_DISMISSED });
+      }, CHECKOUT_BACKSTOP_MS);
     },
 
     async verify(r) {
@@ -347,4 +375,5 @@ export const usePublicOrder = create<PublicOrderState>()((set, get) => {
 export function resetPublicOrder(): void {
   usePublicOrder.setState(blank());
   checkoutLoading = null;
+  clearBackstop();
 }

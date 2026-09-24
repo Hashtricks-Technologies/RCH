@@ -5,7 +5,8 @@ import { setAccessToken } from "../api/session";
 import { isOrderPath, menuPath, parseOrderPath, secretFromHash, statusUrl } from "../lib/orderPath";
 import {
   CHECKOUT_FAILED, CHECKOUT_JS, NETWORK_MENU, NETWORK_PLACE, PAYMENT_DISMISSED, POLL_FAST_MS, POLL_SLOW_MS, VERIFY_PENDING,
-  cartCount, cartTotal, checkCustomer, loadRazorpay, recall, remember, resetPublicOrder, usePublicOrder, type RazorpaySuccess,
+  CHECKOUT_BACKSTOP_MS, cartCount, cartTotal, checkCustomer, loadRazorpay, paymentFailedNote, recall, remember, resetPublicOrder, usePublicOrder,
+  type RazorpayFailure, type RazorpaySuccess,
 } from "../store/publicOrder";
 import { SECRET, TOKEN, created, json, menuOf, orderOf, refusal } from "./publicFixture";
 
@@ -35,13 +36,14 @@ const VERIFY = "POST /api/v1/public/orders/QO-2026-0042/verify";
 const STATUS = "GET /api/v1/public/orders/QO-2026-0042";
 
 /** A stand-in for Razorpay's checkout: records what it was opened with. */
-type Opened = { options: Record<string, unknown> & { handler: (r: RazorpaySuccess) => void; modal: { ondismiss: () => void } }; opened: boolean };
+type Opened = { options: Record<string, unknown> & { handler: (r: RazorpaySuccess) => void; modal: { ondismiss: () => void } }; opened: boolean; failed?: (r: RazorpayFailure) => void };
 let rzp: Opened[] = [];
 function stubRazorpay(): void {
   window.Razorpay = class {
     rec: Opened;
     constructor(options: Opened["options"]) { this.rec = { options, opened: false }; rzp.push(this.rec); }
     open() { this.rec.opened = true; }
+    on(event: string, cb: (r: RazorpayFailure) => void) { if (event === "payment.failed") this.rec.failed = cb; }
   } as unknown as typeof window.Razorpay;
 }
 const SUCCESS: RazorpaySuccess = { razorpay_order_id: "order_RZP1", razorpay_payment_id: "pay_1", razorpay_signature: "f".repeat(64) };
@@ -324,6 +326,56 @@ describe("the checkout script", () => {
     const again = loadRazorpay();
     document.querySelector<HTMLScriptElement>(`script[src="${CHECKOUT_JS}"]`)!.onload?.(new Event("load"));
     await expect(again).rejects.toThrow();
+  });
+});
+
+describe("a checkout that goes wrong", () => {
+  async function place() {
+    await withMenu();
+    st().add("tea"); fillCustomer();
+    serve({ [PLACE]: () => json({ result: created(), changed: [], message: "Order placed." }) });
+    return st().placeOrder();
+  }
+  it("unlocks Pay when the gateway's constructor throws", async () => {
+    window.Razorpay = class { constructor() { throw new Error("blocked"); } } as unknown as typeof window.Razorpay;
+    await place();
+    expect(st().paying).toBe(false);
+    expect(st().error).toBe(CHECKOUT_FAILED);
+  });
+  it("unlocks Pay when open() throws", async () => {
+    window.Razorpay = class { on() { /* */ } open() { throw new Error("popup"); } } as unknown as typeof window.Razorpay;
+    await place();
+    expect(st().paying).toBe(false);
+    expect(st().error).toBe(CHECKOUT_FAILED);
+  });
+  it("notes a declined payment but keeps waiting while the sheet offers a retry, then says it on dismiss", async () => {
+    await place();
+    rzp[0].failed!({ error: { description: "Your bank declined the payment" } });
+    expect(st().paying).toBe(true);
+    expect(st().note).toBe(paymentFailedNote("Your bank declined the payment"));
+    expect(st().note).toBe("Your payment did not go through: Your bank declined the payment. Tap Pay to try again - you have not been charged.");
+    rzp[0].options.modal.ondismiss();
+    expect(st().paying).toBe(false);
+    expect(st().note).toBe(paymentFailedNote("Your bank declined the payment"));
+    expect(paymentFailedNote()).toBe("Your payment did not go through. Tap Pay to try again - you have not been charged.");
+  });
+  it("gives Pay back after the gateway's timeout and a margin, if nothing ever calls back", async () => {
+    vi.useFakeTimers();
+    await place();
+    expect(st().paying).toBe(true);
+    await vi.advanceTimersByTimeAsync(CHECKOUT_BACKSTOP_MS - 1);
+    expect(st().paying).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(st().paying).toBe(false);
+    expect(st().note).toBe(PAYMENT_DISMISSED);
+  });
+  it("cancels the backstop once the sheet is dismissed", async () => {
+    vi.useFakeTimers();
+    await place();
+    rzp[0].options.modal.ondismiss();
+    usePublicOrder.setState({ paying: true, note: "still here" });
+    await vi.advanceTimersByTimeAsync(CHECKOUT_BACKSTOP_MS);
+    expect(st().note).toBe("still here");
   });
 });
 
