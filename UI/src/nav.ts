@@ -31,11 +31,17 @@ export function navFor(u: Who): NavGroup[] {
       group: g.group,
       items: g.keys.filter((k) => shown.some((s) => s.key === k)).map((k) => { placed.add(k); return item(SCREEN[k]); }),
     }));
+  // A screen from another desk's layout can share a label with one already drawn - a store role
+  // given Requisitions has the store's own "Requisitions" too. The newcomer names its section,
+  // "Requisitions (purchasing)", so two entries never read alike.
+  const taken = (label: string) => groups.some((g) => g.items.some((i) => i.label === label));
   for (const s of shown) {
     if (placed.has(s.key) || s.section === "Account") continue;
+    const entry = item(s);
+    if (taken(entry.label)) entry.label = `${entry.label} (${s.section.toLowerCase()})`;
     const into = groups.find((g) => g.group === s.section);
-    if (into) into.items.push(item(s));
-    else groups.push({ group: s.section, items: [item(s)] });
+    if (into) into.items.push(entry);
+    else groups.push({ group: s.section, items: [entry] });
   }
   groups.push({ group: "Account", items: shown.filter((s) => s.section === "Account").map(item) });
   return groups.filter((g) => g.items.length > 0);

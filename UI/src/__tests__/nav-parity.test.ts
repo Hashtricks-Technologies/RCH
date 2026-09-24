@@ -97,6 +97,25 @@ describe("a seeded role's sidebar is its desk's old sidebar, keys renamed", () =
   });
 });
 
+describe("a screen from another desk's layout", () => {
+  it("names its section when its label is already in the sidebar", () => {
+    const store = userOf("store");
+    const nav = navFor({ ...store, perms: { f: { ...store.perms!.f, requisitions: "edit" }, a: [] } });
+    const purchasing = nav.find((g) => g.group === "Purchasing")!.items;
+    expect(purchasing).toEqual([
+      { k: "procure", label: "Requisitions", icon: "need" },
+      { k: "requisitions", label: "Requisitions (purchasing)", icon: "need" },
+    ]);
+    const labels = nav.flatMap((g) => g.items.map((i) => i.label));
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+  it("keeps its own label when nothing else carries it", () => {
+    const store = userOf("store");
+    const nav = navFor({ ...store, perms: { f: { ...store.perms!.f, vendors: "view" }, a: [] } });
+    expect(nav.flatMap((g) => g.items).find((i) => i.k === "vendors")!.label).toBe("Vendors");
+  });
+});
+
 describe("screen keys", () => {
   it("are unique", () => {
     const keys = SCREENS.map((s) => s.key);

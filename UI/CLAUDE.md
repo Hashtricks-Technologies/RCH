@@ -41,7 +41,9 @@ hooks `useCan(f, l = "edit")`, `useHolds(a)` and `useWide()`. `navFor` places th
 and exactly as it always was (`nav-parity.test.ts`), then any other screen the role holds under that
 screen's own `section` - joining a group of the same name - and Account last. `dash`, `issues` and
 `settings` are desk-bound and always shown; `register` shows with any of `x_report`, `z_report` or
-`shift_reports`. The guard is checked on every render, so a role narrowed under an open tab loses the screen
+`shift_reports`. `navFor` gives a screen placed outside its desk's own layout whose label is already in the
+sidebar its section in brackets - a store role holding Requisitions reads "Requisitions (purchasing)" beside
+its own "Requisitions". The guard is checked on every render, so a role narrowed under an open tab loses the screen
 at once. Gate on a permission with these, never on `user.r`; the desk (`user.r`) still decides where
 someone works - the counter's till, its Close shift and the counter-only display names stay on it.
 
