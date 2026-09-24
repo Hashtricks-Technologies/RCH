@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { TenderSchema } from "./common";
+import { TenderSchema, TillTenderSchema } from "./common";
 import { PayBodySchema, SavePriceBodySchema } from "./writes";
 
 const body = (over: Record<string, unknown> = {}) => ({ loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }], ...over });
 
 describe("PayBodySchema", () => {
-  it("takes the seven tenders the counter offers, and nothing else", () => {
-    expect(TenderSchema.options).toEqual(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept"]);
-    for (const tender of TenderSchema.options) expect(PayBodySchema.safeParse(body({ tender })).success, tender).toBe(true);
+  it("takes the six tenders the counter offers, and nothing else - never Online", () => {
+    expect(TenderSchema.options).toEqual(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept", "Online"]);
+    expect(TillTenderSchema.options).toEqual(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept"]);
+    for (const tender of TillTenderSchema.options) expect(PayBodySchema.safeParse(body({ tender })).success, tender).toBe(true);
+    // A bill paid online is raised by a QR order's capture, never by a till.
+    expect(PayBodySchema.safeParse(body({ tender: "Online" })).success).toBe(false);
     // A tender is a closed set: a near miss is a validation error, not a bill settled by "staff credit".
     for (const tender of ["staff credit", "cash", "Cheque", ""]) expect(PayBodySchema.safeParse(body({ tender })).success, tender).toBe(false);
   });

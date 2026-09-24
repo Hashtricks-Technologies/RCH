@@ -19,11 +19,16 @@ export const SourceSchema = z.enum(["store", "kitchen"]);
 /** A price list's id on the wire - server-issued (`formatId("price_list", …)`, e.g. `"PL-006"`),
  *  never a closed set: a manager may create as many named price lists as they want. */
 export const PriceListIdSchema = z.string().min(1).max(32);
-/** The six ways a bill is settled - a closed set, not free text. Three of them post to
+/** The seven ways a bill is settled - a closed set, not free text. Three of them post to
  *  somebody's account rather than take money at the till (`payerKindForTender` in @rch/domain
- *  is the one table pairing each with the kind of payer it means), and the counter's own tender
- *  buttons are this list read straight off the schema. */
-export const TenderSchema = z.enum(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept"]);
+ *  is the one table pairing each with the kind of payer it means). `Online` is the one the till
+ *  never takes: it is what a QR order paid through the gateway is billed with, by the system's
+ *  own account, the moment the payment is captured. */
+export const TenderSchema = z.enum(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept", "Online"]);
+/** The tenders a counter may settle a bill with - every one but `Online`. `PayBodySchema` takes
+ *  this, so no till can post a bill as paid online; the counter's tender buttons read the same
+ *  list (`TILL_TENDERS` in @rch/domain). */
+export const TillTenderSchema = TenderSchema.exclude(["Online"]);
 export const ErrorCodeSchema = z.enum(["validation", "unauthenticated", "forbidden", "not_found", "conflict", "rule", "rate_limited", "not_ready", "internal"]);
 export const ErrorEnvelopeSchema = z.object({
   error: z.object({ code: ErrorCodeSchema, message: z.string(), details: z.unknown().optional() }),

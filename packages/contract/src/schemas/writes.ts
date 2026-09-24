@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListIdSchema, SourceSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListIdSchema, SourceSchema, StockLocSchema, TillTenderSchema } from "./common.js";
 import { AdjustmentRequestSchema, AdjustmentSchema, AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
@@ -26,7 +26,8 @@ export type WriteResponse<T> = { result: T; changed: Changed[]; message: string 
 
 export const PayBodySchema = z.strictObject({
   loc: LocKeySchema,
-  tender: TenderSchema,
+  // Never `Online`: a bill paid through the gateway is raised by the QR capture, not a till.
+  tender: TillTenderSchema,
   payer: PayerSchema.optional(),
   // Three decimals is the whole precision of a quantity anywhere in this system (`round3`), so
   // a line that carries more is a client bug, not a sale - refuse it at the door rather than

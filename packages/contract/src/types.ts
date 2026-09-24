@@ -14,6 +14,8 @@ export type LocKey = z.infer<typeof C.LocKeySchema>;
 export type StockLoc = z.infer<typeof C.StockLocSchema>;
 export type Role = z.infer<typeof C.RoleSchema>;
 export type Tender = z.infer<typeof C.TenderSchema>;
+/** Every tender but `Online` - what a till may settle a bill with. */
+export type TillTender = z.infer<typeof C.TillTenderSchema>;
 export type ReqStatus = z.infer<typeof D.ReqStatusSchema>;
 export type TktStatus = z.infer<typeof D.TktStatusSchema>;
 export type PrqStatus = z.infer<typeof D.PrqStatusSchema>;

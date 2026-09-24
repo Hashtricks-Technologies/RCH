@@ -345,9 +345,9 @@ describe("the totals reconcile", () => {
     const t = rep.totals;
     const line = (name: string) => t.tenders.find((x: { tender: string }) => x.tender === name);
 
-    // Every tender the till has gets a line, whether or not it took anything.
+    // Every tender gets a line, whether or not it took anything - Online too, which a QR order bills.
     expect(t.tenders.map((x: { tender: string }) => x.tender))
-      .toEqual(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept"]);
+      .toEqual(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept", "Online"]);
     expect(line("Cash")).toEqual({ tender: "Cash", amount: cash.tot, bills: 1 });
     expect(line("UPI")).toEqual({ tender: "UPI", amount: upi.tot, bills: 1 });
     expect(line("Staff credit")).toEqual({ tender: "Staff credit", amount: staff.tot, bills: 1 });

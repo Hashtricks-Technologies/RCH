@@ -1,6 +1,6 @@
 import { and, eq, gte, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import type { LocKey, ShiftTotals, TenderLine } from "@rch/contract";
-import { ShiftTotalsSchema, TenderSchema } from "@rch/contract";
+import { ShiftTotalsSchema, TillTenderSchema } from "@rch/contract";
 import { ACCOUNT_TENDERS } from "@rch/domain";
 import { bills, shifts } from "../db/schema/index.js";
 import type { Reader, Tx } from "./db.js";
@@ -64,8 +64,9 @@ export async function shiftTotals(db: Reader, userId: string, loc: string, from:
 
   const byTender = new Map(sold.map((r) => [r.tender, r]));
   // A tender the data carries and the schema no longer names is appended rather than dropped:
-  // a total no line accounts for is the one thing a hand-over must never print.
-  const tenders: TenderLine[] = [...new Set<string>([...TenderSchema.options, ...byTender.keys()])]
+  // a total no line accounts for is the one thing a hand-over must never print. The till's own
+  // tenders only: Online is billed by the QR system account, never on anybody's shift.
+  const tenders: TenderLine[] = [...new Set<string>([...TillTenderSchema.options, ...byTender.keys()])]
     .map((tender) => ({ tender, amount: num(byTender.get(tender)?.amount), bills: byTender.get(tender)?.count ?? 0 }));
   const collected = money(tenders.filter((t) => !isCredit(t.tender)).reduce((a, t) => a + t.amount, 0));
   const creditSales = money(tenders.filter((t) => isCredit(t.tender)).reduce((a, t) => a + t.amount, 0));

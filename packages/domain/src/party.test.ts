@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TenderSchema } from "@rch/contract";
-import { ACCOUNT_TENDERS, isAccountTender, normalizePhone, PARTY_LABEL, PARTY_TITLE, partyOf, payerKindForTender, phoneRefusal } from "./party";
+import { ACCOUNT_TENDERS, TILL_TENDERS, isAccountTender, normalizePhone, PARTY_LABEL, PARTY_TITLE, partyOf, payerKindForTender, phoneRefusal } from "./party";
 
 describe("payerKindForTender", () => {
   it("pairs each account tender with the one kind of payer it means", () => {
@@ -15,6 +15,11 @@ describe("payerKindForTender", () => {
     expect(payerKindForTender("Card")).toBeNull();
   });
 
+  it("answers null for Online too - paid before the bill exists, on nobody's account", () => {
+    expect(payerKindForTender("Online")).toBeNull();
+    expect(isAccountTender("Online")).toBe(false);
+  });
+
   it("has a row for every tender on the wire - a new one has to be decided here", () => {
     for (const t of TenderSchema.options) expect(payerKindForTender(t)).not.toBeUndefined();
   });
@@ -25,6 +30,13 @@ describe("isAccountTender", () => {
     expect(ACCOUNT_TENDERS).toEqual(["Staff credit", "Doctor credit", "Dept"]);
     expect(isAccountTender("Dept")).toBe(true);
     expect(isAccountTender("Cash")).toBe(false);
+  });
+});
+
+describe("TILL_TENDERS", () => {
+  it("is every tender but Online, in the schema's order - the till's own buttons", () => {
+    expect(TILL_TENDERS).toEqual(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept"]);
+    expect(TILL_TENDERS).not.toContain("Online");
   });
 });
 

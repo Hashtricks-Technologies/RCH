@@ -1,9 +1,9 @@
-import type { BillParty, PayerKind, Tender } from "@rch/contract";
+import { TillTenderSchema, type BillParty, type PayerKind, type Tender, type TillTender } from "@rch/contract";
 
 /**
  * Who a bill is being taken from, read off the tender it is settled with.
  *
- * Three of the six tenders take no money at the till: they post the bill to somebody's account
+ * Three of the seven tenders take no money at the till: they post the bill to somebody's account
  * and somebody settles it later. Each one means exactly one kind of payer, and that pairing has
  * to be written once. A "Staff credit" posted to a consultant is a balance no rule ever measures
  * and nobody can settle, because nobody can find whose it is - which is what this table exists
@@ -17,6 +17,8 @@ const PAYER_KIND: Record<Tender, PayerKind | null> = {
   "Staff credit": "staff",
   "Doctor credit": "doctor",
   Dept: "dept",
+  // Paid through the gateway before the bill exists: money taken, nobody's account.
+  Online: null,
 };
 
 /** The kind of payer this tender has to carry, or `null` where money changes hands at the till. */
@@ -25,6 +27,10 @@ export const payerKindForTender = (t: Tender): PayerKind | null => PAYER_KIND[t]
 /** Whether this tender runs up a balance somebody settles later, rather than taking money now.
  *  Every figure that counts receivables filters on this. */
 export const isAccountTender = (t: Tender): boolean => PAYER_KIND[t] !== null;
+
+/** The tenders a till offers, in the schema's order - every one but `Online`, which only a QR
+ *  order's capture bills with. `PayBodySchema` refuses the rest. */
+export const TILL_TENDERS: readonly TillTender[] = TillTenderSchema.options;
 
 /** Every tender that posts to an account, for a query that has to name them. */
 export const ACCOUNT_TENDERS: readonly Tender[] =

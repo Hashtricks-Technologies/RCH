@@ -14,7 +14,7 @@ export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORD
 export { planApproval, approvedStatus, planPrqApproval, prqStatus, type ApprovalLine, type ApprovalPlan } from "./approval.js";
 export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } from "./credit.js";
 // ---- who is being billed, what comes off their bill, and what settles what they owe.
-export { ACCOUNT_TENDERS, isAccountTender, normalizePhone, PARTY_LABEL, PARTY_TITLE, partyOf, payerKindForTender, phoneRefusal } from "./party.js";
+export { ACCOUNT_TENDERS, TILL_TENDERS, isAccountTender, normalizePhone, PARTY_LABEL, PARTY_TITLE, partyOf, payerKindForTender, phoneRefusal } from "./party.js";
 export { MAX_DISCOUNT_PCT, creditLimitFor, creditLimitRefusal, discountOn, discountPctFor, discountRefusal, validCreditLimit, validDiscountPct } from "./discount.js";
 export { allocateSettlement, nothingOwedMessage, settlementOverpayMessage, type OpenBill, type SettlementAllocation } from "./settlement.js";
 export { money, money0, dmy, istDate, unitTotal } from "./format.js";

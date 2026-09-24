@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { TenderSchema } from "@rch/contract";
-import { breachesCredit, counterName, creditBreachMessage, discountOn, isAccountTender, normalizePhone, PARTY_LABEL, payerKindForTender } from "@rch/domain";
+import { breachesCredit, counterName, creditBreachMessage, discountOn, isAccountTender, normalizePhone, PARTY_LABEL, payerKindForTender, TILL_TENDERS } from "@rch/domain";
 import { DEPTS, DOCTORS, IT, LOC, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { activeBill, MAX_OPEN_BILLS, tillOf, type OpenBill } from "../../store/till";
@@ -9,9 +8,9 @@ import { money, money0 } from "../../lib/fmt";
 import { Alert, Avatar, Btn, Card, Field, FormRow, Grid, ItemImage, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
 import type { CreditResponse, ItemType, LocKey, Payer, PayerKind, Tender } from "../../types";
 
-/** The buttons are the contract's own list - the server refuses anything else outright, so the
- *  till must not offer a seventh tender the schema has never heard of. */
-const TENDERS = TenderSchema.options;
+/** The buttons are the till's own list - every tender but Online, which only a QR order's capture
+ *  bills with. The server refuses anything else outright, so the till must not offer it. */
+const TENDERS = TILL_TENDERS;
 /** Which register each kind of payer is picked from. The lists are the snapshot's own `roster`,
  *  off the `payers` table the server validates a bill against - so a consultant added this
  *  morning is billable without a new build. Which *tender* needs which of them is
