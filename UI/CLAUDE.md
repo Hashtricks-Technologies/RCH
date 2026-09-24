@@ -70,13 +70,18 @@ report library leaves the stock ledger out without Stock ledger.
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
-That page has seven tabs: `AdminUsers` (staff accounts: the role picker lists the active roles in an
+That page has eight tabs: `AdminUsers` (staff accounts: the role picker lists the active roles in an
 `optgroup` per desk, the chosen role's desk drives `placesFor` and the extra counters, and each row shows its
 desk, its role and an "Inactive role" pill for one since switched off), `AdminRoles` (roles & permissions: a
 create card that starts from `DESK_DEFAULTS[desk].perms` and opens the matrix, the table - Edit, Deactivate /
 Reactivate with the server's refusal toasted as sent, and Delete behind a second press only while
 `!everAssigned` - and the `kind=roles` feed), `AdminOutlets` (the hospital's retail outlets - opened,
-edited, closed and reopened; never deleted), `AdminRegisters` (any outlet's register through
+edited, closed and reopened; never deleted), `AdminQrCodes` (the QR codes: an outlet picker off
+`adminLocations` - a closed outlet's codes greyed under a CLOSED alert - the codes table with Edit (label
+and mode inline, only what changed is sent), Deactivate / Reactivate, Regenerate behind a second press,
+Download poster and Copy link, the create form, and the `HoursEditor` - seven rows Monday first, `dow` as
+`Date.getDay` counts, a closed day left out of the one `PUT`, keyed on the outlet and what the server
+stored), `AdminRegisters` (any outlet's register through
 `ui/RegisterPanel.tsx` with every flag on: every read and the close name `loc`, since the register routes
 admit the admin token only with one, and the outlet's name is passed in because `LOC` is empty for this
 session), `AdminPayers` (the payer register: who a bill may be posted to -
@@ -205,6 +210,11 @@ try {
   `adminLocations`. `createOutlet` returns the server's row or `null` on a refusal, the same shape as
   `createAccount`, so the form stays as typed. `updateOutlet` and `setOutletOpen` (close and reopen, one action
   both ways, like `setAccountActive`) are the ordinary `Promise<boolean>` writes.
+- **The admin slice's QR state (`store/admin.ts`)**: `adminQrCodes` and `adminOrderHours` are loaded by
+  `loadAdminQrCodes` (`AdminDashboard` preloads it). `createQrCode` returns the server's row or `null`;
+  `updateQrCode(id, body)` (label, mode, `active`), `regenerateQrCode` and `setOrderHours(loc, days)` are
+  the ordinary `Promise<boolean>` writes. Each puts the row the server handed back in place through
+  `wire.ts` (`applyAdminQrCode`, `applyOrderHours`) before its `refetch`.
 - **The Credit screen's two lists (`store/receivables.ts`) are read, not kept.** `loadReceivables` answers
   `false` rather than throwing and sets `receivablesFailed`, so the screen shows an outage line instead of
   "nobody owes anything" - the distinction `AdminAudit.tsx` draws. `readStatement` answers `null` the way
@@ -295,7 +305,7 @@ try {
     permissions reloads the snapshot, after which the `Screen` guard takes away whatever the role no
     longer grants. For the super admin it re-reads `GET /admin/roles`.
   - **The super admin's session reads back only `ADMIN_READS`** (`tickets`, `payers`, `roles`, `accounts`,
-    `outlets`, `audit`); every other collection is a no-op for it. Its stream hears every collection, and
+    `outlets`, `qrCodes`, `audit`); every other collection is a no-op for it. Its stream hears every collection, and
     a Z it takes on the Registers tab names `bills` - a read its token would be answered 404 on.
 - **`wire.ts`** holds the mappers from server shape to store shape.
   - An ISO time becomes `"HH:MM"` only here, and **`iso` is kept beside it** on every document and history
@@ -404,6 +414,11 @@ a background refresh and must not blank the screen.
   - `PrintSlipBtn({ t })` is the ticket drawers' Include OTP box, Print slip and Download PDF (`<ticket>.pdf`).
     The box is one module-local switch in `TicketSlip.tsx`, on by default, shared by slip and PDF; where
     `t.otp` is `""` it is disabled with a tip naming the location that holds the code.
+  - `lib/qrPoster.ts` is the QR poster: `downloadQrPoster({ outletName, label, mode, url })` draws an A5
+    portrait page (the hospital, the outlet, the code at error correction M, the label, "Scan to order and
+    pay online", the mode's line, the link) as `QR-<outlet>-<label>.pdf`, importing jsPDF and `qrcode` at the
+    press. `qrcode` is CommonJS and the production chunk exports only a default, so `loadQr` takes
+    `default ?? namespace`. `qrOrderUrl(token)` is `${origin}/order/<token>` - print from the live domain.
   - `GrnPdfButtons({ po, named? })` (`ui/GrnPdf.tsx`) draws nothing until the order has a GRN. A delivery is
     the GRN rows sharing one instant and delivery note (`grnInstalments`); with more than one it offers each
     and the whole order. "To date" and "pending" are read as of each delivery, so an old GRN still says what
@@ -461,6 +476,12 @@ a background refresh and must not blank the screen.
   the oldest-first allocation preview, and Void offering itself only on today's payment.
   **`admin-payers.test.tsx`** drives the register tab - every kind on the table, the add form surviving a
   refusal, the switch, and that no delete control exists anywhere on the page.
+- **`admin-qr.test.tsx`** drives the QR codes tab against a stubbed `GET /admin/qr-codes` whose read-back
+  sees each write: the tab's place, the picker and a closed outlet's note, create / rename / mode /
+  deactivate / reactivate / regenerate (second press) bodies and their toasts, the poster and Copy link,
+  the hours editor's validation and its one `PUT`, and `refetch`'s `qrCodes` reader for admin and
+  operator. **`qr-poster.test.ts`** mocks `jspdf` and `qrcode` and pins the poster's text, image and name.
+  `AdminDashboard` reads the codes as it mounts, so any case that mounts it stubs `GET /admin/qr-codes` too.
 - **`pdf.test.tsx`** mocks `jspdf` and `jspdf-autotable`, recording what is drawn and saved, and pins
   the receipt and GRN models, the file names, the Include OTP box and the GRN buttons.
 - **`view-mode.test.tsx`** is table-driven over every gated screen and drawer: each desk's seeded role with

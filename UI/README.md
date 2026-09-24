@@ -144,14 +144,14 @@ src/
                                            its request mode - the counter), KitchenOrderForm.tsx
   pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx, and the
                                            admin page: AdminDashboard.tsx, AdminUsers.tsx, AdminOutlets.tsx,
-                                           AdminPayers.tsx, AdminSupport.tsx, AdminAudit.tsx,
+                                           AdminQrCodes.tsx, AdminPayers.tsx, AdminSupport.tsx, AdminAudit.tsx,
                                            AuditEntryDrawer.tsx
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/ - the manager's Credit.tsx is
                                            the rate card, who owes what and the settlements, with StatementDrawer
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
                                            drawer, api, session, events, writes, refusals, theme, po-board,
                                            login-picker, admin-accounts, admin-outlets, admin-payers,
-                                           admin-audit, audit-lib
+                                           admin-audit, audit-lib, admin-qr, qr-poster
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the
@@ -345,6 +345,15 @@ product request, or a member of staff) if anything is. A closed outlet is never 
 moves and reports stay, its menu, availability overrides and price list are kept exactly as they were,
 and a reopen restores it. The store and the kitchen are fixed and are not listed here; a new outlet
 appears in every other picker - the Accounts tab's location select included - the moment it opens.
+
+**QR codes, on `/admin`.** The QR codes tab picks an outlet (a closed one is labelled, and its codes
+are greyed under a note that they take no orders) and lists its codes - label, Pickup or Deliver to this
+spot, Active or Off, when each was created and last regenerated (IST). A new code takes a label, such as
+"Table 4", and a mode; the server numbers it and draws its token. Each row edits its label and mode in
+place, is switched off and back on (never deleted - an order names the code it came from), is regenerated
+behind a second press (every poster already printed for it stops working), downloads its A5 poster, and
+copies its ordering link. Below the table, the outlet's ordering hours: one window per weekday in IST,
+Monday to Sunday, each switched on with its opening and closing time or left closed, saved as one week.
 
 **Roles, on `/admin`.** The admin-flagged account's Roles tab lists every role - its name, the desk
 its holders work at, how many active accounts hold it, and whether it is switched on. A new role takes

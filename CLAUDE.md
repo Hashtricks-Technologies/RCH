@@ -205,9 +205,10 @@ excepted.
   (`GET /shifts`, `access: "any"`) on the Register screen and the bell; any other counter-desk role reads its
   own, and every other role an empty list. The outlet's X/Z is unchanged: a shift is one person's hours inside it.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
-  account sees only the standalone `/admin` page, never an operational shell. The page has seven tabs: Accounts
+  account sees only the standalone `/admin` page, never an operational shell. The page has eight tabs: Accounts
   (staff accounts, each given one role), Roles (what each role grants, as a permission matrix), Outlets (opens,
-  edits, closes and reopens them), Registers (every outlet's X, its Zs, and closing the day - no seeded role
+  edits, closes and reopens them), QR codes (the codes placed around each outlet - created, renamed, switched
+  off, regenerated, printed as an A5 poster - and each outlet's QR ordering hours), Registers (every outlet's X, its Zs, and closing the day - no seeded role
   holds Z reports), Payers (the register a bill may be posted to - staff, departments and doctors, opened,
   renamed and switched off, never deleted), Support desk (every role's support tickets) and Audit log (every
   write and sign-in). The flag can only be set with
