@@ -795,7 +795,11 @@ the browser a fresh one in the same reply (a new access token and refresh cookie
 land in the app rather than being bounced back to the sign-in screen. `reset-password` and
 `deactivate` both revoke every refresh token for that user (all of that employee's active
 sessions are signed out immediately).
-`--role` is one of `counter|manager|store|prod|buyer`; `--loc` is no longer a closed list - it is checked
+`--role` is a desk, one of `counter|manager|store|prod|buyer`, and gives the account that desk's lowest-numbered
+active role (on an untouched hospital, its seeded `ROLE-001`…`ROLE-005`); `--role-id ROLE-006` instead names a
+role the super admin made at `/admin` (pass one or the other, not both; a switched-off role is refused).
+`set-admin --on` takes the account's role away with the flag, and `--off` gives it its desk's first active
+role back. `--loc` is no longer a closed list - it is checked
 against the `locations` table the same way every write that names a location is (`worksAt` in `@rch/domain`):
 the central store or the central kitchen for the roles pinned there, and any *open* outlet for `counter` and
 `manager`. A key with no row, or a closed outlet's key, is refused by name. Outlets themselves are opened,
