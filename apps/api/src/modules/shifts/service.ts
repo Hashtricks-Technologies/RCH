@@ -2,13 +2,14 @@
 // stores what it billed and closes it; the list reads those stored figures back.
 import type { z } from "zod";
 import type { ShiftReport, ShiftsQuerySchema, ShiftTotals, WriteResponse } from "@rch/contract";
-import { money as inr } from "@rch/domain";
+import { can, money as inr } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withReadTransaction, withTransaction } from "../../lib/db.js";
 import { emitChanged } from "../../lib/events.js";
 import { assertRule } from "../../lib/rules.js";
 import { closeShiftRow, lockShiftsOf, openShiftOf, shiftTotals, storedTotals, type ShiftRow } from "../../lib/shifts.js";
 import type { AccessClaims } from "../../plugins/auth.js";
+import type { Actor } from "../../plugins/rbac.js";
 import { shiftsRepo } from "./repo.js";
 
 export type ShiftsQuery = z.infer<typeof ShiftsQuerySchema>;
@@ -64,15 +65,17 @@ export function createShiftsService(db: Db) {
     },
 
     /**
-     * Closed shifts, newest first, **read from what each stored**. A manager reads every
-     * outlet's (or one, by `loc`); a counter reads only their own, wherever they worked; every
-     * other desk reads an empty list without a query - the route is "any" so that a close,
-     * which announces `shifts` to every browser, never fails another desk's refetch.
+     * Closed shifts, newest first, **read from what each stored**. A role holding Shift reports
+     * reads every outlet's (or one, by `loc`); any other counter-desk role reads only the
+     * caller's own, wherever they worked; everybody else reads an empty list without a query -
+     * the route is "any" so that a close, which announces `shifts` to every browser, never fails
+     * another desk's refetch. Of the seeded roles only the outlet manager holds `shift_reports`.
      */
-    async list(claims: AccessClaims, q: ShiftsQuery): Promise<ShiftReport[]> {
-      if (claims.role !== "manager" && claims.role !== "counter") return [];
+    async list(actor: Actor, q: ShiftsQuery): Promise<ShiftReport[]> {
+      const every = can(actor.perms, "shift_reports");
+      if (!every && actor.role !== "counter") return [];
       const since = new Date(Date.now() - q.days * 86_400_000);
-      const by = claims.role === "manager" ? { loc: q.loc } : { userId: claims.sub };
+      const by = every ? { loc: q.loc } : { userId: actor.sub };
       const rows = await shiftsRepo.closedSince(db, since, by);
       return rows.map((r) => {
         const { totals, auto } = storedTotals(r);

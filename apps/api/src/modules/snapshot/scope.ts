@@ -1,15 +1,30 @@
-import type { Adjustment, AdjustmentRequest, Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Terms, Ticket } from "@rch/contract";
+import type { Adjustment, AdjustmentRequest, Batch, Bill, Feature, LocKey, PayerRoster, Permissions, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Terms, Ticket } from "@rch/contract";
+import { can, readsHospitalWide } from "@rch/domain";
 import { noTerms } from "../../lib/terms.js";
+import type { Actor } from "../../plugins/rbac.js";
 import type { Snapshot } from "./service.js";
 
-/** Who is asking. The snapshot and the two standalone reads all cut by the same two fields. */
-export type Who = { role: Role; loc: LocKey };
+/**
+ * Who is asking: the desk they work (`role` in the token), where they are standing, and what their
+ * role grants right now (`req.actor.perms`, resolved per request - never the token's). Every cut in
+ * this file reads these three and nothing else.
+ */
+type Who = { desk: Role; loc: LocKey; perms: Permissions };
+export const whoOf = (a: Actor): Who => ({ desk: a.role, loc: a.loc, perms: a.perms });
+
+/**
+ * Whether the caller's reads are cut to their own counter. A counter-desk role is, unless it holds
+ * a hospital-wide feature or every outlet (`readsHospitalWide`, @rch/domain); every other desk
+ * never is. For the seeded roles that is exactly "the counter operator", as it always was.
+ */
+const cut = (who: Who): boolean => !readsHospitalWide(who.desk, who.perms);
+const any = (who: Who, fs: readonly Feature[]): boolean => fs.some((f) => can(who.perms, f));
 /** The three ledger maps, together: GET /stock's whole body and three of the snapshot's fields. */
 export type StockPart = Pick<Snapshot, "stock" | "rsv" | "ovr">;
 
 /** A counter operator sees their own counter's ledger and nobody else's. */
 export function scopeStock(part: StockPart, who: Who): StockPart {
-  if (who.role !== "counter") return part;
+  if (!cut(who)) return part;
   const L = who.loc;
   const own = (e: [string, unknown][]) => e.filter(([k]) => k.startsWith(`${L}:`));
   return {
@@ -21,15 +36,17 @@ export function scopeStock(part: StockPart, who: Who): StockPart {
 
 /** Takings are not master data: a counter operator gets their own till roll, not the hospital's. */
 export const scopeBills = (bills: Bill[], who: Who): Bill[] =>
-  who.role !== "counter" ? bills : bills.filter((b) => b.loc === who.loc);
+  !cut(who) ? bills : bills.filter((b) => b.loc === who.loc);
 
 /**
  * Who a bill was charged to is the one field on it that names a person: a consultant, a member
  * of staff or the ward carrying the cost, which is hospital data before it is F&B data.
  *
- * Two roles need it. The counter reads it back off its own till roll - it is what a customer
- * asks about when a bill is queried an hour later - and the manager reads it across the outlets,
- * because settling a credit account is their job. The kitchen, the central store and the buyer
+ * Two features need it. Bills (`billing`, the counter's till and the manager's view of it) reads
+ * it back off the till roll - it is what a customer asks about when a bill is queried an hour
+ * later - and Credit & settlements (`credit`) reads it across the outlets, because settling a
+ * credit account is what that screen is for. Of the seeded roles that is the counter and the
+ * manager, as it always was. The kitchen, the central store and the buyer
  * do none of that. What they have always used bills for is the ledger behind them: `lines`,
  * which is untouched here, so every stock report still reads exactly what it did.
  *
@@ -39,9 +56,9 @@ export const scopeBills = (bills: Bill[], who: Who): Bill[] =>
  * bills as well as lines, and a store keeper whose totals quietly stopped matching the till's
  * would be worse off than one who simply cannot see whose account a sale went to.
  */
-const READS_PAYERS: ReadonlySet<Who["role"]> = new Set(["counter", "manager"]);
+const readsPayers = (who: Who): boolean => can(who.perms, "billing") || can(who.perms, "credit");
 export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
-  READS_PAYERS.has(who.role) ? bills : bills.map((b) => (b.payer || b.customerName || b.customerPhone
+  readsPayers(who) ? bills : bills.map((b) => (b.payer || b.customerName || b.customerPhone
     ? { ...b, payer: undefined, customerName: undefined, customerPhone: undefined }
     : b));
 
@@ -53,37 +70,54 @@ export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
  * same leak.
  */
 export const scopeRoster = (roster: PayerRoster, who: Who): PayerRoster =>
-  READS_PAYERS.has(who.role) ? roster : { staff: [], depts: [], doctors: [] };
+  readsPayers(who) ? roster : { staff: [], depts: [], doctors: [] };
 
 /** And the rate card those names are charged against, cut the same way and for the same reason:
  *  what the hospital gives a consultant off is commercial information, and three of the five
  *  roles never take a bill. `noTerms()` is the empty card, the same shape, so a screen that
  *  reads it needs no special case. */
 export const scopeTerms = (terms: Terms, who: Who): Terms =>
-  READS_PAYERS.has(who.role) ? terms : noTerms();
+  readsPayers(who) ? terms : noTerms();
 
 /** A counter's requests are their own outlet's; everyone else sees the desk they work. */
 export const scopeRequests = (req: StockRequest[], who: Who): StockRequest[] =>
-  who.role !== "counter" ? req : req.filter((r) => r.from === who.loc);
+  !cut(who) ? req : req.filter((r) => r.from === who.loc);
 /** Either end of the movement: a counter sees what leaves them and what is coming to them. */
 export const scopeTickets = (tkt: Ticket[], who: Who): Ticket[] =>
-  who.role !== "counter" ? tkt : tkt.filter((t) => t.from === who.loc || t.to === who.loc);
+  !cut(who) ? tkt : tkt.filter((t) => t.from === who.loc || t.to === who.loc);
 /** Shop to shop: the asker and the shop being asked, nobody in between. */
 export const scopeShopAsks = (asks: ShopAsk[], who: Who): ShopAsk[] =>
-  who.role !== "counter" ? asks : asks.filter((a) => a.from === who.loc || a.to === who.loc);
+  !cut(who) ? asks : asks.filter((a) => a.from === who.loc || a.to === who.loc);
 /** The kitchen's board belongs to the kitchen; an outlet sees the orders it raised itself. */
 export const scopeProdOrders = (pord: ProdOrder[], who: Who): ProdOrder[] =>
-  who.role !== "counter" ? pord : pord.filter((o) => o.from === who.loc);
-/** The batch log is the kitchen's own record of what it made. A counter sells the output and
- *  has no window on the production behind it - the snapshot has always sent them none. */
-export const scopeBatches = (batch: Batch[], who: Who): Batch[] => (who.role !== "counter" ? batch : []);
-/** Buying is not a counter operator's business. A requisition, an order, a goods receipt, a
- *  vendor and a rate contract are all read by the store, the kitchen, the manager and the
- *  buyer; a counter sees none of them, which is what their snapshot has always contained. */
-export const scopeBuying = <T>(rows: T[], who: Who): T[] => (who.role !== "counter" ? rows : []);
+  !cut(who) ? pord : pord.filter((o) => o.from === who.loc);
+/**
+ * The batch log and the buying documents are the back office's, and are cut by desk and then by
+ * feature - not by the counter cut above, because reading every outlet's till is no reason to read
+ * the kitchen's production or the hospital's purchasing.
+ *
+ * - The four back-office desks (manager, store, kitchen, purchasing) read both whole, whatever
+ *   their role holds, exactly as each always has: the store's on-order figures, requisition
+ *   progress and lot register, the kitchen's batch log and the manager's view over all of it lean
+ *   on them, and none of it names a person.
+ * - A counter-desk role reads none of either - what a counter's snapshot has always contained -
+ *   unless it has been given a screen that is about them. Buying (requisitions, orders, goods
+ *   receipts, vendors, rate contracts) comes with any Purchasing feature, Goods receipt or
+ *   Inventory. The batch log comes with any Kitchen feature or Items & stock, the hospital-wide
+ *   stock screen.
+ *
+ * A counter desk can be given only some of these (`FEATURES` in @rch/domain says which); the rule
+ * names them all so that it reads the same whatever the grant table allows next.
+ */
+const BUYING: readonly Feature[] = ["requisitions", "procurement_list", "purchase_orders", "rate_contracts", "vendors", "goods_receipt", "inventory"];
+const BATCHES: readonly Feature[] = ["kitchen_orders", "make_distribute", "kitchen_requests", "kitchen_tickets", "kitchen_stock", "items_stock"];
+export const scopeBatches = (batch: Batch[], who: Who): Batch[] =>
+  (who.desk !== "counter" || any(who, BATCHES) ? batch : []);
+export const scopeBuying = <T>(rows: T[], who: Who): T[] =>
+  (who.desk !== "counter" || any(who, BUYING) ? rows : []);
 /** The exception: a shop sees what it asked the central store to stock, and only that. */
 export const scopeProductRequests = (rows: ProductRequest[], who: Who): ProductRequest[] =>
-  who.role !== "counter" ? rows : rows.filter((p) => p.forLoc === who.loc);
+  !cut(who) ? rows : rows.filter((p) => p.forLoc === who.loc);
 
 /**
  * The six digits belong to whoever is collecting: they read them aloud and the sending location
@@ -92,7 +126,8 @@ export const scopeProductRequests = (rows: ProductRequest[], who: Who): ProductR
  * anyone else is a credential in a snapshot for no reason at all.
  *
  * So: the OTP travels only while the ticket is still `Issued`, only to a caller standing at the
- * ticket's `to`, **and** only to a role that actually collects there. Everyone else reads "".
+ * ticket's `to`, **and** only to a role that actually collects there - one that can work a ticket
+ * desk (Pick tickets, Kitchen pick tickets or the Issue desk, at edit). Everyone else reads "".
  * There is no way past a collector who is not there: the supervisor override that once handed
  * stock over without an OTP has been removed, so the ticket is cancelled and reissued instead.
  *
@@ -100,12 +135,14 @@ export const scopeProductRequests = (rows: ProductRequest[], who: Who): ProductR
  * outlet manager's own home location is an outlet (`rest` in the fixtures), so a location-only
  * check handed the manager the digits for every Issued Restaurant-bound ticket in the
  * snapshot - a credential for a handover they will never stand at. `COLLECTS` is the three
- * roles that are ever the receiving end of a ticket; a buyer and a manager are neither end of
- * one, and read "" wherever they happen to sit.
+ * ticket features, the doors a receive goes through (`handover`/`receiveTicket` need one of them
+ * at edit); the seeded counter, kitchen and store roles hold one each, and the seeded manager and
+ * buyer hold none, so they read "" wherever they happen to sit.
  */
-const COLLECTS: ReadonlySet<Who["role"]> = new Set(["counter", "prod", "store"]);
+const COLLECTS: readonly Feature[] = ["outlet_tickets", "kitchen_tickets", "issue_desk"];
+const collects = (who: Who): boolean => COLLECTS.some((f) => can(who.perms, f, "edit"));
 export const redactOtps = (tkt: Ticket[], who: Who): Ticket[] =>
-  tkt.map((t) => (t.st === "Issued" && t.to === who.loc && COLLECTS.has(who.role) ? t : { ...t, otp: "" }));
+  tkt.map((t) => (t.st === "Issued" && t.to === who.loc && collects(who) ? t : { ...t, otp: "" }));
 
 /**
  * Support is the one module all five roles share and every support write is
@@ -123,24 +160,25 @@ const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string }, byUser
  *  the outlets, and each of them has to be able to read what the others did to a line they share.
  *  A counter raises none of these (the route is not theirs); they read what was done to them. */
 export const scopeAdjustments = (rows: Adjustment[], who: Who): Adjustment[] =>
-  who.role !== "counter" ? rows : rows.filter((a) => a.loc === who.loc);
+  !cut(who) ? rows : rows.filter((a) => a.loc === who.loc);
 
 /** A counter's own asks are their own outlet's; everyone else sees the queue, the same cut
  *  `scopeRequests` makes. */
 export const scopeAdjustmentRequests = (rows: AdjustmentRequest[], who: Who): AdjustmentRequest[] =>
-  who.role !== "counter" ? rows : rows.filter((r) => r.loc === who.loc);
+  !cut(who) ? rows : rows.filter((r) => r.loc === who.loc);
 
-/** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
+/** A counter operator's world is their counter - unless their role reads hospital-wide (`cut`).
+ *  Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<string, string>): Snapshot {
   // Five cuts apply to every role, not only to a counter: a support ticket is the caller's own,
   // a ticket's OTP is the collector's, and who a bill was charged to - with the register those
-  // names come out of and the rate card they are charged against - belongs to the two roles that
-  // bill people.
+  // names come out of and the rate card they are charged against - belongs to a role that bills
+  // people or keeps their accounts.
   const base: Snapshot = {
     ...s, tickets: scopeSupportTickets(s.tickets, who, owners), tkt: redactOtps(s.tkt, who),
     bills: scopePayers(s.bills, who), roster: scopeRoster(s.roster, who), terms: scopeTerms(s.terms, who),
   };
-  if (who.role !== "counter") return base;
+  if (!cut(who)) return { ...base, batch: scopeBatches(base.batch, who), ...buying(base, who) };
   const L = who.loc;
   return {
     ...base,
@@ -157,11 +195,15 @@ export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<strin
     // hospital's takings. Keep the shape (a record per day, matching dayLabels, which stay) and keep
     // only their own outlet - nothing at all if they are not on one.
     sales: base.sales.map((row) => (L in row ? { [L]: row[L] ?? 0 } : {})),
-    prq: scopeBuying(base.prq, who), po: scopeBuying(base.po, who), grn: scopeBuying(base.grn, who),
-    vendors: scopeBuying(base.vendors, who), contracts: scopeBuying(base.contracts, who),
+    ...buying(base, who),
     // ---- adjustments
     adjustments: scopeAdjustments(base.adjustments, who),
     // ---- adjustment requests
     adjReq: scopeAdjustmentRequests(base.adjReq, who),
   };
 }
+
+const buying = (s: Snapshot, who: Who): Pick<Snapshot, "prq" | "po" | "grn" | "vendors" | "contracts"> => ({
+  prq: scopeBuying(s.prq, who), po: scopeBuying(s.po, who), grn: scopeBuying(s.grn, who),
+  vendors: scopeBuying(s.vendors, who), contracts: scopeBuying(s.contracts, who),
+});

@@ -12,7 +12,7 @@ import type {
   Settlement, SettlementMode, Statement, VoidSettlementBodySchema, WriteResponse,
 } from "@rch/contract";
 import {
-  allocateSettlement, creditLimitFor, creditLimitRefusal, discountPctFor, discountRefusal,
+  allocateSettlement, can, creditLimitFor, creditLimitRefusal, discountPctFor, discountRefusal,
   dmy, istDate, money as inr, nothingOwedMessage, PARTY_LABEL, settlementOverpayMessage,
   validCreditLimit, validDiscountPct,
 } from "@rch/domain";
@@ -27,6 +27,7 @@ import { assertRule } from "../../lib/rules.js";
 import { readTerms, termsFor } from "../../lib/terms.js";
 import { iso } from "../../lib/time.js";
 import type { AccessClaims } from "../../plugins/auth.js";
+import type { Actor } from "../../plugins/rbac.js";
 import { receivablesRepo as repo, type SettlementRow } from "./repo.js";
 
 /** The allocation rows come back keyed by settlement so one read serves a whole page of them;
@@ -143,12 +144,13 @@ export function createReceivablesService(db: Db) {
      * Four reads in sequence inside one read transaction, so the whole report costs one pool
      * connection rather than four (`lib/db.ts`).
      */
-    async receivables(claims: AccessClaims): Promise<Receivable[]> {
-      // Everybody but the manager reads an empty list, and reads it without touching the
-      // database. The route is "any" so that a settlement's notice does not 403 four of the five
-      // roles mid-refetch (`routes.ts` in @rch/contract says why); this is the cut that makes
-      // that safe, and it is the same cut `scopeRoster` makes on the register these are about.
-      if (claims.role !== "manager") return [];
+    async receivables(actor: Actor): Promise<Receivable[]> {
+      // Anybody whose role does not hold Credit & settlements reads an empty list, and reads it
+      // without touching the database. The route is "any" so that a settlement's notice does not
+      // 403 every other role mid-refetch (`routes.ts` in @rch/contract says why); this is the cut
+      // that makes that safe. Of the seeded roles only the outlet manager holds `credit`, so it
+      // answers exactly as the manager-only check before it did.
+      if (!can(actor.perms, "credit")) return [];
       return withReadTransaction(db, async (tx) => {
         const charged = await repo.chargedByPayer(tx);
         const settled = await repo.settledByPayer(tx);
@@ -210,8 +212,8 @@ export function createReceivablesService(db: Db) {
     },
 
     /** Everybody's recent payments, for the Settlements tab. Cut exactly like `receivables`. */
-    async settlements(claims: AccessClaims): Promise<Settlement[]> {
-      if (claims.role !== "manager") return [];
+    async settlements(actor: Actor): Promise<Settlement[]> {
+      if (!can(actor.perms, "credit")) return [];
       return withReadTransaction(db, async (tx) => {
         const rows = await repo.recentSettlements(tx, SETTLEMENT_FEED);
         const lines = await repo.linesOf(tx, rows.map((r) => r.id));

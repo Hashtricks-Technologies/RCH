@@ -2,12 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as FX from "@rch/contract/fixtures";
-import { BillsResponseSchema, SnapshotSchema, StockResponseSchema, UserMinSchema } from "@rch/contract";
+import { BillsResponseSchema, SnapshotSchema, StockResponseSchema, UserMinSchema, type Permissions } from "@rch/contract";
 import * as s from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
+import { giveRole, seededPlus } from "../../test/roles.js";
 import { resetDocuments, truncateAll, warmPool } from "../../test/db.js";
 import type { App } from "../../app.js";
 
@@ -454,5 +455,70 @@ describe("one request, one connection", () => {
       pool.off("acquire", tick);
     }
     expect(n).toBe(3);
+  });
+});
+
+// ---- read off the role's permissions, not the desk ----
+describe("scoping by what the role holds", () => {
+  const as = async (userId: string, desk: "counter" | "manager", perms: Permissions, fn: () => Promise<void>) => {
+    const undo = await giveRole(app, userId, desk, perms);
+    try { await fn(); } finally { await undo(); }
+  };
+
+  it("hands a counter role granted Approvals every outlet's requests, on the snapshot and GET /requests", async () => {
+    await given.request(app.testDb!.db, { from: "kiosk", lines: [{ it: "milk", qty: 1 }] });
+    const own = (await get("u1")).req.map((r: { from: string }) => r.from);
+    expect(new Set(own)).toEqual(new Set(["coffee"]));
+    await as("u1", "counter", seededPlus("counter", { approvals: "view" }), async () => {
+      const all = await getAs("u2", "/api/v1/requests");
+      const snap = await get("u1");
+      expect(snap.req).toEqual(all);
+      expect(snap.req.some((r: { from: string }) => r.from === "kiosk")).toBe(true);
+      expect(await getAs("u1", "/api/v1/requests")).toEqual(all);
+      // Every outlet's documents, but not the back office's: approvals is no screen about buying.
+      expect(snap.po).toEqual([]);
+      expect(await getAs("u1", "/api/v1/purchase-orders")).toEqual([]);
+    });
+  });
+
+  it("strips the payer, the roster and the rate card from a counter role without Bills or Credit", async () => {
+    const named = await given.bill(app.testDb!.db, {
+      loc: "coffee", total: 120, tender: "Doctor credit",
+      payer: { kind: "doctor", id: "DR-118", name: "Dr A. Rao · Cardiology" },
+      lines: [{ it: "water", qty: 2, rate: 60 }],
+    });
+    const { billing: _b, ...rest } = seededPlus("counter", {}).f;
+    await as("u1", "counter", { f: rest, a: [] }, async () => {
+      const snap = await get("u1");
+      expect(snap.bills.find((b: { no: string }) => b.no === named).payer).toBeUndefined();
+      expect(snap.roster).toEqual({ staff: [], depts: [], doctors: [] });
+      expect((await getAs("u1", "/api/v1/bills")).find((b: { no: string }) => b.no === named).payer).toBeUndefined();
+      expect(await getAs("u1", "/api/v1/roster")).toEqual({ staff: [], depts: [], doctors: [] });
+      expect((await getAs("u1", "/api/v1/payer-terms")).classes).toEqual([]);
+    });
+    // And the same counter given Credit, still without the till, reads them again.
+    await as("u1", "counter", { f: { ...rest, credit: "view" }, a: [] }, async () => {
+      expect((await get("u1")).bills.find((b: { no: string }) => b.no === named).payer).toMatchObject({ id: "DR-118" });
+      expect((await getAs("u1", "/api/v1/roster")).doctors.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("shows the OTP only to a role that can work a ticket desk at edit", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 4 }] });
+    const otp = async () => ((await getAs("u1", "/api/v1/tickets")) as WireTicket[]).find((t) => t.id === id)!.otp;
+    expect(await otp()).toMatch(/^\d{6}$/);
+    await as("u1", "counter", seededPlus("counter", { outlet_tickets: "view" }), async () => {
+      expect(await otp()).toBe("");
+      expect(ticketIn(await get("u1"), id).otp).toBe("");
+    });
+  });
+
+  it("gives the super admin none of these reads - every one is a 404", async () => {
+    const headers = await authHeaders(app, "u7");
+    for (const path of ["/snapshot", "/stock", "/bills", "/requests", "/tickets", "/shop-asks", "/prod-orders", "/batches",
+      "/requisitions", "/purchase-orders", "/grns", "/vendors", "/contracts", "/product-requests", "/roster", "/payer-terms",
+      "/adjustments", "/adjustment-requests", "/receivables", "/settlements", "/shifts"]) {
+      expect((await app.inject({ method: "GET", url: `/api/v1${path}`, headers })).statusCode, path).toBe(404);
+    }
   });
 });

@@ -8,9 +8,9 @@ import { NotFoundError } from "../../lib/errors.js";
 import { readTerms } from "../../lib/terms.js";
 import { toWireUser } from "../../lib/wire.js";
 import { loadAccess } from "../../lib/access.js";
-import type { AccessClaims } from "../../plugins/auth.js";
+import type { Actor } from "../../plugins/rbac.js";
 import { snapshotRepo } from "./repo.js";
-import { redactOtps, scope, scopeAdjustmentRequests, scopeAdjustments, scopeBatches, scopeBills, scopeBuying, scopePayers, scopeProdOrders, scopeProductRequests, scopeRequests, scopeRoster, scopeShopAsks, scopeStock, scopeTerms, scopeTickets } from "./scope.js";
+import { redactOtps, scope, scopeAdjustmentRequests, scopeAdjustments, scopeBatches, scopeBills, scopeBuying, scopePayers, scopeProdOrders, scopeProductRequests, scopeRequests, scopeRoster, scopeShopAsks, scopeStock, scopeTerms, scopeTickets, whoOf } from "./scope.js";
 import * as M from "./readers/master.js";
 import * as S from "./readers/stock.js";
 import * as D from "./readers/documents.js";
@@ -46,7 +46,7 @@ const SALES_DAYS = 14;
 export function createSnapshotService(db: Db) {
   const read = <T>(fn: (tx: Tx) => Promise<T>) => withReadTransaction(db, fn);
   return {
-    async snapshot(claims: AccessClaims): Promise<Snapshot> {
+    async snapshot(claims: Actor): Promise<Snapshot> {
       return read(async (tx) => {
         // One users lookup for the whole snapshot, not one per document reader that stamps a
         // name onto a byUser id - fetched alongside the caller's own row, then threaded through.
@@ -89,58 +89,62 @@ export function createSnapshotService(db: Db) {
         // would hand the browser a different counter from the one its own token authorises, and
         // the next snapshot load would quietly move them back mid-shift.
         const full: Snapshot = { user: { ...toWireUser(u, await loadAccess(tx, u.id)), loc: claims.loc }, items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, terms, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments, adjReq };
-        return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, support.owners);
+        return scope(full, { ...whoOf(claims), sub: claims.sub }, support.owners);
       });
     },
     /** The ledger on its own, for a client that has the master already and only wants the numbers. */
-    async stock(claims: AccessClaims): Promise<StockResponse> {
+    async stock(actor: Actor): Promise<StockResponse> {
       return read(async (tx) => {
         const stock = await S.readStock(tx);
         const rsv = await S.readRsv(tx);
         const ovr = await S.readOvr(tx);
-        return scopeStock({ stock, rsv, ovr }, claims);
+        return scopeStock({ stock, rsv, ovr }, whoOf(actor));
       });
     },
     /** The till roll for a window the caller chooses; the snapshot carries the last week of it.
      *  The same two cuts the snapshot makes, in the same order: whose bills, then whose names -
      *  without the second, a refetch after a sale hands the store and the kitchen the payer the
      *  snapshot had just withheld. */
-    async bills(claims: AccessClaims, days: number): Promise<Bill[]> {
-      return read(async (tx) => scopePayers(scopeBills(await D.readBills(tx, days), claims), claims));
+    async bills(actor: Actor, days: number): Promise<Bill[]> {
+      const who = whoOf(actor);
+      return read(async (tx) => scopePayers(scopeBills(await D.readBills(tx, days), who), who));
     },
     /** The request desk on its own - what a write naming "req" refetches. */
-    async requests(claims: AccessClaims): Promise<StockRequest[]> { return read(async (tx) => scopeRequests(await D.readRequests(tx), claims)); },
+    async requests(actor: Actor): Promise<StockRequest[]> { return read(async (tx) => scopeRequests(await D.readRequests(tx), whoOf(actor))); },
     /** The same two cuts the snapshot makes, in the same order: whose tickets, then whose OTP.
      *  Without the second, the refetch after a handover puts the digits straight back on a
      *  screen the snapshot had just withheld them from. */
-    async tickets(claims: AccessClaims): Promise<Ticket[]> { return read(async (tx) => redactOtps(scopeTickets(await D.readTickets(tx), claims), claims)); },
-    async shopAsks(claims: AccessClaims): Promise<ShopAsk[]> { return read(async (tx) => scopeShopAsks(await D.readShopAsks(tx), claims)); },
+    async tickets(actor: Actor): Promise<Ticket[]> {
+      const who = whoOf(actor);
+      return read(async (tx) => redactOtps(scopeTickets(await D.readTickets(tx), who), who));
+    },
+    async shopAsks(actor: Actor): Promise<ShopAsk[]> { return read(async (tx) => scopeShopAsks(await D.readShopAsks(tx), whoOf(actor))); },
     /** The kitchen's board on its own - what a status change naming "pord" refetches. */
-    async prodOrders(claims: AccessClaims): Promise<ProdOrder[]> { return read(async (tx) => scopeProdOrders(await D.readProdOrders(tx), claims)); },
+    async prodOrders(actor: Actor): Promise<ProdOrder[]> { return read(async (tx) => scopeProdOrders(await D.readProdOrders(tx), whoOf(actor))); },
     /** The batch log on its own - what a make naming "batch" refetches. */
-    async batches(claims: AccessClaims): Promise<Batch[]> { return read(async (tx) => scopeBatches(await D.readBatches(tx), claims)); },
+    async batches(actor: Actor): Promise<Batch[]> { return read(async (tx) => scopeBatches(await D.readBatches(tx), whoOf(actor))); },
     /** The requisition desk on its own - what a write naming "prq" refetches. */
-    async requisitions(claims: AccessClaims): Promise<Requisition[]> { return read(async (tx) => scopeBuying(await D.readRequisitions(tx), claims)); },
-    async purchaseOrders(claims: AccessClaims): Promise<PurchaseOrder[]> { return read(async (tx) => scopeBuying(await D.readPurchaseOrders(tx), claims)); },
-    async grns(claims: AccessClaims): Promise<Grn[]> { return read(async (tx) => scopeBuying(await D.readGrns(tx), claims)); },
-    async vendors(claims: AccessClaims): Promise<Vendor[]> { return read(async (tx) => scopeBuying(await D.readVendors(tx), claims)); },
-    async contracts(claims: AccessClaims): Promise<RateContract[]> { return read(async (tx) => scopeBuying(await D.readContracts(tx), claims)); },
+    async requisitions(actor: Actor): Promise<Requisition[]> { return read(async (tx) => scopeBuying(await D.readRequisitions(tx), whoOf(actor))); },
+    async purchaseOrders(actor: Actor): Promise<PurchaseOrder[]> { return read(async (tx) => scopeBuying(await D.readPurchaseOrders(tx), whoOf(actor))); },
+    async grns(actor: Actor): Promise<Grn[]> { return read(async (tx) => scopeBuying(await D.readGrns(tx), whoOf(actor))); },
+    async vendors(actor: Actor): Promise<Vendor[]> { return read(async (tx) => scopeBuying(await D.readVendors(tx), whoOf(actor))); },
+    async contracts(actor: Actor): Promise<RateContract[]> { return read(async (tx) => scopeBuying(await D.readContracts(tx), whoOf(actor))); },
     /** A shop sees the new-product asks it raised itself; everyone else sees the queue. */
-    async productRequests(claims: AccessClaims): Promise<ProductRequest[]> { return read(async (tx) => scopeProductRequests(await D.readProductRequests(tx), claims)); },
+    async productRequests(actor: Actor): Promise<ProductRequest[]> { return read(async (tx) => scopeProductRequests(await D.readProductRequests(tx), whoOf(actor))); },
     // ---- payers ----
     /** The register on its own - what a notice naming "roster" refetches. The same cut the
      *  snapshot makes (`scopeRoster`): the kitchen, the store and the buyer never open a payer
      *  picker, so without it a refetch would hand them the register the snapshot had just
      *  withheld. */
-    async roster(claims: AccessClaims): Promise<PayerRoster> { return read(async (tx) => scopeRoster(await M.readRoster(tx), claims)); },
+    async roster(actor: Actor): Promise<PayerRoster> { return read(async (tx) => scopeRoster(await M.readRoster(tx), whoOf(actor))); },
     /** And the rate card on its own - what a manager's write naming "terms" refetches. Cut like
      *  the roster, and "any" rather than manager-only for the same reason: the notice reaches
      *  every open browser, and a route the store keeper's tab is forbidden would fail that tab's
      *  whole refetch over a screen of theirs that never changed. */
-    async terms(claims: AccessClaims): Promise<Terms> { return read(async (tx) => scopeTerms(await readTerms(tx), claims)); },
+    async terms(actor: Actor): Promise<Terms> { return read(async (tx) => scopeTerms(await readTerms(tx), whoOf(actor))); },
     // ---- adjustments: the register on its own - what a write naming "adjustments" refetches.
-    async adjustments(claims: AccessClaims): Promise<Adjustment[]> { return read(async (tx) => scopeAdjustments(await D.readAdjustments(tx), claims)); },
+    async adjustments(actor: Actor): Promise<Adjustment[]> { return read(async (tx) => scopeAdjustments(await D.readAdjustments(tx), whoOf(actor))); },
     // ---- adjustment requests: the queue on its own - what a write naming "adjReq" refetches.
-    async adjustmentRequests(claims: AccessClaims): Promise<AdjustmentRequest[]> { return read(async (tx) => scopeAdjustmentRequests(await D.readAdjustmentRequests(tx), claims)); },
+    async adjustmentRequests(actor: Actor): Promise<AdjustmentRequest[]> { return read(async (tx) => scopeAdjustmentRequests(await D.readAdjustmentRequests(tx), whoOf(actor))); },
   };
 }

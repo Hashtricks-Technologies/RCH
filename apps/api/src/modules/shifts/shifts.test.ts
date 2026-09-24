@@ -5,6 +5,7 @@ import { CurrentShiftResponseSchema, ShiftReportSchema, ShiftReportsResponseSche
 import * as s from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { given } from "../../test/builders.js";
+import { giveRole, seededPlus } from "../../test/roles.js";
 import { resetDocuments, warmPool } from "../../test/db.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -209,6 +210,20 @@ describe("the list of closed shifts", () => {
     expect((await list(mgr, "?loc=kiosk")).map((r) => r.id)).toEqual([kiosk.id]);
     expect((await list(await authHeaders(app, "u1"))).map((r) => r.id)).toEqual([coffee.id]);
     expect((await list(await authHeaders(app, "u6"))).map((r) => r.id)).toEqual([kiosk.id]);
+  });
+
+  it("is every outlet's for a counter role given Shift reports, and nobody's for a manager role without it", async () => {
+    const coffee = await shiftAt("RC-4471");
+    const kiosk = await shiftAt("RC-4482");
+    let undo = await giveRole(app, "u1", "counter", seededPlus("counter", { shift_reports: "view" }));
+    try {
+      expect((await list(await authHeaders(app, "u1"))).map((r) => r.id)).toEqual([kiosk.id, coffee.id]);
+      expect((await list(await authHeaders(app, "u1"), "?loc=kiosk")).map((r) => r.id)).toEqual([kiosk.id]);
+    } finally { await undo(); }
+    undo = await giveRole(app, "u2", "manager", { f: { prices: "edit" }, a: [] });
+    try {
+      expect(await list(await authHeaders(app, "u2"))).toEqual([]);
+    } finally { await undo(); }
   });
 
   it("answers an empty list to a desk that takes no shifts, so a close never fails its refetch", async () => {

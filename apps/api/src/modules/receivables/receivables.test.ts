@@ -7,6 +7,7 @@ import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
+import { giveRole, seededPlus } from "../../test/roles.js";
 import { resetDocuments, truncateAll, warmPool } from "../../test/db.js";
 import * as s from "../../db/schema/index.js";
 import type { App } from "../../app.js";
@@ -371,6 +372,33 @@ describe("who owes what", () => {
     // The statement is opened by hand from a drawer and is never in a `changed`, so it can stay
     // closed outright.
     expect((await get("u1", `/receivables/doctor/${DOCTOR.id}`)).statusCode).toBe(404);
+  });
+});
+
+describe("who reads the accounts is whoever holds Credit & settlements", () => {
+  it("answers a counter role granted Credit exactly as it answers the manager", async () => {
+    await given.bill(app.db, { loc: "coffee", tender: "Doctor credit", payer: DOCTOR, total: 300, lines: [{ it: "water", qty: 1, rate: 300 }] });
+    const paid = await write("POST", "u2", "/settlements", { kind: "doctor", id: DOCTOR.id, amount: 100, mode: "Cash" });
+    expect(paid.statusCode, paid.body).toBe(200);
+    const undo = await giveRole(app, "u1", "counter", seededPlus("counter", { credit: "view" }));
+    try {
+      const mine = await get("u1", "/receivables");
+      expect(mine.json()).toEqual(await rows());
+      expect((mine.json() as Receivable[]).find((r) => r.id === DOCTOR.id)?.outstanding).toBe(200);
+      const feed = (await get("u1", "/settlements")).json() as Settlement[];
+      expect(feed.map((x) => x.id)).toEqual([paid.json().result.id]);
+    } finally { await undo(); }
+  });
+
+  it("answers a manager-desk role without Credit an empty list, never a 403", async () => {
+    const undo = await giveRole(app, "u2", "manager", { f: { prices: "edit" }, a: [] });
+    try {
+      for (const url of ["/receivables", "/settlements"]) {
+        const r = await get("u2", url);
+        expect(r.statusCode, url).toBe(200);
+        expect(r.json(), url).toEqual([]);
+      }
+    } finally { await undo(); }
   });
 });
 

@@ -13,5 +13,5 @@ export default fp(async (app) => {
   const svc = createShiftsService(app.db);
   mount(app, routes.currentShift, async (req) => svc.current(req.user));
   mount(app, routes.closeShift, async (req) => svc.close(req.user));
-  mount(app, routes.shifts, async (req) => svc.list(req.user, req.query));
+  mount(app, routes.shifts, async (req) => svc.list(req.actor, req.query));
 }, { name: "module:shifts", dependencies: ["auth", "rbac", "idempotency", "db"] });

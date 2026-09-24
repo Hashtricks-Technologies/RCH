@@ -179,8 +179,9 @@ and open one here), and `modules/shifts` serves the live report (`GET /shifts/cu
   list reads them back rather than re-deriving them.
 - **Close takes no `lockLocation`** and refuses (422) with no open shift, or one open at another counter than
   the session's. It announces `shifts`; so does a sign-in that auto-closed one.
-- **`GET /shifts` is `access: "any"`**: a manager reads every outlet's (`loc` narrows), a counter its own,
-  every other desk `[]` without a query - the `/receivables` reasoning, since a close announces to every tab.
+- **`GET /shifts` is `access: "any"`**: a role holding `shift_reports` (the seeded manager) reads every
+  outlet's (`loc` narrows), any other counter-desk role its own, everybody else `[]` without a query - the
+  `/receivables` reasoning, since a close announces to every tab.
 - **`deleteUserTx` deletes the account's shifts** with its sessions. A shift is a sign-in record, not history;
   one that billed anything is still guarded by `bills.operator_id`'s own foreign key.
 
@@ -333,25 +334,44 @@ Two reads split deliberately:
 
 - **Items.** `loadItems` (`lib/master.ts`) is what rules read, and filters out retired items. `readItems` is
   what the wire carries: the whole master, because old documents still name retired items.
-- **Payers.** `GET /roster` returns live payers for the till, scoped empty for the three roles that never
-  open a payer picker. The register itself is the super admin's (`modules/admin`: `GET`/`POST /admin/payers`,
+- **Payers.** `GET /roster` returns live payers for the till, scoped empty for a role holding neither
+  `billing` nor `credit` (of the seeded roles: the store, the kitchen and the buyer). The register itself is the super admin's (`modules/admin`: `GET`/`POST /admin/payers`,
   `PATCH /admin/payers/:kind/:id`), which reads inactive ones too and carries what each still owes; the
   `payers import` CLI stays for a ward list nobody types twice.
 - **The rate card and the receivables list are scoped, not gated.** `GET /payer-terms`, `GET /receivables`
-  and `GET /settlements` are all `access: "any"` and answer empty to a caller who is not a manager (the
-  last two short-circuit before they query anything). That is deliberate: a manager's write announces
+  and `GET /settlements` are all `access: "any"`. The rate card answers empty to a role holding neither
+  `billing` nor `credit`; the last two answer empty, short-circuiting before they query anything, to a role
+  without `credit` (of the seeded roles, everybody but the manager). That is deliberate: a manager's write announces
   `terms`/`receivables` to **every** open browser, and a route another role is forbidden would fail that
   tab's whole refetch with a toast about a screen of theirs that never changed - the trap `UI/CLAUDE.md`
   documents for `priceLists`. `GET /receivables/:kind/:id` is manager-only, because a statement is opened by
   hand from a drawer and is never in a `changed`.
 
-The snapshot redacts by role:
+The snapshot and every `access: "any"` GET that carries one of its collections (`/stock`, `/bills`,
+`/requests`, `/tickets`, `/shop-asks`, `/prod-orders`, `/batches`, the five buying lists,
+`/product-requests`, `/roster`, `/payer-terms`, `/adjustments`, `/adjustment-requests`) cut through
+`modules/snapshot/scope.ts`, off `req.actor`: the desk (the token's `role`), the location the token stands at,
+and the role's permissions as resolved for this request - never the desk alone. The rules, each of which
+gives the five seeded roles exactly what their desks read before roles were configurable
+(`scope.test.ts` pins it against a literal copy of the desk-only cuts):
 
-- `store`, `prod` and `buyer` get bills with `payer`, `customerName` and `customerPhone` stripped, and an
-  empty roster.
-- A ticket's OTP reaches only a caller at the ticket's `to` location, while the ticket is `Issued`, whose role
-  is `counter`, `prod` or `store`.
+- **The counter cut** - own outlet's stock, menu, requests, tickets, bills, sales, shop asks, product
+  requests, kitchen orders, adjustments and adjustment requests - applies when
+  `!readsHospitalWide(desk, perms)` (@rch/domain): a counter-desk role that holds neither `all_outlets` nor
+  any hospital-wide feature. A counter role given, say, `approvals:view` reads every outlet's.
+- **The batch log and buying** (requisitions, orders, goods receipts, vendors, rate contracts) are cut by
+  desk and feature, not by the counter cut: the four back-office desks always read them whole; a
+  counter-desk role reads buying only with a Purchasing feature, `goods_receipt` or `inventory`, and the
+  batch log only with a Kitchen feature or `items_stock`. Reading every outlet's till is no reason to read
+  the back office.
+- **Names**: a role holding neither `billing` nor `credit` gets bills with `payer`, `customerName` and
+  `customerPhone` stripped, an empty roster and an empty rate card.
+- **The OTP** reaches only a caller at the ticket's `to` location, while the ticket is `Issued`, whose role
+  holds `outlet_tickets`, `kitchen_tickets` or `issue_desk` at edit - the doors a collection goes through.
 - A write's own response always carries `otp: ""`.
+- **The super admin reads none of it.** None of these routes is `admitAdmin`, so an admin token is a 404 on
+  every one before a handler runs (`req.actor` for an admin has empty perms and would read nothing of note
+  anyway).
 
 ## Protected tables
 
