@@ -66,6 +66,10 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   // ---- QR ordering. The customer's two writes are logged only when accepted, under the
   // system's account; the rest are the counter's, the manager's and the system's own.
   createQrOrder:          { label: "Placed a QR order", group: "sales" },
+  // Kept because the manifest makes it a write, but no event is ever stored under it: `mount()`
+  // audits no public route, and what an accepted verify does is recorded by the capture itself as
+  // `qrOrderPaid` or `qrOrderRefunded` (a verify that changes nothing records nothing). The Audit
+  // log filters by area, not by action, so it offers no filter that would always come back empty.
   verifyQrPayment:        { label: "Confirmed a QR order's payment", group: "sales" },
   setQrOrderStatus:       { label: "Moved a QR order", group: "sales" },
   setQrPause:             { label: "Paused or resumed QR ordering", group: "sales" },
