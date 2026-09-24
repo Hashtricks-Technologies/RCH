@@ -8,6 +8,14 @@ map $http_x_request_id $req_id {
   ""      $request_id;
 }
 
+# The access line for a QR order's public status read, `/api/v1/public/orders/<id>?k=<secret>`:
+# the image's own `main` format with the path in place of the request line, so the order's secret
+# never reaches a log - the API scrubs it from its own lines (plugins/logging.ts), and this is the
+# hop in front of it. The referer goes too: it is the order page, whose own key is in a fragment
+# the browser never sends, but a log line has no need of it either way.
+log_format rch_no_query '$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" '
+                        '$status $body_bytes_sent "$http_user_agent" "$http_x_forwarded_for"';
+
 server {
   listen 8080;
   server_name _;
@@ -40,6 +48,19 @@ server {
   location = /readyz { return 200 'ok'; add_header Content-Type text/plain; }
 
   location /api/ {
+    set $api_upstream ${API_UPSTREAM};
+    proxy_pass $api_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Request-Id $req_id;
+    proxy_read_timeout 60s;
+  }
+  # A QR order's public reads and verify: exactly as /api/ above, logged without the query string
+  # (`?k=` is the order's secret - see `log_format rch_no_query`).
+  location /api/v1/public/orders/ {
+    access_log /var/log/nginx/access.log rch_no_query;
     set $api_upstream ${API_UPSTREAM};
     proxy_pass $api_upstream;
     proxy_http_version 1.1;

@@ -108,6 +108,15 @@ grep -q 'frame-src https://api.razorpay.com' ../../nginx/snippets/order-security
 grep -q "frame-ancestors 'self'" ../../nginx/snippets/order-security-headers.conf
 refute grep -q 'razorpay' ../../nginx/snippets/security-headers.conf
 grep -q 'location = /healthz' ../../nginx/default.conf.template
+# A QR order's status read carries its secret as `?k=`: nginx must log that path without the query
+# string, through a format that has no `$request`, `$request_uri`, `$args` or `$query_string`.
+qr_block=$(sed -n '/location \/api\/v1\/public\/orders\/ {/,/^  }/p' "$tpl")
+grep -q '^ *access_log [^ ]* rch_no_query;' <<<"$qr_block" \
+  || { echo "FAIL: nginx must log /api/v1/public/orders/ with the rch_no_query format"; exit 1; }
+grep -q 'proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for' <<<"$qr_block"
+qr_format=$(sed -n '/^log_format rch_no_query/,/;$/p' "$tpl")
+grep -q '\$uri' <<<"$qr_format" || { echo "FAIL: rch_no_query must log the path"; exit 1; }
+refute grep -Eq '\$(request|request_uri|args|query_string|arg_k|http_referer)([^_a-z]|$)' <<<"$qr_format"
 # ...and it must forward the client on, like /api/ does: the API trusts one hop, so a stream
 # without X-Forwarded-For is rate-limited and logged as nginx itself.
 events_block=$(sed -n '/location \/api\/v1\/events/,/^  }/p' ../../nginx/default.conf.template)
