@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { istDate } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp, type AppState } from "../../store";
-import { committed, costOf, freeToPromise, hasLeft, isTicketOpen, onOrder, parOf, qty, resv } from "../../lib/selectors";
+import { committed, costOf, freeToPromise, hasLeft, isTicketOpen, onOrder, parOf, qty, resv, useCan } from "../../lib/selectors";
 import { U, fq, fromWireDay, money0, now, pct, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Tip, Toolbar,
@@ -449,6 +449,10 @@ export default function Reports() {
   const s = useApp();
   const notify = useApp((x) => x.notify);
   const [sel, setSel] = useState("issreg");
+  // The ledger is the one report read from the server, behind its own permission: a role
+  // without Stock ledger is not offered it, and never reads it.
+  const canLedger = useCan("stock_ledger", "view");
+  const library = canLedger ? REPORTS : REPORTS.filter((r) => r.k !== "ledger");
   const [q, setQ] = useState("");
   const [fi, setFi] = useState(0);
 
@@ -475,15 +479,15 @@ export default function Reports() {
       ? { st: "loading" }
       : answer.rows === null ? { st: "failed" } : { st: "rows", rows: answer.rows };
   useEffect(() => {
-    if (sel !== "ledger") return;
+    if (sel !== "ledger" || !canLedger) return;
     let live = true;
     void readStockLedger("store", LEDGER_DAYS).then((rows) => {
       if (live) setAnswer({ at: attempt, rows });
     });
     return () => { live = false; };
-  }, [sel, attempt, readStockLedger]);
+  }, [sel, attempt, readStockLedger, canLedger]);
 
-  const def = REPORTS.find((r) => r.k === sel) ?? REPORTS[0];
+  const def = library.find((r) => r.k === sel) ?? library[0];
   const rep = def.build(s, ledgerState);
 
   // Each report names the column worth filtering on; its distinct values are
@@ -531,9 +535,9 @@ export default function Reports() {
         tip="Issue, reservation and replenishment reports."
       />
 
-      <Card title="Report library" tip="Ten reports for running the central store, built from live store data">
+      <Card title="Report library" tip={`${library.length === REPORTS.length ? "Ten" : "Nine"} reports for running the central store, built from live store data`}>
         <div className="tilegrid">
-          {REPORTS.map((r) => (
+          {library.map((r) => (
             // The description sits in a tip beside the tile rather than inside it: a tip's hidden
             // sentence inside the `<button>` would join the tile's own name.
             <div key={r.k} style={{ position: "relative" }}>

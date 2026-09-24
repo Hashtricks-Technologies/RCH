@@ -4,6 +4,7 @@ import { isPurchased } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
+import { useSees } from "../../nav";
 // ---- item patch ----
 import { activeItems, avail, daysCover, netReceived, poValue, procurementList, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
@@ -25,6 +26,9 @@ const stateOf = (a: number, rl: number) => (a <= 0 ? "Out" : rl > 0 && a < rl ? 
 export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
+  const seesInventory = useSees("inventory");
+  const seesPurchaseOrders = useSees("purchase-orders");
+  const seesRequisitions = useSees("requisitions");
 
   const [q, setQ] = useState("");
   const [state, setState] = useState("All");
@@ -172,7 +176,7 @@ export default function Dashboard() {
         crumbs={["Royal Care", "Procurement"]}
         title="Procurement dashboard"
         tip="What the store needs and what is on order."
-        actions={<Btn variant="gh" onClick={() => nav("/requisitions")}>Open requisitions</Btn>}
+        actions={seesRequisitions && <Btn variant="gh" onClick={() => nav("/requisitions")}>Open requisitions</Btn>}
       />
       <Kpis items={kpis} />
       <div className="mtop" />
@@ -181,30 +185,30 @@ export default function Dashboard() {
           on a morning after a big issue is most of the catalogue, and thirty alerts would push the
           cover table and the commitments off the screen entirely. The KPIs above count the lot. */}
       <AlertStack tone="w" label="WAITING"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
+        action={seesRequisitions && <Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
         {waiting.map((p) => (
           <Alert key={p.id} tone="w" label="WAITING"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
+            action={seesRequisitions && <Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
             {p.by} raised <b>{p.id}</b> - {p.lines.length} item{p.lines.length > 1 ? "s" : ""},
             about {money0(lineValue(p.lines))}.{p.note ? " " + p.note : ""}
           </Alert>
         ))}
       </AlertStack>
       <AlertStack tone="w" label="PARTIAL"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/purchase-orders")}>Review</Btn>}>
+        action={seesPurchaseOrders && <Btn size="xs" variant="gh" onClick={() => nav("/purchase-orders")}>Review</Btn>}>
         {partial.map((o) => (
           <Alert key={o.id} tone="w" label="PARTIAL"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/purchase-orders")}>Review</Btn>}>
+            action={seesPurchaseOrders && <Btn size="xs" variant="gh" onClick={() => nav("/purchase-orders")}>Review</Btn>}>
             <b>{o.id}</b> with {vendorName(s.vendors, o.vendor)} is partially received -
             {" "}{money0(poValue(o))} on order, the balance is still outstanding.
           </Alert>
         ))}
       </AlertStack>
       <AlertStack tone="c" label="AT ZERO"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>Full inventory</Btn>}>
+        action={seesInventory && <Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>Full inventory</Btn>}>
         {zero.map((k) => (
           <Alert key={k} tone="c" label="AT ZERO"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>See item</Btn>}>
+            action={seesInventory && <Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>See item</Btn>}>
             {IT[k].n} ({IT[k].c}) is at zero in the {LOC.store.n} - reorder level {fq(IT[k].rl, k)} {U(k)}.
           </Alert>
         ))}
@@ -218,7 +222,7 @@ export default function Dashboard() {
 
       <Grid cols="g21">
         <Card title="Central store cover" tip="The eight matching items closest to running out"
-          right={<Btn variant="gh" size="sm" onClick={() => nav("/inventory")}>Full inventory</Btn>} flush>
+          right={seesInventory && <Btn variant="gh" size="sm" onClick={() => nav("/inventory")}>Full inventory</Btn>} flush>
           <Toolbar
             placeholder="Search item, code or group…"
             value={q}
@@ -263,7 +267,7 @@ export default function Dashboard() {
               empty={{
                 title: "Nothing on order",
                 sub: "Raise a purchase order against a requisition to see commitments here.",
-                action: <Btn size="sm" onClick={() => nav("/requisitions")}>Go to requisitions</Btn>,
+                action: seesRequisitions ? <Btn size="sm" onClick={() => nav("/requisitions")}>Go to requisitions</Btn> : undefined,
               }}
             />
             <TableFoot count={commitRows.length} extra={<>{money0(liveValue)} on live orders</>} />

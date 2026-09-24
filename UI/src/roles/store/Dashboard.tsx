@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { useSees } from "../../nav";
 import {
   DECISION_TONE, avail, daysCover, decisionSentence, prqProgress, qty, resv, shortDecisionsToday, stateLabel, stateTone, stockValue,
 } from "../../lib/selectors";
@@ -11,6 +12,9 @@ import { Alert, AlertStack, Btn, Card, DataTable, Grid, Kpis, PageHead, Pill, Ta
 export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
+  const seesIssue = useSees("issue");
+  const seesProcure = useSees("procure");
+  const seesStoreStock = useSees("store-stock");
   const openDrawer = useApp((x) => x.openDrawer);
   const { prq, po } = s;
   // Procurement's answer, when it is not what was asked for: the store keeper hears it here, with
@@ -68,8 +72,8 @@ export default function Dashboard() {
         tip="Today's work at the central store."
         actions={
           <>
-            <Btn variant="gh" onClick={() => nav("/procure")}>Raise requisition</Btn>
-            <Btn onClick={() => nav("/issue")}>Open issue desk</Btn>
+            {seesProcure && <Btn variant="gh" onClick={() => nav("/procure")}>Raise requisition</Btn>}
+            {seesIssue && <Btn onClick={() => nav("/issue")}>Open issue desk</Btn>}
           </>
         }
       />
@@ -113,7 +117,7 @@ export default function Dashboard() {
         <Alert
           tone="w"
           label="QUEUE"
-          action={<Btn size="sm" onClick={() => nav("/issue")}>Generate tickets</Btn>}
+          action={seesIssue && <Btn size="sm" onClick={() => nav("/issue")}>Generate tickets</Btn>}
         >
           {queued.length} request{queued.length > 1 ? "s have" : " has"} been approved by the outlet manager and
           {" "}{queued.length > 1 ? "are" : "is"} waiting for a collection ticket.
@@ -123,7 +127,7 @@ export default function Dashboard() {
         <Alert
           tone="i"
           label="HANDOVER"
-          action={<Btn size="sm" variant="gh" onClick={() => nav("/issue")}>Open tickets</Btn>}
+          action={seesIssue && <Btn size="sm" variant="gh" onClick={() => nav("/issue")}>Open tickets</Btn>}
         >
           {issued.length} ticket{issued.length > 1 ? "s" : ""} issued but not yet collected - stock stays reserved
           until the collector quotes the OTP at the store window.
@@ -134,7 +138,7 @@ export default function Dashboard() {
       <AlertStack
         tone="w"
         label="DECISIONS"
-        action={<Btn size="sm" variant="gh" onClick={() => nav("/procure")}>Open requisitions</Btn>}
+        action={seesProcure && <Btn size="sm" variant="gh" onClick={() => nav("/procure")}>Open requisitions</Btn>}
       >
         {decisions.map(({ p, d }) => (
           <Alert
@@ -151,7 +155,7 @@ export default function Dashboard() {
         <Alert
           tone="c"
           label="REORDER"
-          action={<Btn size="sm" variant="gh" onClick={() => nav("/procure")}>Raise requisition</Btn>}
+          action={seesProcure && <Btn size="sm" variant="gh" onClick={() => nav("/procure")}>Raise requisition</Btn>}
         >
           {low.length} item{low.length > 1 ? "s are" : " is"} below reorder level in the central store -
           {" "}{low.slice(0, 3).map((r) => IT[r.it].n).join(", ")}
@@ -191,9 +195,9 @@ export default function Dashboard() {
                 <>{r.dc.toFixed(1)} d</>,
                 <Pill tone={stateTone(r.av, r.rl)}>{stateLabel(r.av, r.rl)}</Pill>,
               ],
-              onClick: () => nav("/store-stock"),
+              onClick: seesStoreStock ? () => nav("/store-stock") : undefined,
             }))}
-            empty={{ title: "No stock recorded", sub: "Raise a requisition to bring goods in.", action: <Btn size="sm" onClick={() => nav("/procure")}>Raise requisition</Btn> }}
+            empty={{ title: "No stock recorded", sub: "Raise a requisition to bring goods in.", action: seesProcure ? <Btn size="sm" onClick={() => nav("/procure")}>Raise requisition</Btn> : undefined }}
           />
           <TableFoot count={cover.length} extra={<>{low.length} of {rows.length} items below reorder</>} />
         </Card>
@@ -217,7 +221,7 @@ export default function Dashboard() {
                 <b>{money0(r.val)}</b>,
                 <>{value > 0 ? ((r.val / value) * 100).toFixed(1) : "0.0"}%</>,
               ],
-              onClick: () => nav("/store-stock"),
+              onClick: seesStoreStock ? () => nav("/store-stock") : undefined,
             }))}
             empty={{ title: "No stock recorded", sub: "Receive a purchase order and the holdings open." }}
           />

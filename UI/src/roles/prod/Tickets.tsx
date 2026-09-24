@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { useSees } from "../../nav";
 import { canCancelTicket, canHandOver, canReceiveTicket, useCan } from "../../lib/selectors";
 import { fq, sum, unitTotal } from "../../lib/fmt";
 import {
@@ -52,6 +53,8 @@ export default function Tickets() {
     if (ok) { setCancelId(null); setWhy(""); }   // this screen is a table, not the drawer, so it stays mounted
   };
   const nav = useNavigate();
+  const seesKitchenOrders = useSees("kitchen-orders");
+  const seesKitchenRequests = useSees("kitchen-requests");
 
   const inb = useTicketFilter();
   const out = useTicketFilter();
@@ -72,7 +75,7 @@ export default function Tickets() {
         title="Pick tickets"
         tip="Stock coming into and going out of the kitchen."
         readOnly={!may && "kitchen_tickets"}
-        actions={<Btn variant="gh" onClick={() => nav("/kitchen-requests")}>Stock requests</Btn>}
+        actions={seesKitchenRequests && <Btn variant="gh" onClick={() => nav("/kitchen-requests")}>Stock requests</Btn>}
       />
 
       {toCollect.length > 0 && (
@@ -141,9 +144,9 @@ export default function Tickets() {
             sub: inb.filtering
               ? "Clear the search or switch Status back to All."
               : "A ticket appears here once the store keeper issues one against a kitchen stock request.",
-            action: <Btn size="sm" onClick={() => (inb.filtering ? inb.clear() : nav("/kitchen-requests"))}>
+            action: inb.filtering || seesKitchenRequests ? <Btn size="sm" onClick={() => (inb.filtering ? inb.clear() : nav("/kitchen-requests"))}>
               {inb.filtering ? "Clear filters" : "Raise a request"}
-            </Btn>,
+            </Btn> : undefined,
           }}
         />
         <TableFoot count={inRows.length}
@@ -226,9 +229,9 @@ export default function Tickets() {
             sub: out.filtering
               ? "Clear the search or switch Status back to All."
               : "Dispatch a ready order from the board, or send stock out from Make & Distribute.",
-            action: <Btn size="sm" onClick={() => (out.filtering ? out.clear() : nav("/kitchen-orders"))}>
+            action: out.filtering || seesKitchenOrders ? <Btn size="sm" onClick={() => (out.filtering ? out.clear() : nav("/kitchen-orders"))}>
               {out.filtering ? "Clear filters" : "Open the order board"}
-            </Btn>,
+            </Btn> : undefined,
           }}
         />
         <TableFoot count={outRows.length}

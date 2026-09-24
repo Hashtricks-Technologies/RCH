@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { allOutlets, availOf, isTicketOpen, menuOf, openOutlets, stockValue, useCan } from "../../lib/selectors";
+import { allOutlets, availOf, isTicketOpen, menuOf, openOutlets, stockValue, useCan, useHolds } from "../../lib/selectors";
+import { useSees } from "../../nav";
 import { fromWireTime, lakh, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, TableFoot, Toolbar,
@@ -20,6 +21,8 @@ const why = (o: Off) =>
 
 const PRIORITY = ["All", "Urgent", "Normal"] as const;
 const ACTIVITY = ["All", "Bills", "Requests", "Shop transfers"] as const;
+/** The activity kinds for a role that cannot see Bills: the same list with "Bills" left out. */
+const NO_BILLS = ACTIVITY.filter((k) => k !== "Bills");
 
 /** `t` is the clock face; `iso` is the instant it sorts on. `"22:00"` sorts above `"09:00"`
  *  whichever day each belongs to, which put yesterday evening's last bill above this
@@ -33,6 +36,16 @@ export default function Dashboard() {
   const mayOrder = useCan("approvals");
   const catalogVersion = useApp((x) => x.catalogVersion);
   const readXReport = useApp((x) => x.readXReport);
+  const here = useApp((x) => x.user?.loc ?? "");
+  // What this role may read decides what this page reads. X reports give the registers; the
+  // server scopes them by "Works for every outlet", so without it the role reads the one where it
+  // stands, and without X reports none at all. Bills decide whether a sales figure is drawn.
+  const canX = useCan("x_report", "view");
+  const everyOutlet = useHolds("all_outlets");
+  const canBills = useCan("billing", "view");
+  const seesApprovals = useSees("approvals");
+  const seesPrices = useSees("prices");
+  const seesItems = useSees("items-stock");
 
   const [rq, setRq] = useState("");
   const [outlet, setOutlet] = useState(0);
@@ -63,20 +76,27 @@ export default function Dashboard() {
   //
   // `null` is "not asked yet"; a `null` against one outlet's key inside the map is that outlet's
   // register having failed to answer, which is not the same as its having sold nothing.
+  const readKeys = useMemo(
+    () => (!canX ? [] : everyOutlet ? openKeys : openKeys.filter((l) => l === here)),
+    [canX, everyOutlet, openKeys, here],
+  );
   const [sessions, setSessions] = useState<Record<string, RegisterReport | null> | null>(null);
-  const reading = sessions === null;
+  const reading = readKeys.length > 0 && sessions === null;
   useEffect(() => {
+    if (readKeys.length === 0) return;
     let live = true;
-    void Promise.all(openKeys.map((l) => readXReport(l))).then((rs) => {
-      if (live) setSessions(Object.fromEntries(openKeys.map((l, i) => [l, rs[i]])));
+    void Promise.all(readKeys.map((l) => readXReport(l))).then((rs) => {
+      if (live) setSessions(Object.fromEntries(readKeys.map((l, i) => [l, rs[i]])));
     });
     return () => { live = false; };
-  }, [openKeys, readXReport]);
+  }, [readKeys, readXReport]);
   const retry = () => {
     setSessions(null);
-    void Promise.all(openKeys.map((l) => readXReport(l)))
-      .then((rs) => { setSessions(Object.fromEntries(openKeys.map((l, i) => [l, rs[i]]))); });
+    void Promise.all(readKeys.map((l) => readXReport(l)))
+      .then((rs) => { setSessions(Object.fromEntries(readKeys.map((l, i) => [l, rs[i]]))); });
   };
+  /** A sales figure needs both a register's window and the bills inside it. */
+  const showSales = canBills && readKeys.length > 0;
 
   const outlets = openKeys.map((loc) => {
     const session = sessions?.[loc] ?? null;
@@ -105,14 +125,15 @@ export default function Dashboard() {
   const total = sum(outlets, (r) => r.sales);
   const billsTotal = sum(outlets, (r) => r.bills);
   const reporting = outlets.filter((r) => r.session !== null);
-  const unread = outlets.filter((r) => r.session === null);
+  // An outlet this role does not read is not a register that failed to answer.
+  const unread = outlets.filter((r) => r.session === null && readKeys.includes(r.loc));
   /** The window one outlet is being measured over, in that outlet's own terms. */
   const windowOf = (r: (typeof outlets)[number]) =>
     r.session
       ? r.session.previousZNo
         ? `since ${r.session.previousZNo}, ${fromWireTime(r.session.openedAt)}`
         : `since it first opened, ${fromWireTime(r.session.openedAt)}`
-      : reading ? "reading…" : "register not read";
+      : !readKeys.includes(r.loc) ? "-" : reading ? "reading…" : "register not read";
   const offAll: Off = {
     n: sum(outlets, (r) => r.off.n),
     manual: sum(outlets, (r) => r.off.manual),
@@ -153,7 +174,7 @@ export default function Dashboard() {
 
   /* ---- recent activity, drawn from what actually happened ---- */
   const acts: Act[] = [
-    ...s.bills.slice(0, 12).map((b) => ({
+    ...(canBills ? s.bills : []).slice(0, 12).map((b) => ({
       key: "b" + b.no,
       kind: "Bills" as const,
       t: b.t,
@@ -187,8 +208,9 @@ export default function Dashboard() {
     })),
   ];
   const aTerm = aq.trim().toLowerCase();
+  const kinds: readonly (typeof ACTIVITY)[number][] = canBills ? ACTIVITY : NO_BILLS;
   const actRows = acts
-    .filter((a) => akind === 0 || a.kind === ACTIVITY[akind])
+    .filter((a) => akind === 0 || a.kind === kinds[akind])
     .filter((a) => !aTerm
       || a.what.toLowerCase().includes(aTerm)
       || a.where.toLowerCase().includes(aTerm)
@@ -219,7 +241,7 @@ export default function Dashboard() {
           {/* ---- prod-order raise ---- the manager booking a tray for one of the three shops,
               rather than ringing the counter and asking them to raise it themselves. */}
           {mayOrder && <Btn variant="gh" onClick={() => openDrawer("korder", "new")}>Order from the kitchen</Btn>}
-          <Btn variant="gh" onClick={() => nav("/approvals")}>Open approvals</Btn>
+          {seesApprovals && <Btn variant="gh" onClick={() => nav("/approvals")}>Open approvals</Btn>}
         </>}
       />
 
@@ -227,7 +249,7 @@ export default function Dashboard() {
         <Alert
           tone="w"
           label="QUEUE"
-          action={<Btn size="xs" variant="gh" onClick={() => nav("/approvals")}>Review now</Btn>}
+          action={seesApprovals && <Btn size="xs" variant="gh" onClick={() => nav("/approvals")}>Review now</Btn>}
         >
           <b>{waiting.length}</b> stock request{waiting.length > 1 ? "s are" : " is"} waiting on your approval
           {urgent > 0 ? <> - <b>{urgent}</b> marked urgent by the counter</> : null}. Nothing moves out of the
@@ -239,13 +261,13 @@ export default function Dashboard() {
         </Alert>
       )}
       {offOutlets.length > 0 && (
-        <Alert tone="c" label="OFF" action={<Btn size="xs" variant="gh" onClick={() => nav("/prices")}>Prices</Btn>}>
+        <Alert tone="c" label="OFF" action={seesPrices && <Btn size="xs" variant="gh" onClick={() => nav("/prices")}>Prices</Btn>}>
           <b>{offAll.n}</b> product{offAll.n > 1 ? "s" : ""} cannot be billed at{" "}
           {offOutlets.map((r) => r.name).join(", ")} - {why(offAll)}.
         </Alert>
       )}
       {moving.length > 0 && (
-        <Alert tone="i" label="SHOP TO SHOP" action={<Btn size="xs" variant="gh" onClick={() => nav("/items-stock")}>See transfers</Btn>}>
+        <Alert tone="i" label="SHOP TO SHOP" action={seesItems && <Btn size="xs" variant="gh" onClick={() => nav("/items-stock")}>See transfers</Btn>}>
           <b>{moving.length}</b> transfer{moving.length > 1 ? "s are" : " is"} moving directly from one shop to another.
           The goods do not pass through you - this is on record so you know where the stock is.
         </Alert>
@@ -266,15 +288,15 @@ export default function Dashboard() {
       {/* The one honest label for this period: three outlets, three sessions, three start times.
           Calling it "today" would name a fourth window, and the one nobody settles against. */}
       <Kpis items={[
-        {
+        ...(!showSales ? [] : [{
           l: "Billed across open sessions", v: money0(total),
-          d: <>{reporting.length} of {outlets.length} register{outlets.length === 1 ? "" : "s"} reporting</>,
+          d: <>{reporting.length} of {readKeys.length} register{readKeys.length === 1 ? "" : "s"} reporting</>,
           tip: "The sum of every outlet's currently-open session. Each outlet's window runs from its own last Z, so the windows are not the same length and did not all start at the same time.",
         },
         {
           l: "Bills in those sessions", v: String(billsTotal),
           d: <>average {money(billsTotal ? total / billsTotal : 0)}</>,
-        },
+        }]),
         {
           l: "Stock at the counters", v: lakh(sum(outlets, (r) => r.value)),
           d: <>{outlets.length} open outlet{outlets.length === 1 ? "" : "s"}</>,
@@ -294,10 +316,12 @@ export default function Dashboard() {
           cols={[
             { h: "Outlet", cls: "nm", w: "22%", sort: "name" },
             { h: "Floor", sort: "floor" },
-            { h: "Session sales", r: true, sort: "sales" },
-            { h: "Measured from", sort: "since" },
-            { h: "Bills", r: true, sort: "bills" },
-            { h: "Average bill", r: true },
+            ...(!showSales ? [] : [
+              { h: "Session sales", r: true, sort: "sales" },
+              { h: "Measured from", sort: "since" },
+              { h: "Bills", r: true, sort: "bills" },
+              { h: "Average bill", r: true },
+            ]),
             { h: "Stock value", r: true, sort: "value" },
             { h: "Products off", r: true, sort: "off" },
           ]}
@@ -306,10 +330,12 @@ export default function Dashboard() {
             cells: [
               <>{r.name}<small>{LOC[r.loc].c} · {LOC[r.loc].cc}</small></>,
               r.floor,
-              r.session ? <b>{money0(r.sales)}</b> : <span className="dim">-</span>,
-              <small className={r.session ? undefined : "dim"}>{windowOf(r)}</small>,
-              r.session ? r.bills : <span className="dim">-</span>,
-              r.session ? money(r.bills ? r.sales / r.bills : 0) : <span className="dim">-</span>,
+              ...(!showSales ? [] : [
+                r.session ? <b>{money0(r.sales)}</b> : <span className="dim">-</span>,
+                <small className={r.session ? undefined : "dim"}>{windowOf(r)}</small>,
+                r.session ? r.bills : <span className="dim">-</span>,
+                r.session ? money(r.bills ? r.sales / r.bills : 0) : <span className="dim">-</span>,
+              ]),
               lakh(r.value),
               r.off.n > 0
                 ? <><Pill tone="wn">{r.off.n}</Pill><small className="dim" style={{ display: "block" }}>{why(r.off)}</small></>
@@ -320,10 +346,10 @@ export default function Dashboard() {
         />
         <TableFoot
           count={outlets.length}
-          extra={<>
+          extra={showSales ? <>
             Sales {money0(total)} across {reporting.length} open session{reporting.length === 1 ? "" : "s"},
             each since its own Z · stock at counters {lakh(sum(outlets, (r) => r.value))}
-          </>}
+          </> : <>Stock at counters {lakh(sum(outlets, (r) => r.value))}</>}
         />
       </Card>
 
@@ -340,7 +366,7 @@ export default function Dashboard() {
                 onChange={(v) => setPrio(PRIORITY.indexOf(v as typeof PRIORITY[number]))} />
             </>
           }
-          right={<Btn size="sm" variant="gh" onClick={() => nav("/approvals")}>Full approvals screen</Btn>}
+          right={seesApprovals && <Btn size="sm" variant="gh" onClick={() => nav("/approvals")}>Full approvals screen</Btn>}
         />
         <DataTable
           sort={queue.sort}
@@ -377,14 +403,14 @@ export default function Dashboard() {
         <TableFoot count={queueRows.length} extra={<>{urgent} urgent in the full queue</>} />
       </Card>
 
-      <Card title="Recent activity" tip="Bills, request decisions and shop transfers" flush scroll className="mtop">
+      <Card title="Recent activity" tip={canBills ? "Bills, request decisions and shop transfers" : "Request decisions and shop transfers"} flush scroll className="mtop">
         <Toolbar
           placeholder="Search activity, outlet or person…"
           value={aq}
           onSearch={setAq}
           filters={
-            <FilterSelect label="Kind" value={ACTIVITY[akind]} options={ACTIVITY}
-              onChange={(v) => setAkind(ACTIVITY.indexOf(v as typeof ACTIVITY[number]))} />
+            <FilterSelect label="Kind" value={kinds[akind] ?? "All"} options={kinds}
+              onChange={(v) => setAkind(kinds.indexOf(v as typeof ACTIVITY[number]))} />
           }
         />
         <DataTable

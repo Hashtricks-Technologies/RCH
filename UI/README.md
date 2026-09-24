@@ -366,7 +366,11 @@ panel the operators' Register screen does - the live X with Take X-report, the c
 their slips, and Close register & take Z behind its confirm and the optional counted cash. The slip
 prints the outlet's name. On the operators' Register screen each part now follows the role: the X
 with X reports, the Z list with Z reports at view, the close with Z reports at edit, and the Shift
-reports card with Shift reports.
+reports card with Shift reports. Only a role that works for every outlet picks an outlet there, starting at
+its own; any other reads the register where it stands. The dashboards follow the role the same way:
+takings and the OUTAGE line only with X reports, every outlet's register only for a role that works
+for every outlet, sales figures only with Bills - and no dashboard, drawer or empty state offers a
+link to a screen the role cannot open.
 
 **Payers, on `/admin`.** The admin-flagged account's Payers tab is the register of everyone a bill may
 be posted to - staff, departments and doctors - with, for each, whether the till may still

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT } from "../../data/master";
 import { useApp } from "../../store";
+import { useSees } from "../../nav";
 import {
   // ---- item patch ----
   activeItems, avail, awaitingApproval, daysCover, inTransitIndex, isRetired, onOrder, onOrderIndex, qty, resv,
@@ -17,6 +18,7 @@ const TYPES = ["All", "RAW", "PACK", "MRP", "FG", "MTO"] as const;
 export default function Stock() {
   const s = useApp();
   const nav = useNavigate();
+  const seesProcure = useSees("procure");
   const prqDraft = useApp((x) => x.prqDraft);
   const setPrqDraft = useApp((x) => x.setPrqDraft);
   const notify = useApp((x) => x.notify);
@@ -117,7 +119,7 @@ export default function Stock() {
         tip="Stock held at the central store."
         actions={
           <>
-            <Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>
+            {seesProcure && <Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>}
             {mayCreate && <Btn onClick={() => openDrawer("sitem", "new")}>Add product</Btn>}
           </>
         }

@@ -1,5 +1,6 @@
 import type { User } from "./types";
 import { userCan } from "./lib/selectors";
+import { useApp } from "./store";
 import { DESK_HOME, DESK_NAV, SCREEN, SCREENS, isScreenKey, type ScreenKey, type ScreenMeta } from "./screens";
 
 export interface NavItem { k: ScreenKey; label: string; icon: string }
@@ -57,3 +58,10 @@ export function homeFor(u: Who): ScreenKey {
 export const labelOf = (k: string): string =>
   isScreenKey(k) ? SCREEN[k].label : k === "admin" ? "Manage staff accounts" : k;
 
+
+/**
+ * Whether the signed-in session may open `key` - for a link or button on an always-visible screen
+ * or a drawer that leads to a gated one. A link the role cannot follow is not drawn at all, so it
+ * never lands anybody on "that screen is not part of your role".
+ */
+export const useSees = (key: ScreenKey): boolean => useApp((s) => (s.user ? canSee(s.user, key) : false));

@@ -32,13 +32,39 @@ function raw(key: string): string | null {
   try { return storage()?.getItem(key) ?? null; } catch { return null; }
 }
 
+/**
+ * The queue keys a record written before screen keys were made unique still carries, and the key
+ * each one is now. Each old key belonged to one desk only (the counter's `tickets` and `requests`,
+ * the store's `stock`, the kitchen's `orders`), so the rename is the same for everybody. Read
+ * under its new name, a row already opened stays read after the deploy instead of coming back as
+ * New; the next `markSeen` writes the record back under the new names alone.
+ */
+const RENAMED: Readonly<Record<string, string>> = {
+  tickets: "outlet-tickets",
+  requests: "outlet-requests",
+  orders: "kitchen-orders",
+  stock: "store-stock",
+};
+
+function migrate(v: Seen): Seen {
+  if (!Object.keys(RENAMED).some((k) => k in v)) return v;
+  const out: Seen = {};
+  for (const [k, ids] of Object.entries(v)) {
+    const to = RENAMED[k];
+    // A key already written under its new name is newer than the old one: it wins.
+    if (to === undefined) out[k] = ids;
+    else if (!(to in v)) out[to] = ids;
+  }
+  return out;
+}
+
 function parse(text: string | null): Seen {
   try {
     const v = JSON.parse(text ?? "null") as unknown;
     if (!v || typeof v !== "object") return {};
-    return Object.fromEntries(Object.entries(v).filter(
+    return migrate(Object.fromEntries(Object.entries(v).filter(
       (e): e is [string, string[]] => Array.isArray(e[1]) && e[1].every((x) => typeof x === "string"),
-    ));
+    )));
   } catch {
     return {}; // a corrupt record reads as nothing seen
   }

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { useSees } from "../../nav";
 import { availOf, canHandOver, hasLeft, isTicketOpen, madeItems, qty } from "../../lib/selectors";
 import { fq, isToday, sum, U } from "../../lib/fmt";
 import {
@@ -10,6 +11,9 @@ import {
 
 export default function Dashboard() {
   const nav = useNavigate();
+  const seesAvail = useSees("avail");
+  const seesKitchenOrders = useSees("kitchen-orders");
+  const seesMake = useSees("make");
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
   const { pord, batch, tkt, stock, rsv, ovr } = s;
@@ -85,8 +89,8 @@ export default function Dashboard() {
         title="Kitchen dashboard"
         tip="Today's orders, batches and kitchen stock."
         actions={<>
-          <Btn variant="gh" onClick={() => nav("/kitchen-orders")}>Orders</Btn>
-          <Btn onClick={() => nav("/make")}>Make &amp; distribute</Btn>
+          {seesKitchenOrders && <Btn variant="gh" onClick={() => nav("/kitchen-orders")}>Orders</Btn>}
+          {seesMake && <Btn onClick={() => nav("/make")}>Make &amp; distribute</Btn>}
         </>}
       />
 
@@ -100,24 +104,24 @@ export default function Dashboard() {
       ]} />
 
       {newOrders.length > 0 && (
-        <Alert tone="w" label="ORDERS" action={<Btn size="sm" variant="gh" onClick={() => nav("/kitchen-orders")}>Open orders</Btn>}>
+        <Alert tone="w" label="ORDERS" action={seesKitchenOrders && <Btn size="sm" variant="gh" onClick={() => nav("/kitchen-orders")}>Open orders</Btn>}>
           {newOrders.length} order{newOrders.length > 1 ? "s" : ""} from{" "}
           {[...new Set(newOrders.map((o) => LOC[o.from].n))].join(", ")} need your decision.
         </Alert>
       )}
       {ready.length > 0 && (
-        <Alert tone="g" label="READY" action={<Btn size="sm" variant="gh" onClick={() => nav("/kitchen-orders")}>Dispatch</Btn>}>
+        <Alert tone="g" label="READY" action={seesKitchenOrders && <Btn size="sm" variant="gh" onClick={() => nav("/kitchen-orders")}>Dispatch</Btn>}>
           {ready.map((o) => o.id).join(", ")} {ready.length > 1 ? "are" : "is"} plated and waiting to go out.
         </Alert>
       )}
       {toHand.length > 0 && (
-        <Alert tone="w" label="HAND OVER" action={<Btn size="sm" variant="gh" onClick={() => nav("/make")}>Open the pass</Btn>}>
+        <Alert tone="w" label="HAND OVER" action={seesMake && <Btn size="sm" variant="gh" onClick={() => nav("/make")}>Open the pass</Btn>}>
           {toHand.map((t) => t.id).join(", ")} {toHand.length > 1 ? "are" : "is"} issued and still on the rack -
           scan {toHand.length > 1 ? "them" : "it"} out when the counter arrives.
         </Alert>
       )}
       {off.length > 0 && (
-        <Alert tone="c" label="OFF" action={<Btn size="sm" variant="gh" onClick={() => nav("/avail")}>Review</Btn>}>
+        <Alert tone="c" label="OFF" action={seesAvail && <Btn size="sm" variant="gh" onClick={() => nav("/avail")}>Review</Btn>}>
           {off.map(({ k, a }) => `${IT[k]?.n ?? k} (${a.mode === "Manual" ? "switched off" : a.why})`).join(", ")}{" "}
           - the kitchen cannot issue {off.length > 1 ? "these" : "this"} right now.
         </Alert>
@@ -171,7 +175,7 @@ export default function Dashboard() {
           empty={{
             title: "Nothing waiting to go out",
             sub: "Dispatch a ready order, or send stock out from Make & distribute.",
-            action: <Btn size="sm" onClick={() => nav("/make")}>Make &amp; distribute</Btn>,
+            action: seesMake ? <Btn size="sm" onClick={() => nav("/make")}>Make &amp; distribute</Btn> : undefined,
           }}
         />
         <TableFoot

@@ -61,7 +61,10 @@ with the feature it sits under. The shared forms gate themselves: `PhotoPicker` 
 A key names one screen for everybody, so no two desks share one: `outlet-stock`, `items-stock`, `store-stock`
 and `kitchen-stock` were all `stock`; `kitchen-orders` and `purchase-orders` were `orders`; `outlet-requests`
 / `kitchen-requests` and `outlet-tickets` / `kitchen-tickets` were `requests` and `tickets`. Every
-`nav("/…")` in a screen uses the new key.
+`nav("/…")` in a screen uses the new key, and a link or button to another screen is drawn only when
+the session can open it (`useSees(key)` in `nav.ts`, `canSee` outside a component): a dashboard, a
+drawer or an empty state never offers a screen the role would be turned away from. The store's
+report library leaves the stock ledger out without Stock ledger.
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
@@ -224,9 +227,13 @@ try {
   standing, and it does not change for the life of the session - the shell names the counter and
   never offers to move it.
 - **Takings are windowed on the open register session, not on `isToday`.** Both dashboards read
-  `readXReport` as they mount, so a test that renders one must stub it - unstubbed it reaches
-  `fetch`, and under `vi.useFakeTimers()` it never settles. `src/__tests__/time.test.tsx` stubs it
-  once in `beforeEach`.
+  `readXReport` as they mount - for a role holding X reports only - so a test that renders one must
+  stub it - unstubbed it reaches `fetch`, and under `vi.useFakeTimers()` it never settles.
+  `src/__tests__/time.test.tsx` stubs it once in `beforeEach`. A dashboard is shown to every role on
+  its desk, so it asks for itself (`role-scope.test.tsx`): without `x_report` the counter's reads no
+  X, draws no takings and no OUTAGE; the manager's reads every open outlet's X only with `x_report`
+  and `all_outlets`, the outlet at `user.loc` alone with `x_report` only, and none without; a sales
+  figure (the two sales KPIs, the summary's session columns, bills in Recent activity) needs Bills too.
 - **The register is `ui/RegisterPanel.tsx`**, drawn by the operators' `ui/Register.tsx` and the admin's
   `AdminRegisters.tsx` with `{ loc, locName, canX, canZ, canClose, showShifts? }`. `Register.tsx` passes
   `useCan("x_report", "view")`, `useCan("z_report", "view")`, `useCan("z_report", "edit")` and
@@ -234,7 +241,9 @@ try {
   are each drawn - and each read made - only for a role that holds them. No seeded role holds `z_report`,
   so a seeded counter or manager sees the X and no Z. Close shift stays on the counter desk. The panel is
   keyed on `loc`, so a new outlet starts its reads and its paper afresh, and `RegisterSlip` takes the
-  panel's `place` for its heading.
+  panel's `place` for its heading. The outlet picker is drawn for `useHolds("all_outlets")` alone -
+  the rule the server scopes X and Z by - and starts at `user.loc`; any other role reads only the
+  register where it stands, whatever else it holds.
 - **`readXReport` / `readZReports` answer `null` on failure**, never an empty report, so a screen
   can say "could not be read" instead of "nothing taken" - the distinction `AdminAudit.tsx` draws.
 - **Shifts (`store/shifts.ts`).** `ui/CloseShift.tsx` is the counter's Close shift button and its `Modal`
@@ -395,6 +404,9 @@ a background refresh and must not blank the screen.
 - **The bell's rows are queues, not messages.** `navQueues` in `ui/Shell.tsx` returns the documents behind
   each badge. Opening a row stores those ids through `ui/seen.ts` (`localStorage`, per account), which moves
   the row under Earlier. Anything that joins the queue afterwards brings it back under New, in red.
+  A record written before the screen keys were renamed is read under the new names (`RENAMED` in
+  `seen.ts`: `tickets`, `requests`, `orders`, `stock`), so an opened row does not come back as New
+  after the deploy; a key already stored under its new name wins.
 - **The toast is drawn once**, by `ui/Toast.tsx` in `App.tsx`, not by the shell. The sign-in and
   change-password forms don't toast a refusal at all: they show `authError` inline.
 

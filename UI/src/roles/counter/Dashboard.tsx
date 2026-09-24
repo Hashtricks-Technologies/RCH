@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, menuOf, counterNameOf } from "../../lib/selectors";
+import { availOf, menuOf, counterNameOf, useCan } from "../../lib/selectors";
+import { useSees } from "../../nav";
 import { fromWireTime, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, AlertStack, Avatar, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, StatusPill,
@@ -20,6 +21,14 @@ export default function Dashboard() {
   const nav = useNavigate();
   const loc = user.loc;
   const L = LOC[loc];
+  // The takings come off the X, so only a role that holds X reports reads it - the server would
+  // answer anyone else 404. Without it this dashboard is the stock and the requests alone.
+  const canX = useCan("x_report", "view");
+  const seesTill = useSees("pos");
+  const seesBills = useSees("bills");
+  const seesRegister = useSees("register");
+  const seesRequests = useSees("outlet-requests");
+  const seesTickets = useSees("outlet-tickets");
 
   // ---- the register: the counter settles Z to Z, not midnight to midnight, so every takings
   // figure here is measured from the moment the last Z closed this register rather than from
@@ -33,10 +42,11 @@ export default function Dashboard() {
   const [session, setSession] = useState<RegisterReport | null | undefined>(undefined);
   const reading = session === undefined;
   useEffect(() => {
+    if (!canX) return;
     let live = true;
     void readXReport(loc).then((r) => { if (live) setSession(r); });
     return () => { live = false; };
-  }, [readXReport, loc]);
+  }, [readXReport, loc, canX]);
   const retry = () => { setSession(undefined); void readXReport(loc).then(setSession); };
 
   // No session, no takings: a register that could not be read is not a register that took
@@ -125,12 +135,12 @@ export default function Dashboard() {
         tip="This session's sales, and the stock behind them, at this counter. The session runs from the last Z to the next one - not from midnight."
         actions={<>
           <CloseShift />
-          <Btn variant="gh" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>
-          <Btn onClick={() => nav("/pos")}>Open till</Btn>
+          {seesRequests && <Btn variant="gh" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>}
+          {seesTill && <Btn onClick={() => nav("/pos")}>Open till</Btn>}
         </>}
       />
 
-      {!reading && !session && (
+      {canX && !reading && !session && (
         <Alert
           tone="c"
           label="OUTAGE"
@@ -143,11 +153,13 @@ export default function Dashboard() {
       )}
 
       <Kpis items={[
+        ...(!canX ? [] : [
         { l: "Billed this session", v: takings(money0(billed)), d: <>{L.n} · {since}</> },
         { l: "Cash taken this session", v: takings(money0(cashTaken)), d: <>{cashBills.length} of {mine.length} bill{mine.length === 1 ? "" : "s"}</> },
         { l: "Bills raised", v: takings(String(mine.length)), d: <>last bill {latest[0]?.t ?? "-"}</> },
         { l: "Items sold", v: takings(String(itemsSold)), d: <>across {menu.length} listed products</> },
         { l: "Average bill", v: takings(money0(avgBill)), d: <>{mine.length ? money(avgBill) : "no bills yet"}</> },
+        ]),
         // Not a takings figure and never was: a product is off the menu whatever the register says.
         { l: "Products switched off", v: String(off.length), d: <>of {menu.length} on this menu</> },
       ]} />
@@ -164,28 +176,28 @@ export default function Dashboard() {
         ))}
       </AlertStack>
       <AlertStack tone="w" label="COLLECT"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Open tickets</Btn>}>
+        action={seesTickets && <Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Open tickets</Btn>}>
         {waiting.map((t) => (
           <Alert key={t.id} tone="w" label="COLLECT"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Open tickets</Btn>}>
+            action={seesTickets && <Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Open tickets</Btn>}>
             Ticket <b className="mono">{t.id}</b> is waiting at {LOC[t.from].n} - {t.lines.length} item{t.lines.length === 1 ? "" : "s"} against {t.req}.
           </Alert>
         ))}
       </AlertStack>
       <AlertStack tone="i" label="TRANSIT"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Confirm receipt</Btn>}>
+        action={seesTickets && <Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Confirm receipt</Btn>}>
         {inTransit.map((t) => (
           <Alert key={t.id} tone="i" label="TRANSIT"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Confirm receipt</Btn>}>
+            action={seesTickets && <Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Confirm receipt</Btn>}>
             Ticket <b className="mono">{t.id}</b> has been handed over and is on its way here.
           </Alert>
         ))}
       </AlertStack>
       <AlertStack tone="c" label="REJECTED"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-requests")}>View request</Btn>}>
+        action={seesRequests && <Btn size="xs" variant="gh" onClick={() => nav("/outlet-requests")}>View request</Btn>}>
         {rejected.map((r) => (
           <Alert key={r.id} tone="c" label="REJECTED"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-requests")}>View request</Btn>}>
+            action={seesRequests && <Btn size="xs" variant="gh" onClick={() => nav("/outlet-requests")}>View request</Btn>}>
             <b className="mono">{r.id}</b> was rejected by the outlet manager{r.mgrNote ? ` - "${r.mgrNote}"` : ""}.
           </Alert>
         ))}
@@ -195,7 +207,7 @@ export default function Dashboard() {
       <Card
         title="Stock requests from this counter"
         tip={`Everything ${L.n} has asked the central store for`}
-        right={<Btn variant="gh" size="sm" onClick={() => nav("/outlet-requests")}>All requests</Btn>}
+        right={seesRequests && <Btn variant="gh" size="sm" onClick={() => nav("/outlet-requests")}>All requests</Btn>}
       >
         <Kpis items={[
           // Not "today": a request raised on Friday is still open on Monday and is still this
@@ -241,11 +253,14 @@ export default function Dashboard() {
           empty={{
             title: "No request raised from this counter yet",
             sub: "Raise one against the central store and it will be tracked here until the stock is on the shelf.",
-            action: <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>,
+            action: seesRequests ? <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn> : undefined,
           }}
         />
       </Card>
 
+      {/* Everything below is the open session's - the X's window - so without X reports there
+          is no session to show. */}
+      {canX && <>
       <div className="mtop" />
       <Grid cols="g21">
         <div>
@@ -269,12 +284,12 @@ export default function Dashboard() {
               empty={{
                 title: "Nothing billed at this counter yet",
                 sub: "Open the till - the first bill of the session starts this table.",
-                action: <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn>,
+                action: seesTill ? <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn> : undefined,
               }}
             />
           </Card>
           <div className="mtop" />
-          <Card title="Last five bills" sub="this counter" right={<Btn variant="gh" size="sm" onClick={() => nav("/bills")}>All bills</Btn>}>
+          <Card title="Last five bills" sub="this counter" right={seesBills && <Btn variant="gh" size="sm" onClick={() => nav("/bills")}>All bills</Btn>}>
             {feed.length ? <Feed items={feed} /> : (
               <p className="mini">Nothing billed in this session. The first bill will appear here.</p>
             )}
@@ -287,7 +302,7 @@ export default function Dashboard() {
             drawer total built on top of them was wrong by whatever the real float was. What is
             left is what the bills actually say. */}
         <Card title="This session at this counter" sub={since}
-          right={<Btn variant="gh" size="sm" onClick={() => nav("/register")}>Register</Btn>}
+          right={seesRegister && <Btn variant="gh" size="sm" onClick={() => nav("/register")}>Register</Btn>}
           tip={<>
           <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes since the last Z - add whatever float you
           were handed to get what should be counted out. Card and UPI are taken here but settle to the hospital
@@ -321,6 +336,7 @@ export default function Dashboard() {
           </dl>
         </Card>
       </Grid>
+      </>}
     </>
   );
 }

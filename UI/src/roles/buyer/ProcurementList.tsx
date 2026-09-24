@@ -4,6 +4,7 @@ import { IT, LOC } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { costOf, procurementList, qty, round3, useCan } from "../../lib/selectors";
+import { canSee } from "../../nav";
 import { fq, fromWireDay, money, money0, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, DraftLineInput, FilterSelect, Grid, PageHead, Tag, TableFoot,
@@ -201,7 +202,9 @@ export default function ProcurementList() {
     // Each createPo toasts, and only the last would survive - so when the
     // selection fanned out across vendors, say so plainly instead.
     if (made.length > 1) notify(`${made.length} draft purchase orders raised across ${made.length} vendors`);
-    nav("/purchase-orders");
+    // The drafts are on Purchase orders - for a role that can open it. One that holds the
+    // list without the orders stays here; the toast has already said what was raised.
+    if (canSee(useApp.getState().user!, "purchase-orders")) nav("/purchase-orders");
   };
 
   const rows: Row[] = shown.map((g) => {

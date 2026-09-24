@@ -23,7 +23,7 @@ import { IT, LOC, PRICE_LISTS, hydrateLocations, hydratePriceLists } from "../da
 import { allOutlets, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
-import type { Bill, Dated, DatedDoc, RegisterReport, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
+import type { Bill, Dated, DatedDoc, Permissions, RegisterReport, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
 import { DESK_DEFAULTS } from "@rch/domain";
 import { as, deskScreens, resetStore, userOf } from "./fixture";
 
@@ -1672,6 +1672,39 @@ describe("the register", () => {
     expect(readZReports).not.toHaveBeenCalled();
     expect(ui.text()).not.toContain("Close register & take Z");
     expect(ui.text()).not.toContain("Past Z-reports");
+  });
+
+  it("manager: starts on its own outlet, not the first one listed", async () => {
+    const { readXReport } = await openRegister("manager");
+    expect(readXReport).toHaveBeenCalledWith("rest");
+  });
+
+  /** A role on `desk` holding exactly `perms` - no seeded extras. */
+  function narrowTo(desk: Role, perms: Permissions) {
+    act(() => { useApp.setState({ user: { ...userOf(desk), perms } }); });
+  }
+
+  it("a counter role holding X and Credit (a hospital-wide feature) still reads only its own register", async () => {
+    const readXReport = vi.fn(async () => xReport());
+    act(() => { as("counter"); useApp.setState({ readXReport }); });
+    narrowTo("counter", { f: { billing: "edit", x_report: "view", credit: "view" }, a: [] });
+    const ui = mount(deskScreens("counter").register);
+    await settle(() => { /* let the reads land */ });
+    // X and Z are scoped by "Works for every outlet" alone, so Credit gives it no other register.
+    expect(readXReport).toHaveBeenCalledWith("coffee");
+    expect(readXReport).toHaveBeenCalledTimes(1);
+    expect(ui.host.querySelector('select[aria-label="Outlet"]')).toBeNull();
+  });
+
+  it("a manager-desk role without every outlet reads its own register, with no picker", async () => {
+    const readXReport = vi.fn(async () => xReport({ loc: "rest" }));
+    act(() => { as("manager"); useApp.setState({ readXReport }); });
+    narrowTo("manager", { f: { x_report: "view", billing: "view" }, a: [] });
+    const ui = mount(deskScreens("manager").register);
+    await settle(() => { /* let the reads land */ });
+    expect(readXReport).toHaveBeenCalledWith("rest");
+    expect(readXReport).toHaveBeenCalledTimes(1);
+    expect(ui.host.querySelector('select[aria-label="Outlet"]')).toBeNull();
   });
 
   it("a role given Z reports at view lists the closed sessions but cannot close", async () => {

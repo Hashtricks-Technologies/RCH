@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { useSees } from "../../nav";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone, counterNameOf, itemMatches, useCan } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
 import {
@@ -20,6 +21,7 @@ export default function Stock() {
   const user = useApp((x) => x.user)!;
   const openDrawer = useApp((x) => x.openDrawer);
   const nav = useNavigate();
+  const seesOutletRequests = useSees("outlet-requests");
   const mayAdjust = useCan("outlet_stock");
   const mayRequest = useCan("outlet_requests");
   const maySwitch = useCan("availability");
@@ -90,7 +92,7 @@ export default function Stock() {
         readOnly={!mayAdjust && "outlet_stock"}
         actions={<>
           {mayAdjust && <Btn variant="gh" onClick={() => openDrawer("creqadj", "new")}>Request adjustment</Btn>}
-          <Btn variant="gh" onClick={() => nav("/outlet-requests")}>Stock requests</Btn>
+          {seesOutletRequests && <Btn variant="gh" onClick={() => nav("/outlet-requests")}>Stock requests</Btn>}
         </>}
       />
       <Card flush>
@@ -119,7 +121,7 @@ export default function Stock() {
             </p>
             {filtered
               ? <Btn size="sm" onClick={clearAll}>Clear filters</Btn>
-              : mayRequest && <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>}
+              : mayRequest && seesOutletRequests && <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>}
           </div>
         ) : (
           <div className="stkgrid" style={{ padding: 13 }}>

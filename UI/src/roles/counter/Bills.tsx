@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { useSees } from "../../nav";
 import { isToday, money, money0, sum } from "../../lib/fmt";
 import { Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tip, Toolbar } from "../../ui/kit";
 import { billStatus, settlementOf, type Settlement } from "./status";
@@ -16,6 +17,7 @@ export default function Bills() {
   const s = useApp();
   const user = useApp((x) => x.user)!;
   const nav = useNavigate();
+  const seesPos = useSees("pos");
   const loc = user.loc;
   const L = LOC[loc];
   const [q, setQ] = useState("");
@@ -65,7 +67,7 @@ export default function Bills() {
         crumbs={["Royal Care", L.n, "Bills"]}
         title="Bills"
         tip="Bills raised at this counter today."
-        actions={<Btn onClick={() => nav("/pos")}>New bill</Btn>}
+        actions={seesPos && <Btn onClick={() => nav("/pos")}>New bill</Btn>}
       />
       <Card flush>
         <Toolbar
@@ -137,7 +139,7 @@ export default function Bills() {
             : {
               title: "No bill raised at this counter today",
               sub: "Open the till and print the first bill of the day.",
-              action: <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn>,
+              action: seesPos ? <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn> : undefined,
             }}
         />
         <TableFoot count={rows.length}

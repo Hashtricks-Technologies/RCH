@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import Shell from "../ui/Shell";
 import { useApp } from "../store";
+import { isTicketOpen } from "../lib/selectors";
 import { as, resetStore } from "./fixture";
 
 /**
@@ -94,6 +95,41 @@ describe("the notification bell", () => {
     const row = rowIn(m.group("New"), APPROVALS);
     expect(row, "a new document puts the row back under New").toBeTruthy();
     expect(row!.textContent).toContain(`1 new · ${n + 1}`);
+    m.unmount();
+  });
+});
+
+describe("a read record written before the queue keys were renamed", () => {
+  const TICKETS = "Pick tickets to collect";
+
+  it("still reads a row the counter opened under the old key as read", () => {
+    act(() => { as("counter"); });
+    const u = useApp.getState().user!;
+    const open = useApp.getState().tkt.filter((t) => t.to === u.loc && isTicketOpen(t.st)).map((t) => t.id);
+    expect(open.length, "the fixture needs a ticket waiting at the counter").toBeGreaterThan(0);
+    // Exactly what the bell stored before the deploy: `tickets`, not `outlet-tickets`.
+    localStorage.setItem(`rch-seen:${u.id}`, JSON.stringify({ tickets: open }));
+
+    const m = mount();
+    act(() => { m.bell().click(); });
+    expect(rowIn(m.group("New"), TICKETS), "an already-read row must not come back as New").toBeUndefined();
+    expect(rowIn(m.group("Earlier"), TICKETS)).toBeTruthy();
+    m.unmount();
+  });
+
+  it("lets a key already written under its new name win, and writes back under the new names", () => {
+    act(() => { as("counter"); });
+    const u = useApp.getState().user!;
+    localStorage.setItem(`rch-seen:${u.id}`, JSON.stringify({ tickets: ["OLD"], "outlet-tickets": [], requests: ["R"] }));
+    const m = mount();
+    act(() => { m.bell().click(); });
+    // The new key's empty record wins over the old one, so the ticket row is still New.
+    const row = rowIn(m.group("New"), TICKETS)!;
+    expect(row).toBeTruthy();
+    act(() => { row.click(); });
+    const stored = JSON.parse(localStorage.getItem(`rch-seen:${u.id}`)!) as Record<string, string[]>;
+    expect(Object.keys(stored).sort()).toEqual(["outlet-requests", "outlet-tickets"]);
+    expect(stored["outlet-requests"]).toEqual(["R"]);
     m.unmount();
   });
 });

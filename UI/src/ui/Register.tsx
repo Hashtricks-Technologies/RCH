@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../store";
-import { locName, openOutlets, useCan, useWide } from "../lib/selectors";
+import { locName, openOutlets, useCan, useHolds } from "../lib/selectors";
 import { FilterSelect, PageHead } from "./kit";
 import CloseShift from "./CloseShift";
 import RegisterPanel from "./RegisterPanel";
@@ -13,14 +13,15 @@ import type { LocKey } from "../types";
  * reports card. No seeded role holds `z_report`: closing the day is the super admin's (its
  * Registers tab draws the same `RegisterPanel`) until a role is given it.
  *
- * A session that reads hospital-wide picks an outlet; one that reads a single counter has
- * exactly one register, its own. The counter desk keeps its Close shift button here.
+ * A role that works for every outlet (`all_outlets`, the rule the server scopes X and Z by) picks
+ * an outlet, starting on its own; any other role has exactly one register, the one at `user.loc`.
+ * The counter desk keeps its Close shift button here.
  */
 export default function Register() {
   const user = useApp((s) => s.user)!;
   const catalogVersion = useApp((s) => s.catalogVersion);
 
-  const anyOutlet = useWide();
+  const anyOutlet = useHolds("all_outlets");
   const canX = useCan("x_report", "view");
   const canZ = useCan("z_report", "view");
   const canClose = useCan("z_report", "edit");
@@ -29,7 +30,10 @@ export default function Register() {
   // master moved - is what tells React to look again.
   const outlets = useMemo(() => { void catalogVersion; return openOutlets(); }, [catalogVersion]);
   const [pick, setPick] = useState<LocKey | null>(null);
-  const loc: LocKey | null = anyOutlet ? pick ?? outlets[0] ?? null : user.loc;
+  // Where the session stands first - an open outlet - and only then the first open one, for a
+  // desk (the manager's) whose own location is not an outlet.
+  const home = outlets.includes(user.loc) ? user.loc : outlets[0] ?? null;
+  const loc: LocKey | null = anyOutlet ? pick ?? home : user.loc;
 
   return (
     <>

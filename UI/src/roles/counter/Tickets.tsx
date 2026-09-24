@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { useSees } from "../../nav";
 import { canCancelTicket, canReceiveTicket, itemMatches, useCan } from "../../lib/selectors";
 import { fq, sum } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
@@ -13,6 +14,7 @@ export default function Tickets() {
   const s = useApp();
   const user = useApp((x) => x.user)!;
   const nav = useNavigate();
+  const seesOutletRequests = useSees("outlet-requests");
   const may = useCan("outlet_tickets");
   const loc = user.loc;
   const L = LOC[loc];
@@ -53,7 +55,7 @@ export default function Tickets() {
         title="Pick tickets"
         tip="Stock this counter can collect."
         readOnly={!may && "outlet_tickets"}
-        actions={<Btn variant="gh" onClick={() => nav("/outlet-requests")}>Stock requests</Btn>}
+        actions={seesOutletRequests && <Btn variant="gh" onClick={() => nav("/outlet-requests")}>Stock requests</Btn>}
       />
 
       {toCollect > 0 && (
@@ -128,7 +130,7 @@ export default function Tickets() {
             : {
               title: "No pick ticket for this counter",
               sub: "A ticket appears here once the store keeper issues one against an approved request.",
-              action: <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>,
+              action: seesOutletRequests ? <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn> : undefined,
             }}
         />
         <TableFoot count={rows.length}
