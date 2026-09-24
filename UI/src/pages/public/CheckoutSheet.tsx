@@ -1,10 +1,50 @@
-import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { money } from "@rch/domain";
 import { useFocusTrap } from "../../ui/focus";
-import { cartLines, cartTotal, checkCustomer, limitOf, usePublicOrder } from "../../store/publicOrder";
+import { SHEET_STATE, cartLines, cartTotal, checkCustomer, isSheetEntry, limitOf, usePublicOrder } from "../../store/publicOrder";
 import { Spinner, Stepper } from "./parts";
 
 const TITLE = "qo-sheet-title";
+
+/** A Back the sheet's own unmount queued, cancelled by a remount in the same tick (StrictMode). */
+let pendingBack: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * A phone's Back closes the sheet rather than leaving the page: opening pushes an entry on the same
+ * address, a `popstate` off it closes the sheet, and closing it any other way takes the entry back
+ * off. While a payment is in flight the sheet cannot close, so a Back then puts the entry back.
+ */
+function useBackCloses(onClose: () => void, busy: boolean): void {
+  const latest = useRef({ onClose, busy });
+  useEffect(() => { latest.current = { onClose, busy }; }, [onClose, busy]);
+  useEffect(() => {
+    if (pendingBack) { clearTimeout(pendingBack); pendingBack = undefined; }
+    if (!isSheetEntry(window.history.state)) window.history.pushState({ [SHEET_STATE]: true }, "", window.location.href);
+    const onPop = () => {
+      if (isSheetEntry(window.history.state)) return;
+      if (latest.current.busy) { window.history.pushState({ [SHEET_STATE]: true }, "", window.location.href); return; }
+      latest.current.onClose();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      pendingBack = setTimeout(() => {
+        pendingBack = undefined;
+        if (isSheetEntry(window.history.state)) window.history.back();
+      }, 0);
+    };
+  }, []);
+}
+
+/** The page behind the sheet stays put while the sheet scrolls. */
+function useScrollLock(): void {
+  useEffect(() => {
+    const body = document.body.style;
+    const was = body.overflow;
+    body.overflow = "hidden";
+    return () => { body.overflow = was; };
+  }, []);
+}
 
 /**
  * The cart, the customer's name and phone (and where to bring it, on a deliver code), and Pay.
@@ -23,12 +63,15 @@ export default function CheckoutSheet({ onClose }: { onClose: () => void }) {
   const { add, remove, setCustomer, placeOrder } = usePublicOrder.getState();
   const [tried, setTried] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
-  const trap = useFocusTrap(panel, "checkout", TITLE);
+  // The gateway's frame lives outside the sheet: while it is open, the keyboard must be free to go there.
+  const trap = useFocusTrap(panel, "checkout", TITLE, !paying);
 
   const lines = cartLines(menu, cart);
   const total = cartTotal(menu, cart);
   const errors = tried ? checkCustomer(customer) : {};
   const busy = placing || paying;
+  useBackCloses(onClose, busy);
+  useScrollLock();
   const deliver = menu.qr.mode === "deliver";
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {

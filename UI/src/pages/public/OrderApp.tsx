@@ -16,8 +16,12 @@ export default function OrderApp() {
   const [where, setWhere] = useState(() => ({ path: window.location.pathname, hash: window.location.hash }));
   useEffect(() => {
     const on = () => {
-      setWhere({ path: window.location.pathname, hash: window.location.hash });
-      window.scrollTo?.(0, 0);
+      const path = window.location.pathname;
+      // Back out of the checkout sheet pops an entry on the same path: the menu stays where it was.
+      setWhere((w) => {
+        if (w.path !== path) window.scrollTo?.(0, 0);
+        return w.path === path && w.hash === window.location.hash ? w : { path, hash: window.location.hash };
+      });
     };
     window.addEventListener("popstate", on);
     window.addEventListener("hashchange", on);

@@ -1,4 +1,4 @@
-import { useEffect, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 
 /**
  * The keyboard half of `role="dialog" aria-modal="true"`, written once.
@@ -53,10 +53,25 @@ const pullInto = (el: HTMLElement | null, titleId: string) => {
  *
  * Returns the `onKeyDown` the panel must spread onto its own element; the wrap cannot be done
  * from an effect, because it has to preventDefault on the Tab itself.
+ *
+ * `active` false lets go without unmounting: the guards stay attached but hold nothing, and the
+ * Tab wraps nothing. The public checkout sheet passes it while the payment gateway is open, since
+ * the gateway's own frame lives outside the sheet and must be allowed the keyboard. When it comes
+ * back true, the keyboard is pulled back inside.
  */
 export function useFocusTrap(
-  panel: RefObject<HTMLElement | null>, at: string, titleId: string,
+  panel: RefObject<HTMLElement | null>, at: string, titleId: string, active = true,
 ): (e: ReactKeyboardEvent<HTMLElement>) => void {
+  // Read by the guards below, which are attached once; a ref so letting go never re-runs them
+  // (a re-run would hand focus back to the page behind the panel).
+  const live = useRef(active);
+  useEffect(() => {
+    const was = live.current;
+    live.current = active;
+    // Only on coming back: on mount the effect below must see where the keyboard stood first.
+    if (active && !was) pullInto(panel.current, titleId);
+  }, [active, panel, titleId]);
+
   // Where the keyboard was standing before the panel took it, and the two guards that keep it
   // from wandering off while the panel is open. All three live in one effect so the cleanup can
   // order them: the guards come **off first**, because restoring focus below is itself a focus
@@ -72,6 +87,7 @@ export function useFocusTrap(
     // `focusin` bubbles to the document, which is what catches the keyboard being *moved* out:
     // a click on the page behind, or a shortcut that focuses something in the shell.
     const guard = (e: FocusEvent) => {
+      if (!live.current) return;
       const el = panel.current;
       if (el && !el.contains(e.target as Node)) pullInto(el, titleId);
     };
@@ -94,7 +110,7 @@ export function useFocusTrap(
     // lives in the panel's own body, so the panel never re-renders and no effect of its own
     // would run. The DOM is the only thing that reliably knows, so the DOM is what is watched -
     // `attributeFilter` keeps it to the one attribute that can take a control out of `FOCUSABLE`.
-    const watcher = new MutationObserver(() => { pullInto(panel.current, titleId); });
+    const watcher = new MutationObserver(() => { if (live.current) pullInto(panel.current, titleId); });
     if (panel.current) {
       watcher.observe(panel.current, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
     }
@@ -120,7 +136,7 @@ export function useFocusTrap(
   // its data loads and its forms open, and a list captured on mount would trap against buttons
   // that are no longer there.
   return (e: ReactKeyboardEvent<HTMLElement>) => {
-    if (e.key !== "Tab") return;
+    if (e.key !== "Tab" || !live.current) return;
     const el = panel.current;
     if (!el) return;
     const stops = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE));

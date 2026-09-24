@@ -206,9 +206,19 @@ export function dismissRemembered(orderId: string): void {
   if (v?.orderId === orderId) writeRemembered({ ...v, dismissed: true });
 }
 
-/** Move to another screen of the page without a reload. `OrderApp` listens for `popstate`. */
+/** The history entry the checkout sheet pushes, so a phone's Back closes the sheet, not the page. */
+export const SHEET_STATE = "qoSheet";
+export const isSheetEntry = (state: unknown): boolean =>
+  typeof state === "object" && state !== null && (state as Record<string, unknown>)[SHEET_STATE] === true;
+
+/**
+ * Move to another screen of the page without a reload. `OrderApp` listens for `popstate`. Leaving
+ * from under the checkout sheet takes the sheet's own entry's place, so Back from the status page
+ * is the menu, not a menu with a sheet that is no longer there.
+ */
 export function go(url: string): void {
-  window.history.pushState(null, "", url);
+  if (isSheetEntry(window.history.state)) window.history.replaceState(null, "", url);
+  else window.history.pushState(null, "", url);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 

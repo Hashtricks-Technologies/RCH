@@ -8,7 +8,7 @@ import { money, pausedRefusal, customerPhoneRefusal, QR_STATUS_WORDS } from "@rc
 import OrderApp from "../pages/public/OrderApp";
 import { closedBanner } from "../pages/public/Menu";
 import { istStamp, refundWords, whereWords } from "../pages/public/OrderStatus";
-import { MENU_REFRESH_MS, resetPublicOrder, usePublicOrder } from "../store/publicOrder";
+import { MENU_REFRESH_MS, isSheetEntry, resetPublicOrder, usePublicOrder } from "../store/publicOrder";
 import { SECRET, TOKEN, created, json, menuOf, orderOf, refusal } from "./publicFixture";
 
 /**
@@ -286,6 +286,67 @@ describe("the checkout sheet", () => {
     await settle();
     expect(ui!.button("Waiting for payment")).toBeDefined();
     expect((ui!.q<HTMLButtonElement>(".qo-pay"))!.disabled).toBe(true);
+  });
+
+  const backOnce = async () => {
+    await act(async () => {
+      const popped = new Promise((r) => { window.addEventListener("popstate", r, { once: true }); });
+      window.history.back();
+      await popped;
+    });
+  };
+
+  it("closes on the phone's Back without leaving the menu, and takes its entry off when closed otherwise", async () => {
+    const scrolled = vi.mocked(window.scrollTo);
+    await openSheet();
+    const u = ui!;
+    expect(isSheetEntry(window.history.state)).toBe(true);
+    await backOnce();
+    expect(u.q("[role=dialog]")).toBeNull();
+    expect(window.location.pathname).toBe(`/order/${TOKEN}`);
+    expect(u.q("h1")?.textContent).toBe("Coffee Shop");
+    expect(scrolled).not.toHaveBeenCalled();
+    // Closed with its own button: the entry it pushed comes back off.
+    click(u.button("Review order"));
+    expect(isSheetEntry(window.history.state)).toBe(true);
+    click(u.button("Close"));
+    await act(async () => {
+      await new Promise((r) => { window.addEventListener("popstate", r, { once: true }); });
+    });
+    expect(isSheetEntry(window.history.state)).toBe(false);
+    expect(u.q("[role=dialog]")).toBeNull();
+  });
+
+  it("stays open on Back while a payment is in flight", async () => {
+    await openSheet();
+    act(() => { usePublicOrder.setState({ paying: true }); });
+    await backOnce();
+    expect(ui!.q("[role=dialog]")).not.toBeNull();
+    expect(isSheetEntry(window.history.state)).toBe(true);
+    act(() => { usePublicOrder.setState({ paying: false }); });
+  });
+
+  it("holds the page behind it still, and lets it scroll again on close", async () => {
+    document.body.style.overflow = "auto";
+    const d = await openSheet();
+    expect(document.body.style.overflow).toBe("hidden");
+    act(() => { d.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(document.body.style.overflow).toBe("auto");
+    document.body.style.overflow = "";
+  });
+
+  it("lets the keyboard leave for the payment gateway while it is open, and takes it back after", async () => {
+    await openSheet();
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    act(() => { outside.focus(); });
+    expect(document.activeElement).not.toBe(outside);
+    act(() => { usePublicOrder.setState({ paying: true }); });
+    act(() => { outside.focus(); });
+    expect(document.activeElement).toBe(outside);
+    act(() => { usePublicOrder.setState({ paying: false }); });
+    expect(ui!.q("[role=dialog]")!.contains(document.activeElement)).toBe(true);
+    outside.remove();
   });
 
   it("closes when the last line comes off", async () => {
