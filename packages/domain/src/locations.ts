@@ -102,6 +102,8 @@ export const holding = <S extends string>(t: Record<S, boolean>): S[] => (Object
 /** What still depends on an outlet, counted by the server under the close's own row lock. */
 export type OutletBlockers = {
   stock: number; tickets: number; requests: number; kitchenOrders: number; shopAsks: number; productRequests: number;
+  /** Paid QR orders not yet handed over (`HOLDS_OUTLET.qrOrder`) - customers who have paid and are waiting. */
+  qrOrders: number;
   /** Employee numbers of the active accounts based there. */
   staff: string[];
   /** Whether the outlet's register is still open - a business day nobody has taken a Z for. A
@@ -125,6 +127,7 @@ export function closeRefusal(name: string, b: OutletBlockers): string | null {
     b.kitchenOrders > 0 && count(b.kitchenOrders, "open kitchen order"),
     b.shopAsks > 0 && count(b.shopAsks, "open shop ask"),
     b.productRequests > 0 && count(b.productRequests, "open product request"),
+    b.qrOrders > 0 && count(b.qrOrders, "open QR order"),
     b.staff.length > 0 && `${b.staff.length} active staff (${b.staff.join(", ")})`,
     b.openRegister && "an open register (take its Z-report first)",
   ].filter((p): p is string => Boolean(p));

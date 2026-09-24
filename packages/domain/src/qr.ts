@@ -60,6 +60,14 @@ export const hoursRefusal = (outlet: string, o: QrOpen): string =>
 export const pausedRefusal = (outlet: string): string =>
   `${outlet} has paused QR orders for now - please order at the counter.`;
 
+/**
+ * A phone number the customer typed that is not one, in the customer's own voice - the till's
+ * `phoneRefusal` speaks to the operator ("give the customer's 10 digits"), and this page's reader
+ * is the customer. The server refuses a QR order with it and the order page checks with it.
+ */
+export const customerPhoneRefusal = (raw: string): string =>
+  `${raw.trim() || "That"} is not a phone number - enter your 10-digit mobile number, with or without +91.`;
+
 // ---- the caps on one order. The line and quantity caps are also `CreateQrOrderBodySchema`'s.
 
 /** Lines on one order. */

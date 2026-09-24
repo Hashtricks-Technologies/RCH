@@ -39,6 +39,6 @@ export { defaultSourceFor, sourceOf } from "./routing.js";
 export { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsBills, readsWide, type ReadCollection } from "./permissions.js";
 // ---- QR ordering: the path an order walks, when an outlet takes orders, the caps and the words.
 export {
-  hoursRefusal, nextQrStep, paise, pausedRefusal, QR_MAX_LINES, QR_MAX_QTY, QR_MAX_RUPEES, QR_PENDING_PER_IP, QR_PENDING_PER_PHONE,
+  customerPhoneRefusal, hoursRefusal, nextQrStep, paise, pausedRefusal, QR_MAX_LINES, QR_MAX_QTY, QR_MAX_RUPEES, QR_PENDING_PER_IP, QR_PENDING_PER_PHONE,
   QR_STATUS_WORDS, qrOpenAt, qrStepsFor, type QrOpen,
 } from "./qr.js";

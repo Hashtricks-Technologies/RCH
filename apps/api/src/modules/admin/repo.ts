@@ -6,7 +6,7 @@ import type { AdminAction, PayerKind } from "@rch/contract";
 import { AdminActionSchema, QUARANTINE } from "@rch/contract";
 import { ACCOUNT_TENDERS, HOLDS_OUTLET, holding, type OutletBlockers } from "@rch/domain";
 import type { Reader, Tx } from "../../lib/db.js";
-import { adminActions, bills, locations, payers, prodOrders, productRequests, registerSessions, settlements, shopAsks, stockBalances, stockRequests, tickets, userPostings, users } from "../../db/schema/index.js";
+import { adminActions, bills, locations, payers, prodOrders, productRequests, qrOrders, registerSessions, settlements, shopAsks, stockBalances, stockRequests, tickets, userPostings, users } from "../../db/schema/index.js";
 
 export type UserRow = typeof users.$inferSelect;
 export type LocationRow = typeof locations.$inferSelect;
@@ -145,6 +145,8 @@ export const adminRepo = {
       kitchenOrders: of(tx.select({ n: count }).from(prodOrders).where(and(eq(prodOrders.fromLoc, key), inArray(prodOrders.status, holding(HOLDS_OUTLET.prodOrder))))),
       shopAsks: of(tx.select({ n: count }).from(shopAsks).where(and(or(eq(shopAsks.fromLoc, key), eq(shopAsks.toLoc, key)), inArray(shopAsks.status, holding(HOLDS_OUTLET.shopAsk))))),
       productRequests: of(tx.select({ n: count }).from(productRequests).where(and(eq(productRequests.forLoc, key), inArray(productRequests.status, holding(HOLDS_OUTLET.productReq))))),
+      // A customer who has paid and not yet been handed their order.
+      qrOrders: of(tx.select({ n: count }).from(qrOrders).where(and(eq(qrOrders.loc, key), inArray(qrOrders.status, holding(HOLDS_OUTLET.qrOrder))))),
       staff: sql<string[]>`(select coalesce(array_agg(${users.empNo} order by ${users.empNo}), '{}') from ${users} where ${and(eq(users.loc, key), eq(users.active, true), eq(users.admin, false))})`,
       // A business day nobody has closed off. The Z is still allowed at a closed outlet - money
       // already taken must always be reconcilable - but closing first and Z-ing afterwards is

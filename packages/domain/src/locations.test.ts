@@ -92,20 +92,22 @@ describe("HOLDS_OUTLET", () => {
 });
 
 describe("closeRefusal", () => {
-  const none = { stock: 0, tickets: 0, requests: 0, kitchenOrders: 0, shopAsks: 0, productRequests: 0, staff: [], openRegister: false };
+  const none = { stock: 0, tickets: 0, requests: 0, kitchenOrders: 0, shopAsks: 0, productRequests: 0, qrOrders: 0, staff: [], openRegister: false };
   it("has nothing to say about an outlet nothing depends on", () => {
     expect(closeRefusal("Juice Bar", none)).toBeNull();
   });
   it("names the one thing left", () => {
     expect(closeRefusal("Juice Bar", { ...none, tickets: 2 })).toBe("Refused - Juice Bar still has 2 open tickets");
     expect(closeRefusal("Juice Bar", { ...none, stock: 1 })).toBe("Refused - Juice Bar still has stock on hand (1 item)");
+    // A customer who has paid and is still waiting for their order.
+    expect(closeRefusal("Juice Bar", { ...none, qrOrders: 1 })).toBe("Refused - Juice Bar still has 1 open QR order");
     // A day nobody has closed off. Shutting the outlet first would strand the takings: the Z is
     // still allowed at a closed outlet, but the honest order is to take it before closing.
     expect(closeRefusal("Juice Bar", { ...none, openRegister: true }))
       .toBe("Refused - Juice Bar still has an open register (take its Z-report first)");
   });
   it("names every blocker at once, singular for one, the last joined with and", () => {
-    expect(closeRefusal("Juice Bar", { stock: 3, tickets: 1, requests: 1, kitchenOrders: 2, shopAsks: 1, productRequests: 1, staff: ["RC-4483", "RC-4484"], openRegister: true }))
-      .toBe("Refused - Juice Bar still has stock on hand (3 items), 1 open ticket, 1 open stock request, 2 open kitchen orders, 1 open shop ask, 1 open product request, 2 active staff (RC-4483, RC-4484) and an open register (take its Z-report first)");
+    expect(closeRefusal("Juice Bar", { stock: 3, tickets: 1, requests: 1, kitchenOrders: 2, shopAsks: 1, productRequests: 1, qrOrders: 2, staff: ["RC-4483", "RC-4484"], openRegister: true }))
+      .toBe("Refused - Juice Bar still has stock on hand (3 items), 1 open ticket, 1 open stock request, 2 open kitchen orders, 1 open shop ask, 1 open product request, 2 open QR orders, 2 active staff (RC-4483, RC-4484) and an open register (take its Z-report first)");
   });
 });

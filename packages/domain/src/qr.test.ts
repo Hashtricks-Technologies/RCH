@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CreateQrOrderBodySchema, QrOrderStatusSchema, type OrderHoursDay } from "@rch/contract";
 import {
-  hoursRefusal, nextQrStep, paise, pausedRefusal, QR_MAX_LINES, QR_MAX_QTY, QR_MAX_RUPEES, QR_PENDING_PER_IP, QR_PENDING_PER_PHONE,
+  customerPhoneRefusal, hoursRefusal, nextQrStep, paise, pausedRefusal, QR_MAX_LINES, QR_MAX_QTY, QR_MAX_RUPEES, QR_PENDING_PER_IP, QR_PENDING_PER_PHONE,
   QR_STATUS_WORDS, qrOpenAt, qrStepsFor,
 } from "./qr";
 
@@ -70,6 +70,8 @@ describe("the refusals", () => {
       .toBe("Coffee Shop is not taking QR orders right now - QR ordering opens at 08:00 today.");
     expect(hoursRefusal("Coffee Shop", { open: false, today: null })).toBe("Coffee Shop is not taking QR orders right now - QR ordering is closed.");
     expect(pausedRefusal("Snack Kiosk")).toBe("Snack Kiosk has paused QR orders for now - please order at the counter.");
+    expect(customerPhoneRefusal(" 12345 ")).toBe("12345 is not a phone number - enter your 10-digit mobile number, with or without +91.");
+    expect(customerPhoneRefusal("  ")).toBe("That is not a phone number - enter your 10-digit mobile number, with or without +91.");
   });
 });
 
