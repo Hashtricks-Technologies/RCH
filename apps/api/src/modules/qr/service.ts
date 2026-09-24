@@ -45,6 +45,9 @@ export const CODE_GONE = "This QR code is no longer in use - please order at the
 export const NOT_SET_UP = "Online ordering is not set up yet - order at the counter.";
 /** An order id with the wrong secret reads exactly like one that does not exist. */
 const ORDER_GONE = "There is no such order.";
+/** Why a menu item cannot be ordered, as the customer reads it. The till's reasons (switched off,
+ *  zero at this location, no price at the outlet) are the staff's business. */
+const ITEM_UNAVAILABLE = "Not available right now.";
 /** The gateway could not be reached, or answered a 5xx or a 429: the same order may go through
  *  in a moment. */
 const GATEWAY_DOWN = "We could not reach the payment service - try again in a moment.";
@@ -373,7 +376,7 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
             const max = l.available ? Math.max(0, Math.min(QR_MAX_QTY, Math.floor(l.cover))) : 0;
             return {
               it: l.it, name: l.item.n, price: l.price, ...(l.mrp !== undefined ? { mrp: l.mrp } : {}),
-              available: max > 0, ...(max > 0 ? {} : { why: l.why ?? `${l.item.n} is sold out` }), max,
+              available: max > 0, ...(max > 0 ? {} : { why: ITEM_UNAVAILABLE }), max,
               image: l.item.img ?? null, type: l.item.t,
             };
           }),

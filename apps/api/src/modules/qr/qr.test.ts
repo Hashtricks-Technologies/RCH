@@ -101,6 +101,17 @@ describe("GET /public/qr/:token - the menu a code opens", () => {
     } finally { (app as { payments: unknown }).payments = saved; }
   });
 
+  it("tells the customer an item is not available in one sentence, never the till's reason", async () => {
+    const have = await onHand("coffee", "chips");
+    await app.db.transaction((tx) => postMoves(tx, [{ loc: "coffee", it: "chips", qty: -have, kind: "adjustment", refType: "test", refId: "qr-menu-drain" }]));
+    try {
+      const m = PublicMenuSchema.parse((await app.inject({ method: "GET", url: `${API_PREFIX}/public/qr/${coffee.token}` })).json());
+      expect(m.items.find((i) => i.it === "chips")).toMatchObject({ available: false, max: 0, why: "Not available right now." });
+    } finally {
+      await app.db.transaction((tx) => postMoves(tx, [{ loc: "coffee", it: "chips", qty: have, kind: "adjustment", refType: "test", refId: "qr-menu-refill" }]));
+    }
+  });
+
   it("answers an unknown code and a switched-off one with the same 404 sentence", async () => {
     const off = await given.qrCode(app.db, { loc: "coffee", active: false });
     for (const token of ["NoSuchTokenAtAllxxxxxxxx", off.token]) {
