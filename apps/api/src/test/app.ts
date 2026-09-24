@@ -22,6 +22,9 @@ const BASE_ENV: NodeJS.ProcessEnv = {
   // Nothing under test seeds through the app - `seedTestDb` carries its own - so this is only
   // here to satisfy the schema.
   SEED_PASSWORD: "test-seed-password-1",
+  // The QR worker's timer is off under test: a pass running on its own would race a case's
+  // assertions. A case that wants one calls `app.qrWorker.tick()`.
+  QR_WORKER_INTERVAL_MS: "0",
 };
 
 /** Generates a fresh Ed25519 key pair on every call unless `overrides` supplies one, so two

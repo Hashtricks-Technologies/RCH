@@ -19,6 +19,7 @@ import idempotency from "./plugins/idempotency.js";
 import audit from "./plugins/audit.js";
 import images from "./plugins/images.js";
 import payments from "./plugins/payments.js";
+import qrWorker from "./plugins/qr-worker.js";
 import { registerModules } from "./modules/index.js";
 
 declare module "fastify" { interface FastifyInstance { config: Config } }
@@ -59,6 +60,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, max: config.dbPoolMax, searchPath: deps.searchPath, migrationsSchema: deps.migrationsSchema, db: deps.db, pool: deps.pool });
   await app.register(images, { config, store: deps.images });
   await app.register(payments, { config, gateway: deps.payments });
+  await app.register(qrWorker, { config });
   await app.register(auth, { config });
   await app.register(access);
   await app.register(rbac);

@@ -32,6 +32,8 @@ import adjustmentRequests from "./adjustmentRequests/routes.js";
 import admin from "./admin/routes.js";
 // ---- roles & permissions
 import roles from "./roles/routes.js";
+// ---- QR ordering: a customer's order from a printed code, and the gateway's webhook
+import qr from "./qr/routes.js";
 
 /** Every module, registered in one place. Adding a module = one import + one line here. */
 export async function registerModules(app: App): Promise<void> {
@@ -66,4 +68,6 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(admin);
   // ---- roles & permissions
   await app.register(roles);
+  // ---- QR ordering
+  await app.register(qr);
 }

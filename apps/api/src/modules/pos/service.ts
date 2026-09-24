@@ -1,7 +1,7 @@
 // Pos: the flow - transaction, rules, moves, id. Composes the helpers in apps/api/src/lib/;
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
-import type { Bill, PayBodySchema, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
+import type { Bill, Changed, PayBodySchema, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
 import { dmy, isAccountTender, istDate, money as inr, unitTotal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
@@ -13,15 +13,19 @@ import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { holdSession } from "../../lib/register.js";
 import { assertRule } from "../../lib/rules.js";
+import { moveQrOrder, qrOrderForUpdate } from "../../lib/qr-orders.js";
+import { queueRefund } from "../../lib/refunds.js";
 import { postSale } from "../../lib/sale.js";
-import { toWireBill } from "../../lib/wire.js";
+import { billRefundOf, toWireBill } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { posRepo } from "./repo.js";
 
 export type PayBody = z.infer<typeof PayBodySchema>;
 export type VoidBillBody = z.infer<typeof VoidBillBodySchema>;
 
-export function createPosService(db: Db) {
+/** `refundQueued` is called after a void of a QR bill has committed the refund it queued - the
+ *  QR worker's nudge, so the money starts back without waiting out the worker's interval. */
+export function createPosService(db: Db, hooks: { refundQueued?: () => void } = {}) {
   return {
     /**
      * One counter sale, in one transaction. The sale itself is `postSale` (`lib/sale.ts`), which a
@@ -54,11 +58,15 @@ export function createPosService(db: Db) {
      * refusal says so, and names the adjustment as the door that is open.
      */
     async voidBill(claims: AccessClaims, no: string, body: VoidBillBody): Promise<WriteResponse<Bill>> {
-      return withTransaction(db, async (tx) => {
+      const out = await withTransaction(db, async (tx) => {
         // The document first, locked - the order every write in this server keeps. Two managers
         // pressing Void on the same bill queue here, and the second reads what the first wrote.
         const bill = await posRepo.headForUpdate(tx, no);
         if (!bill) throw new NotFoundError(`There is no bill ${no}.`);
+        // A bill a QR order's capture raised: the order behind it, locked next - after the bill and
+        // before the outlet, the void's lock order (bill -> QR order -> outlet). The customer paid
+        // online, so the void also owes them the money back, queued below with the order's move.
+        const order = bill.source === "qr" && bill.qrOrderId ? await qrOrderForUpdate(tx, bill.qrOrderId) : undefined;
         // Four eyes. Void a bill is grantable to any role that sees Bills, a counter's included, and
         // a till that could unsell its own takings is a till that could pocket them. The seeded
         // Outlet Manager never bills, so for the seeded roles this never fires.
@@ -136,23 +144,39 @@ export function createPosService(db: Db) {
         // it is printed, and the badge and the reason already say it.
         await appendHistory(tx, "bill", no, `Voided - ${reason}`, voider?.name ?? claims.sub, at);
 
+        // The QR order goes with its bill, whatever step the counter had reached, and the whole
+        // bill is queued to go back to the customer's UPI or card. The worker sends it after
+        // commit; nothing here calls the gateway.
+        const refund = order && order.rzpPaymentId
+          ? await (async () => {
+            await moveQrOrder(tx, order, "Voided", voider?.name ?? claims.sub, { at, note: reason });
+            return queueRefund(tx, { qrOrderId: order.id, paymentId: order.rzpPaymentId!, amount: head.total, reason: "void", billNo: no, at });
+          })()
+          : undefined;
+
         const operator = await posRepo.operator(tx, head.operatorId);
-        const result = toWireBill(head, lines, { name: operator?.name ?? head.operatorId, colour: operator?.colour ?? "#64748B" });
+        const result = toWireBill(head, lines, { name: operator?.name ?? head.operatorId, colour: operator?.colour ?? "#64748B" },
+          refund ? billRefundOf(refund) : undefined);
         const back = reversals.map((r) => ({ it: r.it, qty: r.qty }));
         const unitOf = (it: string) => master.items[it]?.u ?? "nos";
         // What the manager most needs told is what the void gave back. For a bill on somebody's
         // account that is the room it frees, which is the thing a mis-keyed bill actually costs
         // them; otherwise it is the stock that went back on the shelf.
-        const message = head.payerKind && isAccountTender(head.tender as Tender)
+        const message = refund
+          ? `${no} voided - ${inr(head.total)} is being refunded to the customer's UPI/card`
+          : head.payerKind && isAccountTender(head.tender as Tender)
           ? `${no} voided - ${inr(head.total)} is off ${head.payerName ?? head.payerId}'s account`
           : back.length > 0
             ? `${no} voided - ${unitTotal(back, unitOf)} back on the shelf at ${locName}`
             : `${no} voided`;
-        // Same rule as the sale: a void takes the debt back off the account it was posted to.
-        const changed = head.payerKind ? ["stock", "bills", "receivables"] as const : ["stock", "bills"] as const;
+        // Same rule as the sale: a void takes the debt back off the account it was posted to. A QR
+        // bill's void also moves its order, which the counter's queue reads.
+        const changed: Changed[] = head.payerKind ? ["stock", "bills", "receivables"] : refund ? ["stock", "bills", "qrOrders"] : ["stock", "bills"];
         await emitChanged(tx, changed);
-        return { result, changed: [...changed], message };
+        return { result, changed, message };
       });
+      if (out.result.refund) hooks.refundQueued?.();
+      return out;
     },
   };
 }

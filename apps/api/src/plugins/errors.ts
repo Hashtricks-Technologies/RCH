@@ -1,6 +1,7 @@
 import fp from "fastify-plugin";
 import { hasZodFastifySchemaValidationErrors, isResponseSerializationError } from "fastify-type-provider-zod";
 import { AppError, NotFoundError, ValidationError } from "../lib/errors.js";
+import { scrubUrl } from "./logging.js";
 
 /** What a 4xx was refused with, for the request's own log line. `cause` is the internal reason
  *  an `AppError` carried; the sentence is the one the caller read. Set here, read once in
@@ -10,7 +11,7 @@ declare module "fastify" { interface FastifyRequest { refusal?: Refusal } }
 
 export default fp(async (app) => {
   app.setNotFoundHandler((req, reply) => {
-    const e = new NotFoundError(`There is nothing at ${req.method} ${req.url}.`);
+    const e = new NotFoundError(`There is nothing at ${req.method} ${scrubUrl(req.url)}.`);
     req.refusal = { code: e.code, message: e.message };
     reply.code(404).send(e.toEnvelope());
   });
