@@ -134,7 +134,10 @@ body?, response, … })`.
   ingress each send `/api/v1/admin/audit` to the audit service, ahead of `/api`.
 
 There are no hand-written fetch wrappers. A new endpoint is one manifest entry plus a handler, landed in the
-same commit.
+same commit. Exactly three API routes live outside the manifest, each registered by hand for a reason the
+manifest cannot carry: `GET /events` (a stream, not JSON), `GET /items/:it/image/:hash` (bytes, read by an
+`<img>` with no token) and `POST /public/razorpay/webhook` (`RAZORPAY_WEBHOOK_PATH`; signed by the gateway
+over the raw body, so it has a scope and a body parser of its own).
 
 ### A write, end to end
 
@@ -210,6 +213,8 @@ excepted.
   A role holding Shift reports (`shift_reports`, the seeded Outlet Manager) reads every outlet's closed shifts
   (`GET /shifts`, `access: "any"`) on the Register screen and the bell; any other counter-desk role reads its
   own, and every other role an empty list. The outlet's X/Z is unchanged: a shift is one person's hours inside it.
+  A QR bill is raised by the system account, which never signs in, so it counts on the X/Z (as **Online**,
+  collected but not cash in the drawer) and on nobody's shift.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
   account sees only the standalone `/admin` page, never an operational shell. The page has eight tabs: Accounts
   (staff accounts, each given one role), Roles (what each role grants, as a permission matrix), Outlets (opens,
@@ -260,7 +265,10 @@ back where it stood.
   counter sale's bill number and the adjustment's `ADJ-` number are allocated after the balance locks. Don't
   copy either one; `apps/api/CLAUDE.md` explains why each is safe. A write naming a location takes its row `FOR
   SHARE` through `lockLocation` in `apps/api/src/lib/locations.ts`, in the documents tier; a close takes it `FOR
-  UPDATE`.
+  UPDATE`. A QR capture takes its order `FOR UPDATE` first, then (through `postSale`) the outlet, the register
+  session, the shelves and the bill number; a void of a QR bill takes the bill, then its QR order, then the
+  outlet. No transaction ever waits on the payment gateway: it is asked before a transaction opens or after one
+  commits.
 - Status changes go through the tables in `packages/domain/src/transitions.ts`. The server refuses with them,
   and the UI reads the same tables to decide which buttons to draw.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
@@ -292,12 +300,21 @@ back where it stood.
   /price-lists`, `PUT /outlets/:loc/price-list`, `PUT /prices/:list/:it`) are hidden, not deleted:
   `PRICE_LISTS_ENABLED` in `UI/src/registry.tsx` is `false`, and turning it on puts that screen
   back under the same sidebar entry. A newly opened outlet is on no list until the grid first prices it.
-- **QR ordering's server foundations** (Phase 1A; the routes come later): `lib/sale.ts`'s `postSale` is the one
-  sale body, called by the till and by a QR capture, so `allocateId("bill")` keeps its single call site;
-  `lib/payments.ts` is the only code that talks to the payment gateway (`app.payments`, null without the
-  Razorpay keys); `lib/refunds.ts` is the only writer of `payment_refunds` (`scripts/check-boundaries.sh`);
-  and the `sys-qr` "QR Orders" account (`users.system`) raises QR bills and system audit events, can never
-  sign in, and is left off every staff list.
+- **QR ordering** (`apps/api/src/modules/qr`, `deploy/RUNBOOK.md` §19). A customer scans a code the super
+  admin made (`/admin`, QR codes: a label, *pickup* or *deliver*, a 192-bit token, one ordering window per
+  weekday in IST), orders from the public page with no sign-in, and pays through Razorpay. Placing an order
+  (`POST /public/qr/:token/orders`) quotes it with the till's own rules and prices, stores only the hashes of
+  its secret and nonce, and creates the gateway's order after commit; with no Razorpay keys it is a 503. The
+  capture - the browser's verify **or** the signed webhook, one idempotent path (`settleCapture`) - raises an
+  ordinary bill through `lib/sale.ts`'s `postSale` (so `allocateId("bill")` keeps its single call site) with
+  the **Online** tender, which only a capture uses (`TILL_TENDERS` is every other), operated by the `sys-qr`
+  "QR Orders" account (`users.system`: never signs in, never on a staff list, never on a shift). A capture the
+  outlet cannot fill makes no bill; the order is Refunded and the money queued back. The counter works its
+  outlet's queue (`GET /qr-orders`, one next step at a time, a pause switch); a void of an Online bill voids
+  its order and queues a refund; `plugins/qr-worker.ts` expires unpaid orders and sends refunds. The
+  public routes have per-IP limits, and an unknown, switched-off or regenerated code is one 404 sentence.
+  `lib/payments.ts` is the only code that talks to the gateway (`app.payments`, null without the keys), and
+  `lib/refunds.ts` the only writer of `payment_refunds` (`scripts/check-boundaries.sh`).
 - `lib/images.ts` is the only code that touches photo bytes (S3 in production, a folder in dev/test).
   `items.image` holds the sha256; `GET /items/:it/image/:hash` is public, outside the manifest like `/events`,
   and serves only the current hash.
@@ -325,6 +342,10 @@ values before it.
   a success no transaction recorded, but only when a valid token identifies the caller: a write refused with no
   verifiable token leaves no event. `modules/auth` records sign-in, failed sign-in, lock-out, sign-out and
   password change itself. A 401, an idempotent replay, a token refresh and every read are not events.
+- **Anonymous writes are audited only when accepted.** `mount()` does not audit a public route, so the QR
+  module records what a customer's phone or the gateway did itself (`recordSystemEvent`, the QR Orders account
+  as the actor, inside the write's own transaction): an order placed, a payment billed or refunded, a refund
+  sent, processed or failed. A refused anonymous write leaves nothing, so a stranger cannot flood the log.
 - **An edit records its before values.** A service that updates or removes an existing master row or account
   calls `auditBefore(...)` right after reading that row (after locking it, where the service locks), before any
   rule or change, so a refused edit carries its before too. A document status change doesn't; its trail
@@ -407,13 +428,21 @@ The code enforces these and tests pin them. Breaking one is a bug.
   its register session is still open. The void posts reversal
   moves, frees the credit room it used, and badges the bill rather than erasing it. A bill a live settlement
   has already closed refuses its own void and names the settlement to take back first.
+- **A QR order becomes a bill only when its payment is captured, and money that cannot be billed goes back.**
+  The bill is exactly the till's (`postSale`: the till's prices capped at MRP, the same cover checks, the
+  outlet's open register session, GST); if the sale is refused, or the amount paid or a price moved since the
+  quote, there is no bill and the whole payment is queued as a refund. One order has at most one bill
+  (`bills.qr_order_id` is unique); a second payment against it is refunded as a duplicate. A void of an Online
+  bill queues its refund; an unpaid order expires after `QR_ORDER_TTL_MIN` (30), and a late capture is still
+  billed or refunded, never lost. A refund is sent by the worker, never inside a transaction, and looked up
+  at the gateway by its own id before every send, so it is never paid twice.
 - **Items are retired, never deleted**, and not while any stock or menu listing remains. **Payers are
   deactivated, never deleted** - a payer with a bill against them is somebody's balance, and an id that
   vanishes is a debt nobody can find. Deactivating one is allowed whatever they owe: it is how the hospital
   stops new bills reaching an account it is still chasing.
 - **Outlets are closed, never deleted.** A close is refused while the outlet holds stock, an open ticket, stock
-  request, kitchen order, shop ask or product request, or an active staff member, and the refusal names every
-  one. A closed outlet takes no sale, transfer, ask, stock request, kitchen order, adjustment, menu listing,
+  request, kitchen order, shop ask, product request or QR order (paid and not yet handed over), an active staff
+  member or an open register, and the refusal names every one. A closed outlet takes no sale, transfer, ask, stock request, kitchen order, adjustment, menu listing,
   price-list switch or void, and no staff can be posted to it. A reopen restores it as it was.
 - **An item carries at most one photo**: JPEG, PNG or WebP, at most 700 KB, checked by `checkPhoto` on both
   sides. A retired item takes no new photo.
