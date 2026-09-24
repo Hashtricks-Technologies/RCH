@@ -192,12 +192,14 @@ describe("POST /qr-refunds/:id/retry", () => {
     const id = `${p.id}-R1`;
     expect((await as("u2", "POST", `/qr-refunds/${id}/retry`)).json().error.message).toBe(`Refund ${id} is pending - only a failed refund can be retried`);
     await app.db.update(s.paymentRefunds).set({ status: "Failed", attempts: 6, lastError: "Insufficient balance" }).where(eq(s.paymentRefunds.id, id));
+    // The refusal above is audited after its reply: let it land before the mark, or it lands after.
+    await app.auditSettled();
     const m = await mark();
     const r = await as("u2", "POST", `/qr-refunds/${id}/retry`);
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().result).toEqual({ id, status: "Pending", reason: "void", amount: 20, attempts: 0 });
     expect(r.json().message).toBe(`Refund ${id} of ₹20.00 is queued again - it goes to the payment gateway shortly`);
-    expect((await eventsSince(m)).find((e) => e.action === "retryQrRefund")).toMatchObject({ before: { status: "Failed", attempts: 6, lastError: "Insufficient balance" } });
+    expect((await eventsSince(m)).find((e) => e.action === "retryQrRefund" && e.outcome === "done")).toMatchObject({ before: { status: "Failed", attempts: 6, lastError: "Insufficient balance" } });
     // The seeded counter does not hold Void a bill (it could be granted it): a 403.
     expect((await as("u1", "POST", `/qr-refunds/${id}/retry`)).statusCode).toBe(403);
     expect((await as("u2", "POST", "/qr-refunds/QO-2099-0001-R1/retry")).statusCode).toBe(404);
