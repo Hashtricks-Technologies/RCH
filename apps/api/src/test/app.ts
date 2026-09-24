@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildApp, type App } from "../app.js";
 import type { LogStream } from "../plugins/logging.js";
+import type { PaymentGateway } from "../lib/payments.js";
 import { loadConfig, type Config } from "../config.js";
 import { withTestSchema, type TestDb } from "./db.js";
 
@@ -45,20 +46,22 @@ export function testConfig(overrides: Partial<NodeJS.ProcessEnv> = {}): Config {
  *  it out from under each other when run in parallel. */
 /** `logStream` collects the app's log lines for a test that asserts on them; pair it with
  *  `env: { LOG_LEVEL: "info" }`, since the harness default is `silent`. */
+/** `payments` injects a gateway (`createFakeGateway()` in `./fake-gateway.ts`), or `null` for the
+ *  switched-off path; left out, the config decides, which in the harness is off. */
 type BuildTestAppOpts =
-  | { withDb: false; env?: Partial<NodeJS.ProcessEnv>; logStream?: LogStream }
-  | { withDb?: true; schema: string; env?: Partial<NodeJS.ProcessEnv>; logStream?: LogStream };
+  | { withDb: false; env?: Partial<NodeJS.ProcessEnv>; logStream?: LogStream; payments?: PaymentGateway | null }
+  | { withDb?: true; schema: string; env?: Partial<NodeJS.ProcessEnv>; logStream?: LogStream; payments?: PaymentGateway | null };
 
 /** `withDb: false` builds the app without a database (Task 4 tests). Otherwise a fresh
  *  per-file schema is created and migrated, and the app is bound to it. */
 export async function buildTestApp(opts: BuildTestAppOpts): Promise<App> {
   const config = testConfig(opts.env);
-  if (opts.withDb === false) return buildApp(config, { logStream: opts.logStream });
+  if (opts.withDb === false) return buildApp(config, { logStream: opts.logStream, payments: opts.payments });
   const testDb: TestDb = await withTestSchema(opts.schema);
   // The db plugin ignores `searchPath` when a `db` is injected, so it is inert there - it is
   // here for the SSE plugin's own LISTEN connection, which is not a pool member and must land
   // on the same schema, or it would compute a different channel name than the writes do.
-  const app = await buildApp(config, { db: testDb.db, pool: testDb.pool, searchPath: `${testDb.schemaName},public`, migrationsSchema: testDb.schemaName, logStream: opts.logStream });
+  const app = await buildApp(config, { db: testDb.db, pool: testDb.pool, searchPath: `${testDb.schemaName},public`, migrationsSchema: testDb.schemaName, logStream: opts.logStream, payments: opts.payments });
   app.addHook("onClose", async () => { await testDb.close(); });
   return Object.assign(app, { testDb });
 }
