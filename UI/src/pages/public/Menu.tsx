@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { money, pausedRefusal } from "@rch/domain";
 import type { PublicMenu } from "@rch/contract";
 import { statusUrl } from "../../lib/orderPath";
-import { cartCount, cartTotal, dismissRemembered, go, limitOf, orderable, rememberedFor, usePublicOrder } from "../../store/publicOrder";
+import { MENU_REFRESH_MS, cartCount, cartTotal, dismissRemembered, go, limitOf, orderable, rememberedFor, usePublicOrder } from "../../store/publicOrder";
 import CartBar from "./CartBar";
 import CheckoutSheet from "./CheckoutSheet";
 import { Dead, MenuSkeleton, Stepper, Thumb } from "./parts";
@@ -44,6 +44,19 @@ export default function Menu({ token }: { token: string }) {
   }, []);
 
   useEffect(() => { void loadMenu(token); }, [loadMenu, token]);
+  // Read it again every minute while it is on screen, and on coming back to the tab. The cart is
+  // reconciled by `loadMenu`; nothing is read under a checkout in flight.
+  useEffect(() => {
+    const visible = () => document.visibilityState !== "hidden";
+    const refresh = () => {
+      const s = usePublicOrder.getState();
+      if (visible() && !s.placing && !s.paying) void loadMenu(token);
+    };
+    const t = setInterval(refresh, MENU_REFRESH_MS);
+    const onVisible = () => { if (visible()) refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
+  }, [loadMenu, token]);
   useEffect(() => { if (menu) document.title = `${menu.outlet.name} - order`; }, [menu]);
   // A cap's sentence is said once and goes.
   useEffect(() => {

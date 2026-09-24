@@ -8,7 +8,7 @@ import { money, pausedRefusal, customerPhoneRefusal, QR_STATUS_WORDS } from "@rc
 import OrderApp from "../pages/public/OrderApp";
 import { closedBanner } from "../pages/public/Menu";
 import { istStamp, refundWords, whereWords } from "../pages/public/OrderStatus";
-import { resetPublicOrder, usePublicOrder } from "../store/publicOrder";
+import { MENU_REFRESH_MS, resetPublicOrder, usePublicOrder } from "../store/publicOrder";
 import { SECRET, TOKEN, created, json, menuOf, orderOf, refusal } from "./publicFixture";
 
 /**
@@ -142,6 +142,40 @@ describe("the menu", () => {
     await settle();
     expect(window.location.pathname).toBe(`/order/${TOKEN}/o/QO-2026-0042`);
     expect(ui.text()).toContain(QR_STATUS_WORDS.Paid);
+  });
+
+  it("reads the menu again every minute while visible and on coming back, keeping the cart", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let menu = menuOf();
+    serve({ [MENU]: () => json(menu) });
+    ui = await mount(`/order/${TOKEN}`);
+    const reads = () => fetchMock.mock.calls.filter(([u]) => String(u).endsWith(`/public/qr/${TOKEN}`)).length;
+    expect(reads()).toBe(1);
+    click(ui.button("Add Masala Tea"));
+    menu = menuOf({ paused: true });
+    await act(async () => { vi.advanceTimersByTime(MENU_REFRESH_MS); });
+    await settle();
+    expect(reads()).toBe(2);
+    expect(ui.q(".qo-banner")?.textContent).toContain(pausedRefusal("Coffee Shop"));
+    expect(usePublicOrder.getState().cart).toEqual({ tea: 1 });
+    // Hidden: nothing. Back: at once.
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    await act(async () => { vi.advanceTimersByTime(MENU_REFRESH_MS * 3); });
+    expect(reads()).toBe(2);
+    menu = menuOf();
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await settle();
+    expect(reads()).toBe(3);
+    expect(ui.q(".qo-banner")).toBeNull();
+    // Nothing is read under a checkout in flight.
+    usePublicOrder.setState({ paying: true });
+    await act(async () => { vi.advanceTimersByTime(MENU_REFRESH_MS); });
+    expect(reads()).toBe(3);
+    usePublicOrder.setState({ paying: false });
+    ui.unmount(); ui = undefined;
+    await act(async () => { vi.advanceTimersByTime(MENU_REFRESH_MS); });
+    expect(reads()).toBe(3);
   });
 
   it("says why it is closed, with today's hours, and takes nothing", async () => {

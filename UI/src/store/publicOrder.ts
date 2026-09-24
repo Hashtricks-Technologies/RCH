@@ -38,6 +38,9 @@ export function pollDelay(order: PublicQrOrder | null, sinceStart: number, since
   return sinceStart >= POLL_SLOW_AFTER_MS ? POLL_SLOW_MS : POLL_FAST_MS;
 }
 
+/** The menu is read again this often while it is on screen, so a pause, the hours or a sell-out shows without a reload. */
+export const MENU_REFRESH_MS = 60_000;
+
 export const CHECKOUT_JS = "https://checkout.razorpay.com/v1/checkout.js";
 const STORAGE_KEY = "rch-qr-order";
 
