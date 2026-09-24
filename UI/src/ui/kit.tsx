@@ -2,7 +2,8 @@ import {
   Children, cloneElement, isValidElement, useEffect, useId, useRef, useState,
   type CSSProperties, type ReactElement, type ReactNode,
 } from "react";
-import { HSN_CODES, hsnGroups } from "@rch/domain";
+import type { Feature } from "@rch/contract";
+import { HSN_CODES, hsnGroups, permissionRefusal } from "@rch/domain";
 import type { Ticket, Tone } from "../types";
 import { ticketDot, toneFor } from "../lib/selectors";
 import { toInputDate } from "../lib/fmt";
@@ -126,11 +127,35 @@ export function Btn({ children, onClick, variant = "solid", size = "md", disable
 export const BtnRow = ({ children, end }: { children: ReactNode; end?: boolean }) => (
   <div className="btnrow" style={end ? { justifyContent: "flex-end" } : undefined}>{children}</div>
 );
-export function Switch({ on, onChange, label }: { on: boolean; onChange: () => void; label?: string }) {
-  return (
+export function Switch({ on, onChange, label, disabled, tip }: {
+  on: boolean; onChange: () => void; label?: string; disabled?: boolean;
+  /** Why the switch is disabled, as a tooltip - the same as `Btn`'s. */
+  tip?: ReactNode;
+}) {
+  const sw = (describedBy?: string) => (
     <button type="button" className={`sw${on ? " on" : ""}`} aria-pressed={on} aria-label={label ?? "toggle"}
+      disabled={disabled} aria-describedby={describedBy}
       onClick={(e) => { e.stopPropagation(); onChange(); }} />
   );
+  return tip ? <TipWrap text={tip}>{sw}</TipWrap> : sw();
+}
+
+/* ---------- view only ---------- */
+/**
+ * The badge a screen wears when the signed-in role may see it but not change anything on it. Its
+ * tip is the same sentence the server refuses a write with, so the operator reads what to ask for
+ * before pressing anything.
+ */
+const ViewOnlyPill = ({ f }: { f: Feature }) => (
+  <Tip text={permissionRefusal(f)}><Pill tone="mu">View only</Pill></Tip>
+);
+/**
+ * A control that is on the screen but shut because the role holds its feature at view: the
+ * control itself is drawn `disabled` by the caller, and this puts the refusal behind it as a
+ * tooltip. With `locked` false it adds nothing.
+ */
+export function Locked({ f, locked, children }: { f: Feature; locked: boolean; children: ReactNode }) {
+  return locked ? <TipWrap text={permissionRefusal(f)}>{() => children}</TipWrap> : <>{children}</>;
 }
 
 /* ---------- page ---------- */
@@ -143,8 +168,11 @@ const about = (t: ReactNode) => (typeof t === "string" ? t : undefined);
  * needs to read every time (a count, a location, a warning) stays visible, and what explains the
  * screen or the field goes into `tip`.
  */
-export function PageHead({ crumbs, title, sub, tip, actions }: {
+export function PageHead({ crumbs, title, sub, tip, actions, readOnly }: {
   crumbs: string[]; title: ReactNode; sub?: ReactNode; tip?: ReactNode; actions?: ReactNode;
+  /** The feature this screen is held at view only, which draws the "View only" badge; `false` or
+   *  absent where the role may change what is on it. */
+  readOnly?: Feature | false;
 }) {
   return (
     <>
@@ -153,7 +181,7 @@ export function PageHead({ crumbs, title, sub, tip, actions }: {
       ))}</div>
       <div className="pgh">
         <div className="pt">
-          <div className="tipped"><h1>{title}</h1>{tip && <Tip text={tip} label={about(title)} />}</div>
+          <div className="tipped"><h1>{title}</h1>{tip && <Tip text={tip} label={about(title)} />}{readOnly && <ViewOnlyPill f={readOnly} />}</div>
           {sub && <p>{sub}</p>}
         </div>
         {actions && <div className="acts">{actions}</div>}

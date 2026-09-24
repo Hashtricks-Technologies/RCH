@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC, PL, PRICE_LISTS } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, menuOf, openOutlets, priceOf } from "../../lib/selectors";
+import { costOf, menuOf, openOutlets, priceOf, useCan } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import { Modal } from "../../ui/Modal";
 import {
@@ -43,6 +43,7 @@ export default function Prices() {
   const deletePriceList = useApp((x) => x.deletePriceList);
   const openDrawer = useApp((x) => x.openDrawer);
   const notify = useApp((x) => x.notify);
+  const may = useCan("prices");
 
   const shop = s.shopFilter;
   const [edit, setEdit] = useState<Record<string, string>>({});
@@ -83,7 +84,7 @@ export default function Prices() {
    *  button on this page rather than a section inside the settings panel - where a manager
    *  looking for "new price list" had to go and find it. What stays in the panel is the other
    *  job: which list each outlet charges from, which is a table of every outlet at once. */
-  const newList = (
+  const newList = may && (
     <Btn size="sm" tip="Create a price list. It starts inactive - no counter charges from it until you attach it."
       onClick={() => setCreating(true)}>
       <Icon name="plus" /> New price list
@@ -124,6 +125,7 @@ export default function Prices() {
           title="Shop price lists"
           sub={outlets.length === 0 ? "No outlet is configured yet." : undefined}
           tip="What each shop charges."
+          readOnly={!may && "prices"}
           actions={
             <div style={{ display: "flex", gap: 6 }}>
               <Btn variant={tab === "outlets" ? "solid" : "gh"} size="sm" onClick={() => setTab("outlets")}>Outlets</Btn>
@@ -194,7 +196,7 @@ export default function Prices() {
                   { h: "Name", cls: "nm" },
                   { h: "Outlets" },
                   { h: "Items", r: true },
-                  { h: "Actions", w: "20%" },
+                  ...(may ? [{ h: "Actions", w: "20%" }] : []),
                 ]}
                 rows={filteredLists.map((pl) => ({
                   key: pl.id,
@@ -202,7 +204,7 @@ export default function Prices() {
                     pl.name,
                     pl.outlets.length > 0 ? pl.outlets.map((l) => LOC[l]?.n ?? l).join(", ") : <span className="mini">Unattached</span>,
                     Object.keys(PL[pl.id] ?? {}).length,
-                    dropList === pl.id ? (
+                    ...(!may ? [] : [dropList === pl.id ? (
                       <div style={{ display: "flex", gap: 6 }}>
                         <Btn size="xs" variant="dg" disabled={busy[`dropList:${pl.id}`]} onClick={() => void deleteList(pl.id)}>
                           {busy[`dropList:${pl.id}`] ? "Deleting…" : "Confirm delete"}
@@ -216,7 +218,7 @@ export default function Prices() {
                       </span>
                     ) : (
                       <Btn size="xs" variant="dg" onClick={() => setDropList(pl.id)}>Delete</Btn>
-                    ),
+                    )]),
                   ],
                 }))}
                 empty={emptyFor(listTerm !== "" || listOutlet !== "All", {
@@ -242,6 +244,7 @@ export default function Prices() {
           crumbs={["Royal Care", "Outlets", "Price Lists", LOC[shop].n]}
           title={`${LOC[shop].n} prices`}
           tip="What this shop sells and charges."
+        readOnly={!may && "prices"}
           actions={
             <div style={{ display: "flex", gap: 6 }}>
               {newList}
@@ -329,6 +332,7 @@ export default function Prices() {
         crumbs={["Royal Care", "Outlets", "Price Lists", LOC[shop].n]}
         title={`${LOC[shop].n} prices`}
         tip="What this shop sells and charges."
+        readOnly={!may && "prices"}
         actions={
           <div style={{ display: "flex", gap: 6 }}>
             {newList}
@@ -345,7 +349,7 @@ export default function Prices() {
           : <>{LOC[shop].n} is the only outlet on list <b>{nameOfList(list)}</b>{others.length > 0 && <>, so {listOf(others.map((o) => LOC[o].n))} {others.length === 1 ? "is" : "are"} untouched by these edits</>}.</>}
       </Alert>
 
-      <Card title="Add a product" tip={`Priced on list ${nameOfList(list)} but not listed at this counter`}>
+      {may && <Card title="Add a product" tip={`Priced on list ${nameOfList(list)} but not listed at this counter`}>
         {missing.length > 0 ? (
           <>
             <FormRow>
@@ -371,7 +375,7 @@ export default function Prices() {
         ) : (
           <p className="mini">Every product priced on list {nameOfList(list)} is already listed at this counter.</p>
         )}
-      </Card>
+      </Card>}
 
       <Card title="Products and prices" sub={`${items.length} of ${listed.length} listed at this counter`} flush className="mtop">
         <Toolbar
@@ -402,7 +406,7 @@ export default function Prices() {
               { h: "Listed price", r: true, sort: "listed" },
               { h: "Charged price", r: true, sort: "charged" },
               { h: "Margin %", r: true, sort: "margin" },
-              { h: "Actions", w: "26%" },
+              ...(may ? [{ h: "Actions", w: "26%" }] : []),
             ]}
             rows={sortedItems.map((it) => {
               const pr = priceOf(s, shop, it);
@@ -428,7 +432,7 @@ export default function Prices() {
                     {pr.capped && <> <Pill tone="wn">MRP cap</Pill></>}
                   </>,
                   `${marginOf(pr.p, cost).toFixed(1)}%`,
-                  <>
+                  ...(!may ? [] : [<>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <input
                         type="number"
@@ -461,7 +465,7 @@ export default function Prices() {
                         Takes it off the {LOC[shop].n} till at once. Add a product puts it back.
                       </div>
                     )}
-                  </>,
+                  </>]),
                 ],
               };
             })}

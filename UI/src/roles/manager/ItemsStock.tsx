@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { allOutlets, costOf, isRetired, isTicketOpen, itemMatches, locName, openOutlets, operationalLocs, qty, resv, stockValue } from "../../lib/selectors";
+import { allOutlets, costOf, isRetired, isTicketOpen, itemMatches, locName, openOutlets, operationalLocs, qty, resv, stockValue, useCan } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead,
@@ -27,6 +27,7 @@ export default function ItemsStock() {
   const s = useApp();
   // ---- item patch ----
   const openDrawer = useApp((x) => x.openDrawer);
+  const may = useCan("items_stock");
 
   const [q, setQ] = useState("");
   const [type, setType] = useState(0);
@@ -119,6 +120,7 @@ export default function ItemsStock() {
         crumbs={["Royal Care", "Outlets", "Items & Stock"]}
         title="Items and stock in hand"
         tip="Every item and where its stock is."
+        readOnly={!may && "items_stock"}
       />
 
       <Alert tone="i" label="SHOP TO SHOP">
@@ -294,7 +296,7 @@ export default function ItemsStock() {
               // ---- item patch ----
               // The manager owns the three commercial figures; the drawer greys out the rest.
               <Btn size="xs" variant="gh" onClick={() => openDrawer("item", r.k)}>
-                {isRetired(r.k) ? "Restore" : "Edit"}
+                {!may ? "View" : isRetired(r.k) ? "Restore" : "Edit"}
               </Btn>,
             ],
           }))}

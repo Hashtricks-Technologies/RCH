@@ -273,6 +273,7 @@ td.n b{font-weight:600;color:var(--ink)}
 .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
 .sw.on{background:var(--good)}.sw.on::after{transform:translateX(14px)}
 .sw i{display:none}
+.sw:disabled{opacity:.42;cursor:not-allowed}
 .seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden;background:var(--surface)}
 .seg button{padding:5px 11px;font-size:11.5px;font-weight:600;color:var(--ink-3);border-right:1px solid var(--line)}
 .seg button:last-child{border-right:0}.seg button.on{background:var(--accent);color:var(--on-accent)}
@@ -329,7 +330,7 @@ td.n b{font-weight:600;color:var(--ink)}
 .tip-b[hidden]{display:none}
 .tipw{display:inline-flex;position:relative}
 .tipw.wide{display:flex;width:100%}
-.tipw .btn:disabled{pointer-events:none}
+.tipw .btn:disabled,.tipw :disabled{pointer-events:none}
 .card-h .card-t{flex:1;min-width:110px}
 .card-h .card-t h3{flex:none;min-width:0}
 .fld .fld-l{margin-bottom:5px}

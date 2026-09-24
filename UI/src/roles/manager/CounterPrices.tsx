@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { activeItems, costOf, menuOf, openOutlets, priceOf } from "../../lib/selectors";
+import { activeItems, costOf, menuOf, openOutlets, priceOf, useCan } from "../../lib/selectors";
 import { money } from "../../lib/fmt";
 import { Modal } from "../../ui/Modal";
+import { permissionRefusal } from "@rch/domain";
 import {
-  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, Locked, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
@@ -36,6 +37,8 @@ type Change = { loc: LocKey; it: string; price?: number; listed?: boolean; was: 
 export default function CounterPrices() {
   const s = useApp();
   const saveOutletPrices = useApp((x) => x.saveOutletPrices);
+  // A role that sees Prices but may not change them reads the grid with every cell shut.
+  const may = useCan("prices");
 
   const [staged, setStaged] = useState<Record<string, Staged>>({});
   const [q, setQ] = useState("");
@@ -108,13 +111,16 @@ export default function CounterPrices() {
     return (
       <div className={cls}>
         <div className="cp-row">
-          <Switch on={c.listed} label={`Sell ${IT[it].n} at ${LOC[loc].n}`} onChange={() => stage(loc, it, { listed: !c.listed })} />
-          <input
-            type="number" min={0} step={1} placeholder="Not priced"
-            value={c.typed ?? (c.was.price === undefined ? "" : String(c.was.price))}
-            onChange={(e) => stage(loc, it, { price: e.target.value })}
-            aria-label={`Price of ${IT[it].n} at ${LOC[loc].n}`}
-          />
+          <Switch on={c.listed} label={`Sell ${IT[it].n} at ${LOC[loc].n}`} onChange={() => stage(loc, it, { listed: !c.listed })}
+            disabled={!may} tip={may ? undefined : permissionRefusal("prices")} />
+          <Locked f="prices" locked={!may}>
+            <input
+              type="number" min={0} step={1} placeholder="Not priced" disabled={!may}
+              value={c.typed ?? (c.was.price === undefined ? "" : String(c.was.price))}
+              onChange={(e) => stage(loc, it, { price: e.target.value })}
+              aria-label={`Price of ${IT[it].n} at ${LOC[loc].n}`}
+            />
+          </Locked>
         </div>
         {c.was.capped && !changed.has(key) && (
           <div className="hint">Charged {money(c.was.charged)} <Pill tone="wn">MRP cap</Pill></div>
@@ -149,6 +155,7 @@ export default function CounterPrices() {
         title="Counter prices"
         sub={outlets.length === 0 ? "No outlet is open yet." : `${sellable.length} sellable items across ${outlets.length} counters`}
         tip="Each cell is one counter: the switch says whether its till sells the item, the box what it charges. A price set here changes that counter only. A price above the printed MRP saves, but the till never charges more than the MRP."
+        readOnly={!may && "prices"}
       />
 
       <Card title="Items and counters" sub={`${rows.length} of ${sellable.length} items`} flush>
@@ -197,7 +204,7 @@ export default function CounterPrices() {
         <TableFoot count={rows.length} />
       </Card>
 
-      {changes.length > 0 && (
+      {may && changes.length > 0 && (
         <div className="cp-bar">
           <span><b>{changes.length}</b> {changes.length === 1 ? "change" : "changes"} not saved yet</span>
           {problems.length > 0 && <span style={{ color: "var(--crit)" }}>{problems.length} to fix first</span>}

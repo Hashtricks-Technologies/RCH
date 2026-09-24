@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { allOutlets, availOf, isTicketOpen, menuOf, openOutlets, stockValue } from "../../lib/selectors";
+import { allOutlets, availOf, isTicketOpen, menuOf, openOutlets, stockValue, useCan } from "../../lib/selectors";
 import { fromWireTime, lakh, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, TableFoot, Toolbar,
@@ -30,6 +30,7 @@ export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
   const openDrawer = useApp((x) => x.openDrawer);
+  const mayOrder = useCan("approvals");
   const catalogVersion = useApp((x) => x.catalogVersion);
   const readXReport = useApp((x) => x.readXReport);
 
@@ -217,7 +218,7 @@ export default function Dashboard() {
         actions={<>
           {/* ---- prod-order raise ---- the manager booking a tray for one of the three shops,
               rather than ringing the counter and asking them to raise it themselves. */}
-          <Btn variant="gh" onClick={() => openDrawer("korder", "new")}>Order from the kitchen</Btn>
+          {mayOrder && <Btn variant="gh" onClick={() => openDrawer("korder", "new")}>Order from the kitchen</Btn>}
           <Btn variant="gh" onClick={() => nav("/approvals")}>Open approvals</Btn>
         </>}
       />

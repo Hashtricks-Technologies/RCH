@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { openOutlets } from "../../lib/selectors";
+import { openOutlets, useCan } from "../../lib/selectors";
+import { permissionRefusal } from "@rch/domain";
 import { Alert, Field, Section } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import KitchenOrderForm from "../../ui/KitchenOrderForm";
@@ -24,6 +25,15 @@ function KitchenOrderDrawer() {
   // `LOC[loc]` below it would then be reading `LOC[undefined]`. `null` is a state this drawer can
   // render a sentence for; a lie about the type is not.
   const [loc, setLoc] = useState<LocKey | null>(openOutlets()[0] ?? null);
+  const may = useCan("approvals");
+
+  if (!may) {
+    return (
+      <DrawerFrame title="Order from the kitchen" sub="View only">
+        <Alert tone="w" label="VIEW ONLY">{permissionRefusal("approvals")}</Alert>
+      </DrawerFrame>
+    );
+  }
 
   if (!loc) {
     return (

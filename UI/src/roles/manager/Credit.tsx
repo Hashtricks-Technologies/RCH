@@ -8,11 +8,12 @@ import { CLASS_TERMS, DEPTS, DOCTORS, PAYER_TERMS, STAFF } from "../../data/mast
 import { useApp } from "../../store";
 import { fromWireDay, fromWireTime, isToday, money, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Kpis, PageHead, Pill,
+  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Kpis, Locked, PageHead, Pill,
   TableFoot, Tag, Tip, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { BillParty, PayerKind, Receivable, Settlement } from "../../types";
+import { useCan, useHolds } from "../../lib/selectors";
 
 /**
  * What each party is charged, what they still owe, and what settles it.
@@ -89,6 +90,7 @@ export default function Credit() {
   const catalogVersion = useApp((s) => s.catalogVersion);
   const loadReceivables = useApp((s) => s.loadReceivables);
   const openDrawer = useApp((s) => s.openDrawer);
+  const edit = useCan("credit");
 
   const [view, setView] = useState<View>("owed");
   // Three states, not two: nothing read yet, read and empty, and read and failed. Printing
@@ -106,6 +108,7 @@ export default function Credit() {
         crumbs={["Royal Care", "Credit"]}
         title="Credit & settlements"
         tip="What each party is charged, what they still owe, and what has settled it."
+        readOnly={!edit && "credit"}
         actions={
           <div className="seg" role="group" aria-label="View">
             {VIEWS.map(({ v, label }) => (
@@ -116,7 +119,7 @@ export default function Credit() {
         }
       />
       {view === "owed" ? <Owed rows={receivables} failed={failed} reading={reading} onOpen={openDrawer} onRetry={loadReceivables} />
-        : view === "terms" ? <Terms version={catalogVersion} />
+        : view === "terms" ? <Terms version={catalogVersion} edit={edit} />
           : <Settlements rows={settlements} failed={failed} reading={reading} onRetry={loadReceivables} />}
     </>
   );
@@ -268,7 +271,7 @@ function Owed({ rows, failed, reading, onOpen, onRetry }: {
 
 /* ---------- discounts & limits ---------- */
 
-function Terms({ version }: { version: number }) {
+function Terms({ version, edit: mayEdit }: { version: number; edit: boolean }) {
   const setClassTerms = useApp((s) => s.setClassTerms);
   const setPayerTerms = useApp((s) => s.setPayerTerms);
 
@@ -344,12 +347,16 @@ function Terms({ version }: { version: number }) {
     const bad = refusalFor(d, pctRequired);
     const moved = d.pct !== now.pct || d.limit !== now.limit;
     return { d, bad, moved, cells: [
-      <input type="number" min={0} max={100} step={0.5} className="mono" value={d.pct}
-        aria-label={`Discount for ${label}`} placeholder={pctRequired ? "0" : "inherit"}
-        onChange={(e) => put(k, now, { pct: e.target.value })} />,
-      <input type="number" min={0} step={100} className="mono" value={d.limit}
-        aria-label={`Credit limit for ${label}`} placeholder="no limit"
-        onChange={(e) => put(k, now, { limit: e.target.value })} />,
+      <Locked f="credit" locked={!mayEdit}>
+        <input type="number" min={0} max={100} step={0.5} className="mono" value={d.pct} disabled={!mayEdit}
+          aria-label={`Discount for ${label}`} placeholder={pctRequired ? "0" : "inherit"}
+          onChange={(e) => put(k, now, { pct: e.target.value })} />
+      </Locked>,
+      <Locked f="credit" locked={!mayEdit}>
+        <input type="number" min={0} step={100} className="mono" value={d.limit} disabled={!mayEdit}
+          aria-label={`Credit limit for ${label}`} placeholder="no limit"
+          onChange={(e) => put(k, now, { limit: e.target.value })} />
+      </Locked>,
     ] };
   };
 
@@ -370,7 +377,7 @@ function Terms({ version }: { version: number }) {
               { h: "Discount %", w: "15%" },
               { h: "Credit limit", w: "18%", tip: "How much of it they may owe at once. Leave it blank for no ceiling; zero refuses every credit sale." },
               { h: "In force" },
-              { h: "Actions", w: "18%" },
+              ...(mayEdit ? [{ h: "Actions", w: "18%" }] : []),
             ]}
             rows={card.classes.map((c) => {
               const k = `cls:${c.cls}`;
@@ -383,7 +390,7 @@ function Terms({ version }: { version: number }) {
                   cells[0],
                   cells[1],
                   <>{c.pct}% · {ceiling(c.limit)}</>,
-                  <>
+                  ...(mayEdit ? [<>
                     <Btn size="xs" disabled={busy[k] || !moved || bad !== null}
                       tip={bad ?? (moved ? undefined : "Nothing has changed on this row yet.")}
                       onClick={() => void saveClass(c.cls, d)}>
@@ -392,7 +399,7 @@ function Terms({ version }: { version: number }) {
                     {/* Visible, not a tooltip: a refusal the manager is one press from is
                         something they have to see without asking for it. */}
                     {bad && <div className="hint" style={{ color: "var(--crit)" }}>{bad}</div>}
-                  </>,
+                  </>] : []),
                 ],
               };
             })}
@@ -401,7 +408,7 @@ function Terms({ version }: { version: number }) {
         </div>
       </Card>
 
-      <Card title="Add an exception" className="mtop"
+      {mayEdit && <Card title="Add an exception" className="mtop"
         tip="One person on terms of their own. Leave the discount blank to keep their category's and set only a ceiling.">
         <FormRow cols="f3">
           <Field label="Person" tip="Anybody on the register who is not already on the list below.">
@@ -432,7 +439,7 @@ function Terms({ version }: { version: number }) {
           onClick={() => void addPayer()}>
           {busy.add ? "Saving…" : "Add the exception"}
         </Btn>
-      </Card>
+      </Card>}
 
       <Card title="People on their own terms" sub={`${card.payers.length} exception${card.payers.length === 1 ? "" : "s"}`}
         flush scroll className="mtop"
@@ -445,7 +452,7 @@ function Terms({ version }: { version: number }) {
               { h: "Discount %", w: "13%" },
               { h: "Credit limit", w: "15%" },
               { h: "In force", tip: "What actually applies to them: their own where they have one, their category's where the box is blank." },
-              { h: "Actions", w: "22%" },
+              ...(mayEdit ? [{ h: "Actions", w: "22%" }] : []),
             ]}
             rows={card.payers.map((t) => {
               const k = `p:${t.kind}:${t.id}`;
@@ -466,7 +473,7 @@ function Terms({ version }: { version: number }) {
                     : "Both set on this person, so neither follows the category."}>
                     <span>{pct}% · {ceiling(limit)}</span>
                   </Tip>,
-                  dropping === k ? (
+                  ...(!mayEdit ? [] : [dropping === k ? (
                     <div style={{ display: "flex", gap: 6 }}>
                       <Btn size="xs" variant="dg" disabled={busy[k]} onClick={() => void dropPayer(t.kind, t.id)}>
                         {busy[k] ? "Removing…" : "Put back on the category"}
@@ -482,7 +489,7 @@ function Terms({ version }: { version: number }) {
                       </Btn>
                       <Btn size="xs" variant="dg" disabled={busy[k]} onClick={() => setDropping(k)}>Remove</Btn>
                     </div>
-                  ),
+                  )]),
                 ],
               };
             })}
@@ -503,6 +510,7 @@ function Settlements({ rows, failed, reading, onRetry }: {
   rows: Settlement[]; failed: boolean; reading: boolean; onRetry: () => Promise<boolean>;
 }) {
   const voidSettlement = useApp((s) => s.voidSettlement);
+  const mayVoid = useHolds("void_settlement");
   const [voiding, setVoiding] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -586,6 +594,8 @@ function Settlements({ rows, failed, reading, onRetry }: {
                         <Btn size="xs" variant="gh" disabled={busy === r.id} onClick={() => { setVoiding(null); setReason(""); }}>Keep</Btn>
                       </div>
                     </>
+                  ) : !mayVoid ? (
+                    <span className="mini dim">—</span>
                   ) : isToday(r.at) ? (
                     <Btn size="xs" variant="dg" onClick={() => { setVoiding(r.id); setReason(""); }}>Void</Btn>
                   ) : (

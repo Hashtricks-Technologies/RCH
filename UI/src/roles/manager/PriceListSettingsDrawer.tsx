@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { LOC, PL, PRICE_LISTS } from "../../data/master";
 import { useApp } from "../../store";
-import { Alert, Btn, DataTable, Pill, Section, Tip } from "../../ui/kit";
+import { Alert, Btn, DataTable, Locked, Pill, Section, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer } from "../../drawers";
-import { openOutlets } from "../../lib/selectors";
+import { openOutlets, useCan } from "../../lib/selectors";
 import { listFor, listOf, nameOfList, sharers } from "./Prices";
 import type { LocKey } from "../../types";
 
@@ -32,6 +32,7 @@ function PriceListSettings() {
   void version;
   const deletePriceList = useApp((x) => x.deletePriceList);
   const setOutletPriceList = useApp((x) => x.setOutletPriceList);
+  const may = useCan("prices");
 
   const [dropList, setDropList] = useState<string | null>(null);
   /** One key per control with a write in flight. Every write on this panel can be refused, so
@@ -97,10 +98,10 @@ function PriceListSettings() {
                   active === "" ? <span className="mini">Nothing to share</span>
                     : others.length > 0 ? <Pill tone="wn">{outletNames(others)}</Pill>
                       : <span className="mini">This outlet only</span>,
-                  <select
+                  <Locked f="prices" locked={!may}><select
                     value={active}
                     aria-label={`Price list for ${LOC[loc].n}`}
-                    disabled={busy[`attach:${loc}`]}
+                    disabled={!may || busy[`attach:${loc}`]}
                     onChange={(e) => { if (e.target.value !== "") void attach(loc, e.target.value); }}
                   >
                     {/* The outlet's own list first, and by id rather than by name, so the box
@@ -110,7 +111,7 @@ function PriceListSettings() {
                     {allLists.filter((pl) => pl.id !== active).map((pl) => (
                       <option key={pl.id} value={pl.id}>{pl.name}</option>
                     ))}
-                  </select>,
+                  </select></Locked>,
                 ],
               };
             })}
@@ -129,7 +130,7 @@ function PriceListSettings() {
               { h: "Name", cls: "nm" },
               { h: "Outlets" },
               { h: "Items", r: true },
-              { h: "Actions", w: "30%" },
+              ...(may ? [{ h: "Actions", w: "30%" }] : []),
             ]}
             empty={{ title: "No price list yet", sub: "Press New price list on the Prices page behind this panel." }}
             rows={allLists.map((pl) => ({
@@ -138,7 +139,7 @@ function PriceListSettings() {
                 pl.name,
                 pl.outlets.length > 0 ? outletNames(pl.outlets) : <span className="mini">Unattached</span>,
                 Object.keys(PL[pl.id] ?? {}).length,
-                dropList === pl.id ? (
+                ...(!may ? [] : [dropList === pl.id ? (
                   <div style={{ display: "flex", gap: 6 }}>
                     <Btn size="xs" variant="dg" disabled={busy[`drop:${pl.id}`]} onClick={() => void remove(pl.id)}>
                       {busy[`drop:${pl.id}`] ? "Deleting…" : "Confirm delete"}
@@ -157,7 +158,7 @@ function PriceListSettings() {
                   </span>
                 ) : (
                   <Btn size="xs" variant="dg" onClick={() => { setDropList(pl.id); }}>Delete</Btn>
-                ),
+                )]),
               ],
             }))}
           />

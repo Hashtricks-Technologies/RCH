@@ -2,7 +2,7 @@ import { useState } from "react";
 import { REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail } from "../../lib/selectors";
+import { avail, useCan } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import { Alert, Btn, BtnRow, DataTable, Feed, Section, StatusPill, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
@@ -45,7 +45,9 @@ function Body({ r }: { r: DatedDoc<AdjustmentRequest> }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<"approve" | "reject" | "cancel" | null>(null);
 
-  const open = r.st === "Request sent";
+  // Only a role that may change Approvals decides one; any other reads it as it stands.
+  const may = useCan("approvals");
+  const open = r.st === "Request sent" && may;
   const reason = note.trim();
   const down = r.lines.filter((l) => l.qty < 0);
   const overdrawn = down.filter((l) => avail(s, r.loc, l.it) < -l.qty);

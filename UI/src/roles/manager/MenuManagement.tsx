@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { activeItems, isRetired, menuOf, openOutlets } from "../../lib/selectors";
+import { activeItems, isRetired, menuOf, openOutlets, useCan } from "../../lib/selectors";
 import { money } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, FilterSelect, FormRow, Grid, ItemImage, PageHead,
@@ -32,6 +32,7 @@ export default function MenuManagement() {
   const removeProduct = useApp((x) => x.removeProduct);
   const requestNewProduct = useApp((x) => x.requestNewProduct);
   const notify = useApp((x) => x.notify);
+  const may = useCan("menu");
   const catalogVersion = useApp((x) => x.catalogVersion);
   void catalogVersion;
 
@@ -139,6 +140,7 @@ export default function MenuManagement() {
         crumbs={["Royal Care", "Outlets", "Menu Management"]}
         title="Menu management"
         tip="What each outlet sells, and what it is still waiting on from the central store."
+        readOnly={!may && "menu"}
       />
 
       {shop === null ? (
@@ -192,7 +194,7 @@ export default function MenuManagement() {
                   { h: "Type", w: "10%", sort: "type" },
                   { h: "Group", sort: "group" },
                   { h: `Price on list ${nameOfList(list)}`, r: true, w: "18%", sort: "price" },
-                  { h: "Actions", w: "24%" },
+                  ...(may ? [{ h: "Actions", w: "24%" }] : []),
                 ]}
                 rows={ordered.map((k) => {
                   const price = priceOnList(k);
@@ -212,7 +214,7 @@ export default function MenuManagement() {
                       <Tag kind={tagKind(IT[k]?.t ?? "RAW")}>{IT[k]?.t}</Tag>,
                       IT[k]?.g ?? <span className="dim">—</span>,
                       price ? money(price) : <Pill tone="wn">Not priced</Pill>,
-                      drop === k ? (
+                      ...(!may ? [] : [drop === k ? (
                         <div style={{ display: "flex", gap: 6 }}>
                           <Btn size="xs" variant="dg" disabled={dropping === k} onClick={() => void dropItem(k)}>
                             {dropping === k ? "Removing…" : "Confirm removal"}
@@ -221,7 +223,7 @@ export default function MenuManagement() {
                         </div>
                       ) : (
                         <Btn size="xs" variant="dg" onClick={() => setDrop(k)}>Remove</Btn>
-                      ),
+                      )]),
                     ],
                   };
                 })}
@@ -237,7 +239,7 @@ export default function MenuManagement() {
             />
           </Card>
 
-          <Grid cols="g2">
+          {may && <Grid cols="g2">
             <Card
               title="Add products to this till"
               tip="Puts one or more catalogue products on the outlet's till at once"
@@ -327,7 +329,7 @@ export default function MenuManagement() {
                 {busy ? "Sending…" : "Raise new-product request"}
               </Btn>
             </Card>
-          </Grid>
+          </Grid>}
         </>
       )}
     </>

@@ -6,7 +6,7 @@ import {
 import { useApp } from "../../store";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { DrawerFrame } from "../../ui/Drawer";
-import { locName } from "../../lib/selectors";
+import { locName, useCan } from "../../lib/selectors";
 import { fromWireDay, fromWireTime, money, money0 } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Field, FormRow, Pill, Section } from "../../ui/kit";
 import type { PayerKind, Settlement, SettlementMode, Statement } from "../../types";
@@ -47,6 +47,7 @@ function Body({ kind, payer }: { kind: PayerKind; payer: string }) {
   const readStatement = useApp((s) => s.readStatement);
   const recordSettlement = useApp((s) => s.recordSettlement);
   const close = useApp((s) => s.closeDrawer);
+  const mayRecord = useCan("credit");
 
   // `undefined` is "still reading", `null` is "could not be read". They are different facts and
   // the second must never print as an account that owes nothing.
@@ -127,11 +128,13 @@ function Body({ kind, payer }: { kind: PayerKind; payer: string }) {
       foot={<>
         <Btn variant="gh" onClick={close}>Close</Btn>
         <div className="sp" />
-        <Btn disabled={!typed || refusal !== null || busy}
-          tip={refusal ?? (typed ? undefined : "Type an amount to record against this account.")}
-          onClick={() => void settle()}>
-          {busy ? "Recording…" : "Record the payment"}
-        </Btn>
+        {mayRecord && (
+          <Btn disabled={!typed || refusal !== null || busy}
+            tip={refusal ?? (typed ? undefined : "Type an amount to record against this account.")}
+            onClick={() => void settle()}>
+            {busy ? "Recording…" : "Record the payment"}
+          </Btn>
+        )}
       </>}
     >
       {st.outstanding > 0 ? (
@@ -180,7 +183,7 @@ function Body({ kind, payer }: { kind: PayerKind; payer: string }) {
         </div>
       </Section>
 
-      <Section title="Record a payment" tip="What the hospital has actually been handed. The server decides which bills it closes and stores that allocation; the section below is only what it would do with the account as it stands.">
+      {mayRecord && <Section title="Record a payment" tip="What the hospital has actually been handed. The server decides which bills it closes and stores that allocation; the section below is only what it would do with the account as it stands.">
         <FormRow cols="f3">
           <Field label="Amount" hint={refusal ? <span style={{ color: "var(--crit)" }}>{refusal}</span> : undefined}>
             <input type="number" min={0} step={10} className="mono" value={amount}
@@ -196,7 +199,7 @@ function Body({ kind, payer }: { kind: PayerKind; payer: string }) {
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
         </FormRow>
-      </Section>
+      </Section>}
 
       {plan && plan.lines.length > 0 && (
         <Section

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { allOutlets, locName } from "../../lib/selectors";
+import { allOutlets, locName, useCan } from "../../lib/selectors";
 import { unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -32,6 +32,7 @@ export default function Approvals() {
   const req = useApp((s) => s.req);
   const adjReq = useApp((s) => s.adjReq);
   const openDrawer = useApp((s) => s.openDrawer);
+  const may = useCan("approvals");
 
   const [wq, setWq] = useState("");
   const [wOutlet, setWOutlet] = useState(0);
@@ -105,6 +106,7 @@ export default function Approvals() {
         crumbs={["Royal Care", "Movement", "Approvals"]}
         title="Stock request approvals"
         tip="Stock requests waiting for your decision."
+        readOnly={!may && "approvals"}
       />
 
       {allWaiting.length > 0 ? (
@@ -163,7 +165,7 @@ export default function Approvals() {
               r.lines.length,
               <b>{asked(r)}</b>,
               r.urg ? <Pill tone="cr">Urgent</Pill> : <Pill tone="mu">Normal</Pill>,
-              <Btn size="xs" onClick={() => openDrawer("mreq", r.id)}>Review</Btn>,
+              <Btn size="xs" onClick={() => openDrawer("mreq", r.id)}>{may ? "Review" : "View"}</Btn>,
             ],
           }))}
           empty={emptyFor(wFiltered, {
@@ -269,7 +271,7 @@ export default function Approvals() {
               r.lines.length,
               REASON_LABEL[r.reason],
               <StatusPill status={r.st} />,
-              r.st === "Request sent" ? <Btn size="xs" onClick={() => openDrawer("madjreq", r.id)}>Review</Btn> : null,
+              r.st === "Request sent" ? <Btn size="xs" onClick={() => openDrawer("madjreq", r.id)}>{may ? "Review" : "View"}</Btn> : null,
             ],
           }))}
           empty={{

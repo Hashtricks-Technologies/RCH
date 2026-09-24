@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, costOf, freeToPromise, openOutlets, qty } from "../../lib/selectors";
+import { avail, costOf, freeToPromise, openOutlets, qty, useCan } from "../../lib/selectors";
 import { fq, money, sum, U, unitTotal } from "../../lib/fmt";
 import { Alert, Btn, DataTable, DraftLineInput, Feed, Field, Pill, Section, StatusPill, Tag, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
@@ -70,6 +70,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
   const rejectRequest = useApp((x) => x.rejectRequest);
   const cancelRequest = useApp((x) => x.cancelRequest);
   const redirectRequest = useApp((x) => x.redirectRequest);
+  const may = useCan("approvals");
 
   const [appr, setAppr] = useState<number[]>(() =>
     req.lines.map((l) =>
@@ -82,6 +83,9 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
   const [busy, setBusy] = useState<"approve" | "reject" | "withdraw" | "redirect" | null>(null);
 
   const open = req.st === "Request sent";
+  /** Whether this session decides it: an open request, and a role that may change Approvals. A
+   *  role that sees Approvals only reads the request as it stands. */
+  const decide = open && may;
   // A request the kitchen raised (`req.from === "kitchen"`) has no peer shop to redirect to -
   // only an outlet's own request does. `peers` is every other *open* outlet: a closed one is
   // not trading, so redirecting to it would issue a ticket nobody can collect against.
@@ -90,7 +94,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
   // A decision this manager made themselves, before the store keeper turns it into a ticket -
   // the one thing left to undo once "Approve & forward" has already gone through. A manager
   // is hospital-wide, so this is not scoped to the outlet that raised it.
-  const canWithdraw = (req.st === "Manager approved" || req.st === "Partially approved") && !req.ticket;
+  const canWithdraw = may && (req.st === "Manager approved" || req.st === "Partially approved") && !req.ticket;
   /** Clamped to what the counter asked for. The box itself is a `DraftLineInput`, so this is
    *  reached once per edit rather than once per keystroke - reading a half-typed "12." as a
    *  number is what turned a half-litre into 12 and then into 125 clamped back to the line. */
@@ -165,7 +169,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
       title={req.id}
       sub={`${LOC[req.from].n} · ${LOC[req.from].floor} · raised ${req.at}`}
       foot={
-        open ? (
+        decide ? (
           <>
             <Btn variant="gh" onClick={close}>Close</Btn>
             <div className="sp" />
@@ -248,7 +252,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
               { h: "On hand", r: true },
               { h: "Free to promise", r: true },
               { h: open ? "Approve" : "Approved", r: true, w: "14%" },
-              ...(open ? [{ h: "This item", w: "26%" }] : []),
+              ...(decide ? [{ h: "This item", w: "26%" }] : []),
             ]}
             rows={req.lines.map((l, i) => {
               const have = qty(s, "store", l.it);
@@ -267,7 +271,9 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
                   over
                     ? <Tip key="free" text="Already promised elsewhere"><span style={{ color: "var(--warn)" }}>{fq(free, l.it)}</span></Tip>
                     : <span key="free">{fq(free, l.it)}</span>,
-                  open ? (
+                  open && !decide ? (
+                    <span key="appr" className="dim">Not decided</span>
+                  ) : open ? (
                     dead
                       ? <span key="appr" style={{ color: "var(--crit)" }}>rejected</span>
                       // A half-litre is a real approval. The box absorbs the typing and commits
@@ -290,7 +296,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
                       )}
                     </span>
                   ),
-                  ...(open ? [
+                  ...(decide ? [
                     <div key="act" style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                       <Btn size="xs" variant={dead ? "gh" : "dg"} onClick={() => toggleKill(i)}>
                         {dead ? "Put this item back" : "Reject this item"}
@@ -358,7 +364,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
         </Alert>
       )}
 
-      {open && peers.length > 0 && (
+      {decide && peers.length > 0 && (
         <Section
           title="Fulfil from another outlet instead"
           tip="If you know a peer shop is already holding this, send it from there instead of the central store - a ticket issues straight from that shop's shelf, for the full amount asked."
@@ -396,7 +402,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
         </Section>
       )}
 
-      {open && (
+      {decide && (
         <Section
           title="Reason for the counter"
           tip="Goes to the counter and to the store keeper with this request, against your name. Required to reject; worth writing whenever you trim. Kept on the request history against your name."
