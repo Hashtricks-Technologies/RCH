@@ -873,7 +873,8 @@ describe("a form whose write the server refused", () => {
     const pay = vi.fn(async () => null);
     act(() => {
       as("counter");                                   // Kavitha, Coffee Shop
-      useApp.setState({ pay, readCredit: async () => null, cart: { coffee: { juice: 1 } } });
+      useApp.setState({ pay, readCredit: async () => null });
+      useApp.getState().addToCart("coffee", "juice", 1);
     });
     const ui = mount(counter.pos);
 
@@ -1165,8 +1166,8 @@ describe("what actually reaches the printer", () => {
   it("opens the new bill's drawer once the server has numbered it", async () => {
     act(() => {
       as("counter");
+      useApp.getState().addToCart("coffee", "juice", 1);
       useApp.setState({
-        cart: { coffee: { juice: 1 } },
         bills: [{ ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }],
         // A bill the server took, with the read-back behind it landing too.
         pay: async () => {
@@ -1187,8 +1188,8 @@ describe("what actually reaches the printer", () => {
   it("opens the bill the server numbered even when the read-back behind it failed", async () => {
     act(() => {
       as("counter");
+      useApp.getState().addToCart("coffee", "juice", 1);
       useApp.setState({
-        cart: { coffee: { juice: 1 } },
         bills: [{ ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }],
         pay: async () => "CF/1189",     // taken and numbered; the list never moved
       });

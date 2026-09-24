@@ -24,6 +24,7 @@ import { useApp } from "../store";
 import type { AppState } from "../store";
 import type { AuditFilter } from "../store/audit";
 import type { AuditCounts, AuditEntry, AuditRow } from "../types";
+import { cartOf } from "../store/till";
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -97,7 +98,7 @@ describe("pay - POST /bills", () => {
     expect(await S().pay("coffee", "Cash")).toBe("CF/1188");
 
     expect(hit("POST /api/v1/bills")[0].body).toEqual({ loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 2 }] });
-    expect(S().cart.coffee).toEqual({});
+    expect(cartOf(S(), "coffee")).toEqual({});
     expect(S().toast).toBe("Bill CF/1188 · ₹40.00 collected at Floor 3 Coffee Bar");
     // Two narrow reads, not a snapshot.
     expect(hit("GET /api/v1/stock")).toHaveLength(1);
@@ -136,7 +137,7 @@ describe("pay - POST /bills", () => {
     expect(await S().pay("coffee", "Cash")).toBeNull();
 
     expect(S().toast).toBe("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar");
-    expect(S().cart.coffee).toEqual({ juice: 3 });   // the scan survives, so it can be retried
+    expect(cartOf(S(), "coffee")).toEqual({ juice: 3 });   // the scan survives, so it can be retried
     expect(calls()).toHaveLength(1);                 // nothing refetched behind a refusal
   });
 
@@ -148,7 +149,7 @@ describe("pay - POST /bills", () => {
     expect(await S().pay("coffee", "Cash")).toBeNull();
 
     expect(S().toast).toBe("Could not take the bill - check the connection and try again.");
-    expect(S().cart.coffee).toEqual({ juice: 1 });
+    expect(cartOf(S(), "coffee")).toEqual({ juice: 1 });
   });
 
   it("sends nothing at all for an empty cart", async () => {
@@ -172,7 +173,7 @@ describe("pay - POST /bills", () => {
 
     // The bill was taken. Telling the operator it failed would send them round to take it twice.
     expect(S().toast).toBe("Bill CF/1188 · ₹20.00 collected at Floor 3 Coffee Bar - the screen could not be refreshed; reload to see the latest.");
-    expect(S().cart.coffee).toEqual({});
+    expect(cartOf(S(), "coffee")).toEqual({});
   });
 });
 

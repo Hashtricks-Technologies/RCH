@@ -230,6 +230,14 @@ bill by either. The phone is stored as its ten digits (`+91` or a leading `0` is
 that is not a phone is refused in a sentence with the boxes left as typed; a numbered bill clears
 them with the cart.
 
+**A counter can build up to ten bills at once.** A strip between the page title and the menu
+carries a chip per open bill - its number and what it comes to so far - and **+ New bill** starts
+another until ten are open; picking a chip puts that bill in the bill card. Each bill keeps its own lines, tender, payer and
+customer, so the operator can park one customer's order and serve the next. Paying a bill closes its
+chip alone; the × on the selected chip throws that bill away, at a second press when it has anything
+on it. Open
+bills live only in the browser: a reload loses them and signing out clears them.
+
 **A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen -
 every outlet's, over the seven days the server answers for - and a Void button on any bill still
 dated today. It needs a typed reason, puts every stocked line back on the shelf, returns a staff member's credit room for
@@ -446,7 +454,7 @@ destination. The outlet manager sees it happen rather than standing in the middl
 
 The store holds no business rule of its own any more - every action is a call to the API, and a
 refusal is the server's sentence, not a client-side check. What stays in the browser is only
-what has nothing on the server to be a client of: `cart`, `draft`, `prqDraft`, `poolVendor` (the
+what has nothing on the server to be a client of: `tills` (each counter's open bills), `draft`, `prqDraft`, `poolVendor` (the
 vendor the buyer picked on each procurement-list row, kept until that item is ordered in full),
 `drawer`, `toast`, `shopFilter`, `theme`, `catalogVersion` (the signal that repaints a screen pinned to the
 catalogue after a live update) - plus the access token, held in memory and never in

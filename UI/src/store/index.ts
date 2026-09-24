@@ -18,8 +18,9 @@ import { createAdminSlice, type AdminSlice } from "./admin";
 import { createAuditSlice, type AuditSlice } from "./audit";
 import { createReceivablesSlice, type ReceivablesSlice } from "./receivables";
 import { createShiftsSlice, type ShiftsSlice } from "./shifts";
+import { activeBill, createTillSlice, tillOf, withoutBill, type TillSlice } from "./till";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice, ShiftsSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice, ShiftsSlice, TillSlice {
   user: User | null;
   /** Every counter this account may stand at, from the sign-in response. One entry is the
    *  ordinary case and means no picker is ever shown. `user.loc` is the one it is standing at. */
@@ -60,7 +61,6 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
   /** ---- adjustment requests. A counter's asks to correct its own shelf, decided by the outlet
    *  manager - the writes live in the ops slice beside `createAdjustment`. */
   adjReq: DatedDoc<AdjustmentRequest>[];
-  cart: Record<string, Record<string, number>>;
   draft: DraftLine[];
   prqDraft: DraftLine[];
   /** The vendor the buyer picked on a procurement-list row, by item code. Held here rather than
@@ -95,14 +95,14 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
   closeDrawer: () => void;
   saveProfile: (p: Partial<User>) => Promise<void>;
 
-  addToCart: (loc: LocKey, it: string, d?: number) => void;
-  clearCart: (loc: LocKey) => void;
   /** The bill number the server chose, or `null` when it refused - the `Promise<string | null>`
    *  variant `createPo` and `createItem` already use, because the till has to open the slip for
    *  the bill it just took and guessing it back off the refetched list picks the wrong one the
    *  moment that read-back fails. A credit-cap refusal must leave the payer and the tender
    *  exactly where the operator put them - the cart is still full, and clearing the form behind
-   *  a refusal is how the same bill gets rung up twice. */
+   *  a refusal is how the same bill gets rung up twice. It pays the till's bill on screen as
+   *  the press lands, and takes exactly that bill off the till once numbered - the operator may
+   *  have moved to another open bill while it was in flight. */
   pay: (loc: LocKey, tender: Tender, payer?: Payer, customer?: { name: string; phone: string }) => Promise<string | null>;
   // ---- bill void: the manager's door out of a mis-keyed bill, on the day it was billed.
   // Answers `true` only once the server has taken it, so a refusal leaves the typed reason
@@ -245,7 +245,6 @@ export const useApp = create<AppState>((set, get) => ({
   adjustments: [],
   // ---- adjustment requests
   adjReq: [],
-  cart: {},
   draft: [],
   prqDraft: [],
   poolVendor: {},
@@ -360,7 +359,9 @@ export const useApp = create<AppState>((set, get) => ({
     // Stop listening for the other tabs' tokens. A terminal is shared: the next person at this
     // keyboard must not be handed a session by a window somebody forgot to close.
     closeSessionChannel();
-    set({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false });
+    // The open bills go too: each is one operator's sale at one counter, and a held bill carries
+    // a walk-in customer's name and phone the next person at this keyboard has no business with.
+    set({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false, tills: {} });
   },
   changePassword: async (current, next) => {
     set({ authError: null });
@@ -418,17 +419,6 @@ export const useApp = create<AppState>((set, get) => ({
     } catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not save the profile."); }
   },
 
-  addToCart: (loc, it, d = 1) =>
-    set((s) => {
-      // No `?? {}`: spreading `undefined` into an object literal adds nothing, which is exactly
-      // what an empty fallback was there to do.
-      const c = { ...s.cart[loc] };
-      c[it] = (c[it] ?? 0) + d;
-      if (c[it] <= 0) delete c[it];
-      return { cart: { ...s.cart, [loc]: c } };
-    }),
-  clearCart: (loc) => set((s) => ({ cart: { ...s.cart, [loc]: {} } })),
-
   /**
    * One counter sale. Pricing, the payer rule, the cover check and the stock moves all
    * live on the server now (POST /bills); the cart is cleared only once it has answered, so
@@ -436,15 +426,15 @@ export const useApp = create<AppState>((set, get) => ({
    */
   pay: async (loc, tender, payer, customer) => {
     const s = get();
-    const cart = s.cart[loc] ?? {};
-    const lines = Object.entries(cart).map(([it, qty]) => ({ it, qty }));
+    const bill = activeBill(s, loc);
+    const lines = Object.entries(bill.lines).map(([it, qty]) => ({ it, qty }));
     if (!lines.length || !s.user) return null;
     // A blank box is no customer: the keys ride only when something was typed.
     const customerName = customer?.name.trim() || undefined;
     const customerPhone = customer?.phone.trim() || undefined;
     try {
       const r = await call(routes.pay, { body: { loc, tender, payer, lines, customerName, customerPhone } });
-      set((x) => ({ cart: { ...x.cart, [loc]: {} } }));
+      set((x) => ({ tills: { ...x.tills, [loc]: withoutBill(tillOf(x, loc), loc, bill.id) } }));
       get().notify(r.message);
       await refetch(r.changed, r.message);
       // The number the server chose, off the write's own answer. The till used to guess it back
@@ -859,6 +849,7 @@ export const useApp = create<AppState>((set, get) => ({
   ...createAuditSlice(set, get),
   ...createReceivablesSlice(set, get),
   ...createShiftsSlice(set, get),
+  ...createTillSlice(set, get),
 }));
 
 // A refresh that fails is the end of the session: drop the user rather than

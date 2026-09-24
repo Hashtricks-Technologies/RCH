@@ -3,10 +3,11 @@ import { TenderSchema } from "@rch/contract";
 import { breachesCredit, counterName, creditBreachMessage, discountOn, isAccountTender, normalizePhone, PARTY_LABEL, payerKindForTender } from "@rch/domain";
 import { DEPTS, DOCTORS, IT, LOC, STAFF } from "../../data/master";
 import { useApp } from "../../store";
+import { activeBill, MAX_OPEN_BILLS, tillOf, type OpenBill } from "../../store/till";
 import { availOf, menuOf, partyRate, priceOf } from "../../lib/selectors";
 import { money, money0 } from "../../lib/fmt";
 import { Alert, Avatar, Btn, Card, Field, FormRow, Grid, ItemImage, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
-import type { CreditResponse, ItemType, Payer, PayerKind, Tender } from "../../types";
+import type { CreditResponse, ItemType, LocKey, Payer, PayerKind, Tender } from "../../types";
 
 /** The buttons are the contract's own list - the server refuses anything else outright, so the
  *  till must not offer a seventh tender the schema has never heard of. */
@@ -31,39 +32,56 @@ export function TypeTag({ t }: { t: ItemType }) {
   return <Tag>{t.toLowerCase()}</Tag>;
 }
 
-export default function Pos() {
-  const s = useApp();
-  const user = useApp((x) => x.user)!;
-  const loc = user.loc;
-  const L = LOC[loc];
-  const [tender, setTender] = useState<Tender>(TENDERS[0]);
-  const [payer, setPayer] = useState<Payer | null>(null);
-  const [pq, setPq] = useState("");
-  const [edit, setEdit] = useState<Record<string, string>>({});
-  // The walk-in customer, both optional. Cleared with the cart once a bill is numbered, kept on
-  // a refusal like everything else on the till.
-  const [custName, setCustName] = useState("");
-  const [custPhone, setCustPhone] = useState("");
-  const phoneOff = custPhone.trim() !== "" && normalizePhone(custPhone) === null;
-  // The cart now survives until the server answers, so a second tap inside one round trip
-  // would post a second bill under a second Idempotency-Key. One tap, one bill.
-  const [busy, setBusy] = useState(false);
-
-  const menu = menuOf(s, loc);
-  const cart = s.cart[loc] ?? {};
-  // What this party is charged. A preview off the rate card the snapshot carries - the server
-  // resolves it again inside the sale's own transaction and *that* is the rate the bill is
-  // priced at (root CLAUDE.md, "Nothing is previewed as a decision"). A cart with no payer on it
-  // is a walk-in customer, which is a party of its own and not a missing one.
-  const terms = partyRate(payer);
-  const lines = Object.keys(cart).map((it) => {
+/** A bill's lines priced as the till previews them - the server prices it again when it is paid. */
+function priced(s: ReturnType<typeof useApp.getState>, loc: LocKey, bill: OpenBill) {
+  const terms = partyRate(bill.payer);
+  return Object.keys(bill.lines).map((it) => {
     const { p } = priceOf(s, loc, it);
-    const n = cart[it];
+    const n = bill.lines[it];
     const gross = p * n;
     const amt = gross - discountOn(gross, terms.pct);
     const taxable = amt / (1 + IT[it].gst / 100);
     return { it, n, p, gross, amt, taxable };
   });
+}
+
+export default function Pos() {
+  const s = useApp();
+  const user = useApp((x) => x.user)!;
+  const loc = user.loc;
+  const L = LOC[loc];
+  // The till holds up to MAX_OPEN_BILLS bills at once (store/till.ts). Everything that belongs
+  // to a bill - its lines, tender, payer and walk-in customer - lives on the bill in the store,
+  // so switching tabs loses nothing and a refusal leaves the bill exactly as it was set up.
+  const till = tillOf(s, loc);
+  const bill = activeBill(s, loc);
+  const { tender, payer, custName, custPhone } = bill;
+  const setPayer = (p: Payer | null) => s.setBill(loc, { payer: p });
+  // The payer search and a half-typed quantity are this screen's, and belong to the bill that
+  // was on screen when they were typed - so they go when another bill comes up.
+  const [pq, setPq] = useState("");
+  const [edit, setEdit] = useState<Record<string, string>>({});
+  // A tab whose × has been pressed once: a bill with lines on it is thrown away on the second.
+  const [armed, setArmed] = useState<string | null>(null);
+  const [shownBill, setShownBill] = useState(bill.id);
+  if (shownBill !== bill.id) {
+    setShownBill(bill.id);
+    setPq(""); setEdit({}); setArmed(null);
+  }
+  const phoneOff = custPhone.trim() !== "" && normalizePhone(custPhone) === null;
+  // A bill survives until the server answers, so a second tap inside one round trip would post
+  // a second bill under a second Idempotency-Key. One tap, one bill - held per open bill, so the
+  // operator can move on to the next customer while one is still in flight.
+  const [paying, setPaying] = useState<ReadonlySet<string>>(new Set());
+  const busy = paying.has(bill.id);
+
+  const menu = menuOf(s, loc);
+  // What this party is charged. A preview off the rate card the snapshot carries - the server
+  // resolves it again inside the sale's own transaction and *that* is the rate the bill is
+  // priced at (root CLAUDE.md, "Nothing is previewed as a decision"). A bill with no payer on it
+  // is a walk-in customer, which is a party of its own and not a missing one.
+  const terms = partyRate(payer);
+  const lines = priced(s, loc, bill);
 
   const gross = lines.reduce((t, l) => t + l.gross, 0);
   const total = lines.reduce((t, l) => t + l.amt, 0);
@@ -125,21 +143,32 @@ export default function Pos() {
    * the previous bill opens) and the till next door billing in the same instant.
    */
   const takeBill = async () => {
-    setBusy(true);
+    const id = bill.id;
+    setPaying((x) => new Set(x).add(id));
     let no: string | null = null;
-    try { no = await s.pay(loc, tender, payer ?? undefined, { name: custName, phone: custPhone }); } finally { setBusy(false); }
+    try { no = await s.pay(loc, tender, payer ?? undefined, { name: custName, phone: custPhone }); } finally {
+      setPaying((x) => { const n = new Set(x); n.delete(id); return n; });
+    }
     if (!no) return;
-    setPayer(null); setPq(""); setEdit({}); setCustName(""); setCustPhone("");
+    // The store has taken the paid bill off the till; its payer, tender and customer went with it.
+    setPq(""); setEdit({});
     useApp.getState().openDrawer("cbill", no);
   };
 
-  const pickTender = (t: Tender) => { setTender(t); setPayer(null); setPq(""); };
+  const pickTender = (t: Tender) => { s.setBill(loc, { tender: t, payer: null }); setPq(""); };
+  const full = till.bills.length >= MAX_OPEN_BILLS;
+  /** The × on a tab. An empty bill goes at once; one with lines asks for a second press. */
+  const discard = (b: OpenBill) => {
+    if (Object.keys(b.lines).length && armed !== b.id) { setArmed(b.id); return; }
+    setArmed(null);
+    s.discardBill(loc, b.id);
+  };
   /** The tile adds one; this sets the line to whatever was typed, as a signed delta. */
   const setQty = (it: string, v: string) => {
     const n = Math.floor(Number(v));
     const ok = v !== "" && Number.isFinite(n) && n >= 0;
     setEdit(ok && n === 0 ? {} : { [it]: v });
-    if (ok) s.addToCart(loc, it, n - (cart[it] ?? 0));
+    if (ok) s.addToCart(loc, it, n - (bill.lines[it] ?? 0));
   };
 
   return (
@@ -149,6 +178,39 @@ export default function Pos() {
         title="Point of Sale"
         tip="Bill a sale at this counter."
       />
+      {/* The open bills, one chip each: pick one to put it in the bill card, or start another. */}
+      <div className="billbar">
+        <div className="billbar-chips" role="tablist" aria-label="Open bills">
+          {till.bills.map((b) => {
+            const on = b.id === bill.id;
+            const bl = priced(s, loc, b);
+            const inFlight = paying.has(b.id);
+            return (
+              <div key={b.id} className={`billchip${on ? " on" : ""}`}>
+                <button type="button" role="tab" aria-selected={on} onClick={() => s.switchBill(loc, b.id)}>
+                  <b>Bill {b.n}</b>
+                  {inFlight
+                    ? <span className="mini">Paying…</span>
+                    : bl.length > 0 && <span className="mono">{money(bl.reduce((t, l) => t + l.amt, 0))}</span>}
+                </button>
+                {on && (till.bills.length > 1 || bl.length > 0) && (
+                  <button type="button" className={`billchip-x${armed === b.id ? " armed" : ""}`} disabled={inFlight}
+                    onClick={() => discard(b)}
+                    aria-label={armed === b.id ? `Discard bill ${b.n} - press again` : `Discard bill ${b.n}`}
+                    title={armed === b.id ? "Press again to discard" : "Discard this bill"}>
+                    {armed === b.id ? "Discard?" : "×"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <Btn variant="gh" size="sm" disabled={full} onClick={() => s.newBill(loc)}
+            tip={full ? `A till holds at most ${MAX_OPEN_BILLS} open bills. Pay or discard one first.` : "Start another bill and keep this one open."}>
+            + New bill
+          </Btn>
+        </div>
+        <span className="mini billbar-n">{till.bills.length} of {MAX_OPEN_BILLS} open</span>
+      </div>
       <Grid cols="g21">
         <Card title="Menu" sub={`${menu.length} products listed at ${L.n}`}>
           <div className="tilegrid">
@@ -197,7 +259,8 @@ export default function Pos() {
           )}
         </Card>
 
-        <Card title="New bill" sub={L.c} tip="Numbered by the server when it is paid"
+        <Card title={`Bill ${bill.n}`} sub={L.c}
+          tip={`Numbered by the server when it is paid. Up to ${MAX_OPEN_BILLS} bills can be open at once.`}
           right={lines.length ? <Btn variant="gh" size="sm" onClick={() => s.clearCart(loc)}>Clear</Btn> : undefined}>
           <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 11, borderBottom: "1px solid var(--line)" }}>
             <Avatar name={user.n} color={user.col} size={34} />
@@ -260,10 +323,10 @@ export default function Pos() {
 
           <FormRow cols="f2">
             <Field label="Customer name" tip="Optional. Printed on the bill slip and found by the Bills search.">
-              <input value={custName} maxLength={80} onChange={(e) => setCustName(e.target.value)} placeholder="Optional" />
+              <input value={custName} maxLength={80} onChange={(e) => s.setBill(loc, { custName: e.target.value })} placeholder="Optional" />
             </Field>
             <Field label="Phone" tip="Optional. Ten digits, with or without +91." hint={phoneOff ? "Not a phone number yet - ten digits" : undefined}>
-              <input value={custPhone} inputMode="tel" maxLength={20} onChange={(e) => setCustPhone(e.target.value)} placeholder="Optional" />
+              <input value={custPhone} inputMode="tel" maxLength={20} onChange={(e) => s.setBill(loc, { custPhone: e.target.value })} placeholder="Optional" />
             </Field>
           </FormRow>
 

@@ -357,6 +357,20 @@ thead th .tip{margin-left:4px}
 .totrow{display:flex;justify-content:space-between;padding:3px 0;font-size:12px;font-family:"IBM Plex Mono",monospace;color:var(--ink-2)}
 .totrow.big{font-size:19px;font-weight:600;color:var(--ink);border-top:1px solid var(--line-strong);margin-top:7px;padding-top:9px}
 .paygrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:12px 0}
+/* the till's open bills - a chip each, above the menu */
+.billbar{display:flex;align-items:center;gap:12px;margin:0 0 14px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.billbar-chips{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.billbar-n{flex:none;white-space:nowrap}
+.billchip{display:flex;align-items:stretch;flex:none;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface);overflow:hidden}
+.billchip>button[role=tab]{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px;font-size:12.5px;color:var(--ink-2)}
+.billchip>button[role=tab] .mono{font-size:12px;color:var(--ink-3)}
+.billchip:hover{border-color:var(--accent-line)}
+.billchip.on{border-color:var(--accent);background:var(--accent)}
+.billchip.on>button[role=tab],.billchip.on>button[role=tab] .mono,.billchip.on>button[role=tab] .mini{color:var(--on-accent)}
+.billchip-x{padding:0 11px 0 4px;font-size:15px;line-height:1;color:var(--on-accent);opacity:.8}
+.billchip-x:hover:not(:disabled){opacity:1}
+.billchip-x.armed{background:var(--crit);color:#fff;opacity:1;font-size:11px;font-weight:600;padding:0 11px}
+@media(max-width:640px){.billbar-n{display:none}}
 .av img{width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block}
 /* popovers - global search and the notification bell */
 .pw{position:relative;flex:none}

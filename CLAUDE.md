@@ -294,9 +294,11 @@ values before it.
 - **Derived state is computed, never stored.** `UI/src/lib/selectors.ts` is the source of truth for on-hand,
   reserved, free-to-promise, availability, price-at-MRP-cap, the procurement list and PO progress. Most of it
   delegates to `@rch/domain`. Don't mirror a derived value into the store.
-- **Browser-only state** is `cart`, `draft`, `prqDraft`, `poolVendor` (the buyer's vendor pick per
+- **Browser-only state** is `tills` (each counter's open bills, at most `MAX_OPEN_BILLS` = 10, see
+  `UI/src/store/till.ts`), `draft`, `prqDraft`, `poolVendor` (the buyer's vendor pick per
   procurement-list item), `drawer`, `toast`, `authError`, `shopFilter`, `theme` and `catalogVersion`. Only the
-  theme, a few UI preferences and the bell's read record reach `localStorage`.
+  theme, a few UI preferences and the bell's read record reach `localStorage`. Open bills do not: a reload
+  loses them, and a sign-out clears them.
 
 ## Domain invariants
 

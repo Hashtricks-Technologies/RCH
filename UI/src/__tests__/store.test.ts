@@ -7,6 +7,7 @@ import {
 import { REPORTS, type LedgerState } from "../roles/store/Reports";
 import type { TktStatus } from "../types";
 import { resetStore, S, as } from "./fixture";
+import { cartOf } from "../store/till";
 
 beforeEach(resetStore);
 
@@ -16,9 +17,9 @@ describe("counter operator", () => {
     S().addToCart("coffee", "capp");
     S().addToCart("coffee", "capp");
     S().addToCart("coffee", "juice");
-    expect(S().cart.coffee).toEqual({ capp: 2, juice: 1 });
+    expect(cartOf(S(), "coffee")).toEqual({ capp: 2, juice: 1 });
     S().clearCart("coffee");
-    expect(S().cart.coffee).toEqual({});
+    expect(cartOf(S(), "coffee")).toEqual({});
   });
 
   it("holds the printed MRP as a ceiling on floor 3", () => {

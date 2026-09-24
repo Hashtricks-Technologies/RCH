@@ -112,7 +112,7 @@ export function resetStore() {
     // ---- adjustment requests: one open ask, undecided, so a screen or a drawer test has a
     // real document to open rather than an empty state.
     adjReq: [ADJREQ].map(doc),
-    cart: {}, draft: [], prqDraft: [], poolVendor: {}, drawer: null, toast: null, shopFilter: null,
+    tills: {}, draft: [], prqDraft: [], poolVendor: {}, drawer: null, toast: null, shopFilter: null,
     // ---- admin: account management ----
     // Empty, not seeded: nothing on the snapshot carries the account list or its
     // action log, and leaving either out of this reset would let one test's rows leak into the

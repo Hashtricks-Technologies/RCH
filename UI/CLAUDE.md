@@ -105,13 +105,23 @@ try {
 - **Never invent a success message.** The fallback string is only for a network failure, when there is no
   envelope to read.
 - **Form-carrying actions return `Promise<boolean>`.** The screen awaits the action behind a `busy` flag and
-  clears the form only on `true`, so a refusal leaves what was typed. `counter/Pos.tsx` (a single `busy`) and
-  `counter/Requests.tsx` (keyed per row) are the two patterns to copy.
+  clears the form only on `true`, so a refusal leaves what was typed. `counter/Requests.tsx` (a `busy` keyed
+  per row) is the pattern to copy; `counter/Pos.tsx` keys its in-flight set per open bill the same way.
 - **Actions whose screen needs the new id return `Promise<string | null>`**: `createPo` and `createItem`.
   `pay(loc, tender, payer?, customer?)` is the third: it sends the walk-in customer's name and phone
-  only when typed, and `Pos.tsx` clears both boxes with the cart once a bill is numbered.
+  only when typed, pays the till's bill on screen as pressed, and once numbered takes exactly that bill
+  off the till - its lines, tender, payer and customer with it - even if the operator has moved to
+  another open bill meanwhile.
   `createItem` sends no code - the server assigns it, and `NewProductForm` previews it read-only
   with `nextItemCode`.
+- **The till's open bills (`store/till.ts`).** A counter holds up to `MAX_OPEN_BILLS` (10) bills at once
+  in `tills[loc]`, each with its own lines, tender, payer and walk-in customer; read them with `tillOf`,
+  `activeBill` and `cartOf`, never `tills[loc]` directly (an untouched till is absent). `addToCart` and
+  `clearCart` act on the bill on screen; `newBill` refuses a sixth with `tooManyBillsMessage()`;
+  `switchBill`, `discardBill` and `setBill` are local. A bill's number is the lowest of 1-10 no other open
+  bill uses, and the till is never empty. `Pos.tsx` draws them as a strip of chips between the page head
+  and the menu (`.billbar`), with + New bill and "N of 10 open"; only the chip on screen carries a ×, and
+  discarding one with lines takes a second press. `logout` clears every till. None of it reaches the server or `localStorage`.
 - **Single-press buttons with no form are fire-and-forget**: `handover`, `setOrderStatus`, `dispatchOrder`.
 - **`setItemImage(it, bytes)` and `removeItemImage(it)`** are the ordinary `Promise<boolean>` write shape
   above - the bytes arrive already shrunk and type-checked (`ui/PhotoPicker.tsx`, below), and the server checks
@@ -357,6 +367,9 @@ a background refresh and must not blank the screen.
   staged cells showing old → new, Confirm shut until `CONFIRM` is typed, Cancel and a refusal both keeping
   the staged edits, the zero / unpriced previews shutting Save, an above-MRP price staying saveable with its
   "Till charges" note, and the filters.
+- **`open-bills.test.tsx`** drives the till's open bills: ten and no eleventh, each bill's fields kept
+  apart, the numbering, discard, paying one while another is on screen, a refusal, sign-out, and the
+  chips on the POS screen.
 - **`counter-names.test.tsx`** drives the walk-in customer (the body, the two boxes surviving a
   refusal and clearing on a sale, both Bills searches) and the display name (the till's tiles and
   cart, the counter's bill drawer against the manager's and the slip, the manager's item drawer).
