@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { USERS } from "@rch/contract/fixtures";
 import { canSee, homeFor, navFor } from "../nav";
 import { LEGACY_KEYS, SCREENS } from "../screens";
+import { userCan, userHolds, userWide } from "../lib/selectors";
+import { LOC, homeLabel } from "../data/master";
 import type { Role } from "../types";
-import { userOf } from "./fixture";
+import { resetStore, userOf } from "./fixture";
+
+beforeEach(resetStore);
 
 /**
  * Every desk's sidebar exactly as it stood before roles were configurable - `NAV` from
@@ -105,5 +109,24 @@ describe("screen keys", () => {
   it("a key nobody has is never visible", () => {
     expect(canSee(userOf("manager"), "stock")).toBe(false);
     expect(canSee(userOf("manager"), "nonsense")).toBe(false);
+  });
+});
+
+describe("who reads hospital-wide", () => {
+  it("every desk but the counter, as seeded", () => {
+    for (const r of DESKS) expect(userWide(userOf(r))).toBe(r !== "counter");
+  });
+  it("a counter role given every outlet, or any hospital-wide feature", () => {
+    const counter = userOf("counter");
+    expect(userWide({ ...counter, perms: { ...counter.perms!, a: ["all_outlets"] } })).toBe(true);
+    expect(userWide({ ...counter, perms: { f: { ...counter.perms!.f, credit: "view" }, a: [] } })).toBe(true);
+    expect(homeLabel({ ...counter, perms: { ...counter.perms!, a: ["all_outlets"] } })).toBe("All outlets");
+    expect(homeLabel(counter)).toBe(LOC[counter.loc].n);
+  });
+  it("a user record with no permissions holds its desk's seeded role", () => {
+    const { perms: _none, ...bare } = userOf("manager");
+    expect(userCan(bare, "approvals", "edit")).toBe(true);
+    expect(userHolds(bare, "void_bill")).toBe(true);
+    expect(userCan(bare, "billing", "edit")).toBe(false);
   });
 });

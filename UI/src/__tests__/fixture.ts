@@ -3,6 +3,7 @@ import { useApp } from "../store";
 import { setAccessToken } from "../api/session";
 import { hydrateMaster, hydrateRoster, hydrateTerms } from "../data/master";
 import { basePrices } from "../lib/selectors";
+import { DESK_DEFAULTS } from "@rch/domain";
 import { initialAudit } from "../store/audit";
 import type { AdjustmentRequest, Contract, Role, User } from "../types";
 import type { ComponentType } from "react";
@@ -32,7 +33,10 @@ export const S = () => useApp.getState();
  * production code, which is exactly what this phase deleted - so the fixtures are imported here,
  * in a test file, which is where they belong.
  */
-export const userOf = (role: Role): User => FX.USERS.find((u) => u.r === role && !u.admin)!;
+/** The first fixture account on a desk, holding what that desk's seeded role holds - as `/me`
+ *  answers for an account on the seeded role. */
+export const userOf = (role: Role): User =>
+  ({ ...FX.USERS.find((u) => u.r === role && !u.admin)!, perms: DESK_DEFAULTS[role].perms });
 export const as = (role: Role) => {
   setAccessToken("test-token");
   useApp.setState({ user: userOf(role), auth: "ready", mustChangePassword: false, drawer: null });

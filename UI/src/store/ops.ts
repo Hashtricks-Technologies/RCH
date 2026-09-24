@@ -71,7 +71,7 @@ export interface OpsSlice {
   createItem: (input: NewItemInput, loc: LocKey, opening: number) => Promise<string | null>;
   // ---- item patch ----
   /** An existing line on the master, edited or retired. Which of the eight fields the caller's
-   *  own role may move is `ITEM_FIELD_ROLES` (`@rch/domain`) - the drawer disables the boxes it
+   *  own role may move is `ITEM_FIELD_FEATURES` (`@rch/domain`) - the drawer disables the boxes it
    *  answers `false` for and the server refuses them in the operator's own words, so the same
    *  table drives the form and the refusal. */
   updateItem: (it: string, patch: ItemFieldPatch) => Promise<boolean>;

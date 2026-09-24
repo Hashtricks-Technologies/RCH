@@ -6,7 +6,7 @@ export { apportion, netReceived, round3 };
 import { operationalKeys, outletKeys, parFactor } from "@rch/domain";
 import { CLASS_TERMS, IT, LOC, MENU, PAYER_TERMS, PL } from "../data/master";
 import type {
-  Availability, Bill, BillParty, DatedDoc, LocKey, PayerKind, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
+  Action, Availability, Bill, BillParty, Feature, Level, Permissions, Role, DatedDoc, LocKey, PayerKind, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
   StockLoc, StockRequest, Ticket, TktStatus, Tone,
 } from "../types";
 import { U, isToday } from "./fmt";
@@ -442,8 +442,28 @@ export const activeItems = (): string[] => Object.keys(IT).filter((k) => IT[k].a
 export const isRetired = (it: string): boolean => IT[it]?.active === false;
 
 // ---- configurable roles ----
+/** The part of a session its permissions are read from. */
+export interface Holder { r: Role; perms?: Permissions }
+/**
+ * What this session may do. A user record from before roles carried permissions - an old tab, a
+ * fixture - holds exactly what its desk's seeded role holds, which is what that desk always had.
+ */
+export const permsOf = (u: Holder): Permissions => u.perms ?? D.DESK_DEFAULTS[u.r].perms;
+/** Whether this session holds `f` at `l` or better. Edit implies view. */
+export const userCan = (u: Holder, f: Feature, l: Level = "view"): boolean => D.can(permsOf(u), f, l);
+/** Whether this session holds the action `a`. */
+export const userHolds = (u: Holder, a: Action): boolean => D.holds(permsOf(u), a);
 /**
  * Whether this session reads hospital-wide - every outlet's bills, requests and tickets - rather
- * than the one counter it signed in to.
+ * than the one counter it signed in to: every desk but the counter, and a counter role given every
+ * outlet or any hospital-wide feature. The server scopes the same reads by the same rule.
  */
-export const useWide = (): boolean => useApp((s) => (s.user ? s.user.r !== "counter" : false));
+export const userWide = (u: Holder): boolean => D.readsHospitalWide(u.r, permsOf(u));
+
+/** Whether the signed-in session holds `f` - at edit unless asked about view. False signed out. */
+export const useCan = (f: Feature, l: Level = "edit"): boolean =>
+  useApp((s) => (s.user ? userCan(s.user, f, l) : false));
+/** Whether the signed-in session holds the action `a`. */
+export const useHolds = (a: Action): boolean => useApp((s) => (s.user ? userHolds(s.user, a) : false));
+/** Whether the signed-in session reads hospital-wide (`userWide`). */
+export const useWide = (): boolean => useApp((s) => (s.user ? userWide(s.user) : false));

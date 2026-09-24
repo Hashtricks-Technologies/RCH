@@ -121,7 +121,7 @@ export default function Settings() {
           </FormRow>
           <FormRow cols="f2">
             <Field label="Role" tip="Only an administrator can change a role."><input value={user.rl} readOnly /></Field>
-            <Field label={user.r === "manager" || user.r === "buyer" ? "Scope" : "Home location"}>
+            <Field label={user.r === "buyer" || homeLabel(user) === "All outlets" ? "Scope" : "Home location"}>
               <input
                 value={homeLabel(user) ?? `${user.rl} - not tied to one counter`}
                 readOnly

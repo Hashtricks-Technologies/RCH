@@ -7,6 +7,7 @@ import { useApp } from "../store";
 import { USERS } from "@rch/contract/fixtures";
 import { homeFor, navFor } from "../nav";
 import { IT } from "../data/master";
+import { DESK_DEFAULTS } from "@rch/domain";
 import { as, resetStore, signedOut } from "./fixture";
 
 // The store starts empty now and the registries with it, so the roles this suite iterates come
@@ -73,6 +74,41 @@ describe("routing", () => {
   it("an old key another desk used is refused by name, not redirected", () => {
     act(() => { as("counter"); });
     expect(mountApp("/orders")).toContain("orders is not available to a Counter Operator");
+  });
+  // ---- configurable roles: the screens follow what the role holds, not which desk it is on.
+  it("a counter role given Credit sees it on its sidebar, and can open it", () => {
+    act(() => {
+      as("counter");
+      const u = useApp.getState().user!;
+      useApp.setState({ user: { ...u, perms: { f: { ...DESK_DEFAULTS.counter.perms.f, credit: "edit" }, a: [] } } });
+    });
+    const html = mountApp("/credit");
+    expect(html).not.toContain("is not available");
+    expect(html).toContain("Credit &amp; settlements");
+    // Its own group, after the counter's own and before Account.
+    const groups = [...html.matchAll(/class="navg">([^<]+)</g)].map((m) => m[1]);
+    expect(groups).toEqual(["Overview", "Sell", "My counter", "Movement", "Credit", "Account"]);
+  });
+  it("a screen the role no longer grants is refused by name and the session sent home", () => {
+    act(() => {
+      as("counter");
+      const u = useApp.getState().user!;
+      const { outlet_stock: _gone, ...f } = DESK_DEFAULTS.counter.perms.f;
+      useApp.setState({ user: { ...u, perms: { f, a: [] } } });
+    });
+    const html = mountApp("/outlet-stock");
+    expect(html).toContain("Stock in Hand is not available to a Counter Operator");
+    expect(html).not.toContain('href="/outlet-stock"');
+  });
+  it("a counter role given every outlet reads every outlet's bills", () => {
+    act(() => {
+      as("counter");
+      const u = useApp.getState().user!;
+      useApp.setState({ user: { ...u, perms: { ...DESK_DEFAULTS.counter.perms, a: ["all_outlets"] } } });
+    });
+    expect(mountApp("/bills")).toContain("Bills from every outlet in the last seven days.");
+    act(() => { as("counter"); });
+    expect(mountApp("/bills")).not.toContain("Bills from every outlet in the last seven days.");
   });
   it("each role lands on its own home screen", () => {
     for (const u of USERS.filter((u) => !u.admin)) {

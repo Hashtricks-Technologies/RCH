@@ -23,7 +23,7 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 ## Screens: three files must agree
 
 1. `src/screens.ts` is pure metadata. `SCREENS` lists every screen once (`key`, `label`, `icon`, `section`,
-   and `desks` for a desk-bound one); `DESK_NAV[desk]` is each desk's own sidebar layout, `DESK_HOME[desk]` its
+   `needs` - any one of which shows it - and `desks` for a desk-bound one); `DESK_NAV[desk]` is each desk's own sidebar layout, `DESK_HOME[desk]` its
    landing key, and `LEGACY_KEYS[desk][oldKey]` the key each desk used before keys were made unique.
 2. `src/registry.tsx` maps each key to its component (`screenFor(viewer, key)`) and imports every drawer
    module for its side effect. `dash` resolves by desk, `avail` to the kitchen's board or the manager's, and
@@ -32,6 +32,18 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 3. `src/nav.ts` builds from those: `navFor(user)` is the sidebar, `homeFor(user)` the landing key, and
    `canSee(user, key)` the guard. `src/App.tsx` resolves the one route, `/:key`: an old key redirects to its
    new name, and a key the session can't see redirects home **with a toast saying why**.
+
+**What a session sees follows its role's permissions, not its desk.** `user.perms` (`/me`, sign-in, the
+snapshot) says what the role holds; a user record without it holds its desk's seeded role
+(`DESK_DEFAULTS[user.r].perms`), which is exactly what the desk always had. `lib/selectors.ts` has the pure
+`permsOf`, `userCan(u, f, l = "view")`, `userHolds(u, a)` and `userWide(u)` (`readsHospitalWide`), and the
+hooks `useCan(f, l = "edit")`, `useHolds(a)` and `useWide()`. `navFor` places the desk's own layout first
+and exactly as it always was (`nav-parity.test.ts`), then any other screen the role holds under that
+screen's own `section` - joining a group of the same name - and Account last. `dash`, `issues` and
+`settings` are desk-bound and always shown; `register` shows with any of `x_report`, `z_report` or
+`shift_reports`. The guard is checked on every render, so a role narrowed under an open tab loses the screen
+at once. Gate on a permission with these, never on `user.r`; the desk (`user.r`) still decides where
+someone works - the counter's till, its Close shift and the counter-only display names stay on it.
 
 A key names one screen for everybody, so no two desks share one: `outlet-stock`, `items-stock`, `store-stock`
 and `kitchen-stock` were all `stock`; `kitchen-orders` and `purchase-orders` were `orders`; `outlet-requests`
@@ -186,11 +198,11 @@ try {
 - **Shifts (`store/shifts.ts`).** `ui/CloseShift.tsx` is the counter's Close shift button and its `Modal`
   (the shell's sidebar foot, the counter Dashboard and the Register screen): it reads `readCurrentShift`
   as it opens (`null` an outage, `{ shift: null }` none open), `closeShift` is the ordinary write returning
-  the stored report, and on success it prints the final slip and calls `logout`. The manager's `shifts`
-  list is kept: the shell loads it for a manager (the bell's `shifts` row, which `GOES_TO` sends to
+  the stored report, and on success it prints the final slip and calls `logout`. The `shifts`
+  list is kept: the shell loads it for whoever holds Shift reports (the bell's `shifts` row, which `GOES_TO` sends to
   `register` so it never counts on a sidebar badge, and whose second line `bellDetail` makes the latest
-  close), `ui/ShiftReports.tsx` is the Register screen's card, and `NARROW.shifts` reloads it for a manager
-  only. `ui/ShiftSlip.tsx` is the paper; `printShiftSlip()` marks the body `print-shift` so a page's other
+  close), `ui/ShiftReports.tsx` is the Register screen's card, and `NARROW.shifts` reloads it for the same
+  sessions only. `ui/ShiftSlip.tsx` is the paper; `printShiftSlip()` marks the body `print-shift` so a page's other
   `.print-slip` stays off the paper.
 
 ## src/api
@@ -216,11 +228,14 @@ try {
   that session alone. `audit`: an admin session calls `bumpAuditFresh()`, so the Audit log tab shows
   "New events - show" without moving its rows, and any other session does nothing. No write names `audit` in
   its `changed`; only the audit service's notice does.
-  - **A manager-only collection is still broadcast to every open session** - the server's `pg_notify`
-    isn't per-role. So `NARROW.priceLists` reads `GET /price-lists` for a manager session alone and does
-    nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
+  - **A collection only some roles may read is still broadcast to every open session** - the server's
+    `pg_notify` isn't per-role. So `NARROW.priceLists`, `receivables` and `shifts` read for an operator
+    holding Prices, Credit or Shift reports alone and do nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
     whole `Promise.all` and toast "the screen could not be refreshed" over a page of theirs that never
     changed. `accounts` is never announced on the stream - only the admin's own reply names it.
+  - **`roles`** re-reads `GET /me` for an operator: a changed name is simply taken, and a changed desk or
+    permissions reloads the snapshot, after which the `Screen` guard takes away whatever the role no
+    longer grants. For the super admin it reads nothing yet - the Roles tab's own list is Wave 3F's.
 - **`wire.ts`** holds the mappers from server shape to store shape.
   - An ISO time becomes `"HH:MM"` only here, and **`iso` is kept beside it** on every document and history
     entry (`Dated<T>`, `Trailed<T>` and `DatedDoc<T>` in `types.ts`).

@@ -651,8 +651,9 @@ const HSN_OTHER: CSSProperties = { display: "flex", alignItems: "center", gap: 6
  * leaves the label decorative and the control unnamed.
  *
  * It reports the code and nothing else. What a code *implies* - a GST slab - is the caller's to
- * act on, because the two forms may not do the same thing with it: `ITEM_FIELD_ROLES` gives
- * `hsn` to the store, the buyer and the kitchen and `gst` to the outlet manager alone, so on the
+ * act on, because the two forms may not do the same thing with it: `ITEM_FIELD_FEATURES` gives
+ * `hsn` to Item master and `gst` to Items & stock - the store, buyer and kitchen and the outlet
+ * manager respectively, as seeded - so on the
  * item drawer the picker must never write into a box its operator does not own. `picked` says
  * the code came off the list rather than out of the keyboard, so a half-typed code that happens
  * to pass through a listed one does not rewrite a rate the operator set by hand.

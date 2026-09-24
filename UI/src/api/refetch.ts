@@ -1,4 +1,4 @@
-import { routes, type Changed } from "@rch/contract";
+import { routes, type Changed, type Feature } from "@rch/contract";
 import { call } from "./client";
 import {
   applyAccounts, applyAdjustmentRequests, applyAdjustments, applyAdminLocations, applyAdminPayers, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
@@ -7,6 +7,29 @@ import {
   applyTerms, applyVendors,
 } from "./wire";
 import { useApp } from "../store";
+import { permsOf, userCan } from "../lib/selectors";
+
+/** Whether the signed-in operator - never the super admin, whose token reaches none of these
+ *  reads - holds `f`. A collection only some roles may read is still announced to everyone. */
+const operatorCan = (f: Feature): boolean => {
+  const u = useApp.getState().user;
+  return !!u && !u.admin && userCan(u, f);
+};
+
+/** Wave 3F: the admin page's Roles tab reads `GET /admin/roles` here once the contract has the
+ *  route. Until then an admin session has nothing of its own to pull back on a `roles` notice. */
+const readAdminRoles = (): Promise<void> => Promise.resolve();
+
+/** Who am I, again: a role write may have changed what this session holds. */
+async function rereadMe(): Promise<void> {
+  const before = useApp.getState().user;
+  const r = await call(routes.me);
+  if (!before || JSON.stringify(before) === JSON.stringify(r.user)) return;
+  useApp.setState({ user: r.user });
+  if (before.r !== r.user.r || JSON.stringify(permsOf(before)) !== JSON.stringify(permsOf(r.user))) {
+    await useApp.getState().loadSnapshot();
+  }
+}
 
 /** The slices `GET /stock` answers for, in one call. */
 const STOCK: readonly Changed[] = ["stock", "rsv", "ovr"];
@@ -32,9 +55,9 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
     ? call(routes.deskTickets).then(applyDeskTickets)
     : call(routes.tickets).then(applySupportTickets),
   prices: () => call(routes.prices).then(applyPrices),
-  // `GET /price-lists` is the manager's alone, and the price grid's copy-on-write announces it
-  // to every open browser - a counter's tab reads the prices and outlets it needs instead.
-  priceLists: () => useApp.getState().user?.r === "manager" && !useApp.getState().user?.admin
+  // `GET /price-lists` is for whoever holds Prices, and the price grid's copy-on-write announces
+  // it to every open browser - a counter's tab reads the prices and outlets it needs instead.
+  priceLists: () => operatorCan("prices")
     ? call(routes.priceLists).then(applyPriceLists)
     : Promise.resolve(),
   menu: () => call(routes.menus).then(applyMenus),
@@ -52,18 +75,24 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   // two halves of one screen and a settlement moves both. The action answers `false` on a
   // failure rather than throwing, so a manager's tab shows its own outage line and a tab with
   // no Credit screen open is not told anything went wrong.
-  receivables: () => useApp.getState().user?.r === "manager"
+  receivables: () => operatorCan("credit")
     ? useApp.getState().loadReceivables().then(() => undefined)
     : Promise.resolve(),
   // ---- admin: the payer register. Read two ways, like `locations`/`outlets`: the super admin
   // pulls back its own whole list, and an operational session's copy comes back through
   // `roster`, which every payer write names alongside this one.
   payers: () => useApp.getState().user?.admin ? call(routes.adminPayers).then(applyAdminPayers) : Promise.resolve(),
-  // ---- shifts: the manager's list, behind the bell and the Register's Shift reports card. A
-  // counter's own Close Shift reads its result from the reply, so nobody else reads anything.
-  shifts: () => useApp.getState().user?.r === "manager" && !useApp.getState().user?.admin
+  // ---- shifts: the list behind the bell and the Register's Shift reports card, for whoever holds
+  // Shift reports. A counter's own Close Shift reads its result from the reply.
+  shifts: () => operatorCan("shift_reports")
     ? useApp.getState().loadShifts().then(() => undefined)
     : Promise.resolve(),
+  // ---- roles: a role was created, edited, switched off or given to someone. The super admin's
+  // own list comes back for that session; an operator re-reads who they are, because the role
+  // they hold may be the one that changed - and if what it grants moved, every screen's data may
+  // have too (a read the server now scopes differently), so the whole snapshot follows. The
+  // `Screen` guard then takes away a screen the role no longer grants, on the next render.
+  roles: () => useApp.getState().user?.admin ? readAdminRoles() : rereadMe(),
   // ---- adjustments
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- adjustment requests

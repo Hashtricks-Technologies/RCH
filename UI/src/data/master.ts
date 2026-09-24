@@ -1,4 +1,5 @@
-import type { ClassTerms, Item, Location, Payer, PayerRoster, PayerTerms, PriceList, Terms, UserMin } from "../types";
+import { DESK_DEFAULTS, readsHospitalWide } from "@rch/domain";
+import type { ClassTerms, Item, Location, Payer, PayerRoster, PayerTerms, Permissions, PriceList, Terms, UserMin } from "../types";
 
 // `STAFF_CREDIT_LIMIT` is deliberately not among these any more: the till reads the ceiling off
 // `GET /reports/credit/:kind/:id` (`credit.limit`), because the number that matters is the one
@@ -107,10 +108,11 @@ export function hydrateMaster(m: MasterData): void {
  * What to show as a person's "base" next to their role. A counter operator,
  * store keeper or kitchen in-charge genuinely works out of one place, so their
  * location is the useful thing to show. An outlet manager oversees every shop
- * at once and a procurement officer is not tied to a single counter either.
+ * at once - as does a counter role given every outlet or a hospital-wide
+ * feature - and a procurement officer is not tied to a single counter either.
  */
-export function homeLabel(u: UserMin): string | null {
-  if (u.r === "manager") return "All outlets";
+export function homeLabel(u: UserMin & { perms?: Permissions }): string | null {
   if (u.r === "buyer") return null;
+  if ((u.r === "manager" || u.r === "counter") && readsHospitalWide(u.r, u.perms ?? DESK_DEFAULTS[u.r].perms)) return "All outlets";
   return LOC[u.loc].n;
 }

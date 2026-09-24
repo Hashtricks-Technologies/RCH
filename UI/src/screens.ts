@@ -1,4 +1,4 @@
-import type { Role } from "./types";
+import type { Feature, Level, Role } from "./types";
 
 /**
  * Every operational screen, as data: its route key, what the sidebar calls it, and where it sits.
@@ -39,57 +39,63 @@ export interface ScreenMeta {
   icon: string;
   /** The sidebar group it is drawn under for a desk whose own layout (`DESK_NAV`) does not place it. */
   section: string;
+  /** Any one of these shows it. Empty for a desk-bound screen every desk has. */
+  needs: readonly ScreenNeed[];
   /** Desk-bound: only these desks ever see it, whatever else a role holds. */
   desks?: readonly Role[];
 }
 
+/** A feature at a level - a screen asks at view unless opening it is itself the write. */
+export interface ScreenNeed { f: Feature; l: Level }
+const v = (...fs: Feature[]): ScreenNeed[] => fs.map((f) => ({ f, l: "view" }));
+
 const EVERY_DESK: readonly Role[] = ["counter", "manager", "store", "prod", "buyer"];
 
 export const SCREENS: readonly ScreenMeta[] = [
-  { key: "dash", label: "Dashboard", icon: "dash", section: "Overview", desks: EVERY_DESK },
+  { key: "dash", label: "Dashboard", icon: "dash", section: "Overview", needs: [], desks: EVERY_DESK },
   // ---- the counter's own
-  { key: "pos", label: "Point of Sale", icon: "pos", section: "Sell" },
+  { key: "pos", label: "Point of Sale", icon: "pos", section: "Sell", needs: [{ f: "billing", l: "edit" }] },
   // One key, two views: every outlet's bills for someone who reads hospital-wide, the one
   // counter's for everybody else (`registry.tsx`).
-  { key: "bills", label: "Bills", icon: "bill", section: "Sell" },
-  { key: "register", label: "Register", icon: "rep", section: "Sell" },
-  { key: "outlet-stock", label: "Stock in Hand", icon: "stock", section: "My counter" },
-  { key: "outlet-requests", label: "Stock Requests", icon: "req", section: "Movement" },
-  { key: "outlet-tickets", label: "Pick Tickets", icon: "tkt", section: "Movement" },
+  { key: "bills", label: "Bills", icon: "bill", section: "Sell", needs: v("billing") },
+  { key: "register", label: "Register", icon: "rep", section: "Sell", needs: v("x_report", "z_report", "shift_reports") },
+  { key: "outlet-stock", label: "Stock in Hand", icon: "stock", section: "My counter", needs: v("outlet_stock") },
+  { key: "outlet-requests", label: "Stock Requests", icon: "req", section: "Movement", needs: v("outlet_requests") },
+  { key: "outlet-tickets", label: "Pick Tickets", icon: "tkt", section: "Movement", needs: v("outlet_tickets") },
   // ---- the outlet manager's
-  { key: "approvals", label: "Approvals", icon: "appr", section: "Movement" },
-  { key: "items-stock", label: "Items & Stock", icon: "item", section: "Outlets" },
-  { key: "menu", label: "Menu Management", icon: "order", section: "Outlets" },
-  { key: "prices", label: "Prices", icon: "price", section: "Outlets" },
+  { key: "approvals", label: "Approvals", icon: "appr", section: "Movement", needs: v("approvals") },
+  { key: "items-stock", label: "Items & Stock", icon: "item", section: "Outlets", needs: v("items_stock") },
+  { key: "menu", label: "Menu Management", icon: "order", section: "Outlets", needs: v("menu") },
+  { key: "prices", label: "Prices", icon: "price", section: "Outlets", needs: v("prices") },
   // The kitchen's own switch board, and - behind `AVAILABILITY_SCREEN_ENABLED` - the manager's
   // every-outlet one. The counter's switches live on its till and shelf, never on this screen.
-  { key: "avail", label: "Product On / Off", icon: "power", section: "Stock",
+  { key: "avail", label: "Product On / Off", icon: "power", section: "Stock", needs: [{ f: "availability", l: "edit" }],
     desks: AVAILABILITY_SCREEN_ENABLED ? ["prod", "manager"] : ["prod"] },
-  { key: "credit", label: "Credit & Settlements", icon: "rep", section: "Credit" },
+  { key: "credit", label: "Credit & Settlements", icon: "rep", section: "Credit", needs: v("credit") },
   // ---- the central store's
-  { key: "issue", label: "Issue Desk", icon: "tkt", section: "Issue" },
-  { key: "store-stock", label: "Stock in Hand", icon: "stock", section: "Inventory" },
+  { key: "issue", label: "Issue Desk", icon: "tkt", section: "Issue", needs: v("issue_desk") },
+  { key: "store-stock", label: "Stock in Hand", icon: "stock", section: "Inventory", needs: v("store_stock") },
   // The store's write-off register. The kitchen writes off from its own Stock screen.
-  { key: "adjust", label: "Adjustments", icon: "item", section: "Inventory", desks: ["store"] },
-  { key: "procure", label: "Requisitions", icon: "need", section: "Purchasing" },
-  { key: "reports", label: "Reports", icon: "rep", section: "Insights" },
+  { key: "adjust", label: "Adjustments", icon: "item", section: "Inventory", needs: v("adjustments"), desks: ["store"] },
+  { key: "procure", label: "Requisitions", icon: "need", section: "Purchasing", needs: v("store_requisitions") },
+  { key: "reports", label: "Reports", icon: "rep", section: "Insights", needs: v("store_reports") },
   // ---- the kitchen's
-  { key: "kitchen-orders", label: "Orders", icon: "order", section: "Kitchen" },
-  { key: "make", label: "Make & Distribute", icon: "make", section: "Kitchen" },
-  { key: "kitchen-stock", label: "Kitchen Stock", icon: "stock", section: "Stock" },
-  { key: "kitchen-requests", label: "Stock Requests", icon: "req", section: "Movement" },
-  { key: "kitchen-tickets", label: "Pick Tickets", icon: "tkt", section: "Movement" },
+  { key: "kitchen-orders", label: "Orders", icon: "order", section: "Kitchen", needs: v("kitchen_orders") },
+  { key: "make", label: "Make & Distribute", icon: "make", section: "Kitchen", needs: v("make_distribute") },
+  { key: "kitchen-stock", label: "Kitchen Stock", icon: "stock", section: "Stock", needs: v("kitchen_stock") },
+  { key: "kitchen-requests", label: "Stock Requests", icon: "req", section: "Movement", needs: v("kitchen_requests") },
+  { key: "kitchen-tickets", label: "Pick Tickets", icon: "tkt", section: "Movement", needs: v("kitchen_tickets") },
   // ---- purchasing
-  { key: "requisitions", label: "Requisitions", icon: "need", section: "Purchasing" },
-  { key: "pool", label: "Procurement List", icon: "req", section: "Purchasing" },
-  { key: "purchase-orders", label: "Purchase Orders", icon: "order", section: "Purchasing" },
-  { key: "contracts", label: "Rate Contracts", icon: "price", section: "Purchasing" },
-  { key: "inventory", label: "Inventory", icon: "item", section: "Inventory" },
-  { key: "newproducts", label: "New Products", icon: "need", section: "Inventory" },
-  { key: "vendors", label: "Vendors", icon: "item", section: "Masters" },
+  { key: "requisitions", label: "Requisitions", icon: "need", section: "Purchasing", needs: v("requisitions") },
+  { key: "pool", label: "Procurement List", icon: "req", section: "Purchasing", needs: v("procurement_list") },
+  { key: "purchase-orders", label: "Purchase Orders", icon: "order", section: "Purchasing", needs: v("purchase_orders") },
+  { key: "contracts", label: "Rate Contracts", icon: "price", section: "Purchasing", needs: v("rate_contracts") },
+  { key: "inventory", label: "Inventory", icon: "item", section: "Inventory", needs: v("inventory") },
+  { key: "newproducts", label: "New Products", icon: "need", section: "Inventory", needs: v("new_products") },
+  { key: "vendors", label: "Vendors", icon: "item", section: "Masters", needs: v("vendors") },
   // ---- every desk
-  { key: "issues", label: "Support", icon: "req", section: "Account", desks: EVERY_DESK },
-  { key: "settings", label: "Settings", icon: "set", section: "Account", desks: EVERY_DESK },
+  { key: "issues", label: "Support", icon: "req", section: "Account", needs: [], desks: EVERY_DESK },
+  { key: "settings", label: "Settings", icon: "set", section: "Account", needs: [], desks: EVERY_DESK },
 ];
 
 export const SCREEN: Record<ScreenKey, ScreenMeta> =

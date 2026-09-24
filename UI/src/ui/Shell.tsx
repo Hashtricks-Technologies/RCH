@@ -7,7 +7,9 @@ import { IT, LOC, homeLabel } from "../data/master";
 import { canSee, navFor } from "../nav";
 import { useApp, type AppState } from "../store";
 import { isToday, money0 } from "../lib/fmt";
-import { activeItems, availOf, isTicketOpen, locName, menuOf, openOutlets, procurementList, qty } from "../lib/selectors";
+import {
+  activeItems, availOf, isTicketOpen, locName, menuOf, openOutlets, procurementList, qty, userCan, userWide,
+} from "../lib/selectors";
 import type { LocKey, Role, User } from "../types";
 import type { ScreenKey } from "../screens";
 import { useStreamState, type StreamState } from "../api/events";
@@ -307,7 +309,7 @@ function Bell({ uid, queues, detail }: { uid: string; queues: Record<string, str
 }
 
 /** Whether the bell carries the shifts row - whoever reads every counter's closed shifts. */
-const readsShifts = (u: User) => u.r === "manager";
+const readsShifts = (u: User) => userCan(u, "shift_reports");
 
 /** What each counted queue is, in the words of the person who has to clear it. Keyed by the
  *  screen that clears it, so the sidebar badge and the bell row are one count. */
@@ -355,8 +357,8 @@ function searchHits(s: SearchState, q: string): Hit[] {
   const n = q.trim().toLowerCase();
   if (!u || !n) return [];
   const has = (...v: (string | undefined)[]) => v.some((x) => x?.toLowerCase().includes(n));
-  // A counter operator only ever sees its own paperwork.
-  const mine = u.r === "counter" ? u.loc : null;
+  // A session that reads one counter only ever sees that counter's paperwork.
+  const mine = userWide(u) ? null : u.loc;
 
   const navs: Hit[] = navFor(u).flatMap((g) => g.items
     .filter((i) => has(i.label, g.group))
@@ -430,7 +432,7 @@ function navQueues(s: AppState): Record<string, string[]> {
   if (sees("outlet-requests")) c["outlet-requests"] = ids(s.req.filter((r) => r.from === u.loc && r.st === "Request sent"));
   // The counter's own shelf, opened on its till (`GOES_TO_FOR`); the kitchen's board; and the
   // manager's every-outlet board when `AVAILABILITY_SCREEN_ENABLED` puts it back.
-  if (u.r === "counter") c.avail = offItems(s, u.loc);
+  if (u.r === "counter") { if (sees("pos")) c.avail = offItems(s, u.loc); }
   else if (sees("avail")) {
     c.avail = u.r === "prod"
       ? Object.keys(s.stock.kitchen).filter((k) => IT[k]?.t === "FG" && !availOf(s, "kitchen", k).ok)

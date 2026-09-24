@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../store";
-import { locName, openOutlets } from "../lib/selectors";
+import { locName, openOutlets, useCan, useWide } from "../lib/selectors";
 import { fromWireDay, fromWireTime, money, money0 } from "../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, Kpis, PageHead, Pill, TableFoot,
@@ -34,8 +34,10 @@ export default function Register() {
   const readZReports = useApp((s) => s.readZReports);
   const closeRegister = useApp((s) => s.closeRegister);
 
-  // The manager is hospital-wide and picks; the counter has exactly one register, its own.
-  const anyOutlet = user.r === "manager";
+  // A session that reads hospital-wide picks; one that reads a single counter has exactly one
+  // register, its own.
+  const anyOutlet = useWide();
+  const shiftReports = useCan("shift_reports", "view");
   // `openOutlets()` reads a mutable registry, so `catalogVersion` - the signal that the location
   // master moved - is what tells React to look again.
   const outlets = useMemo(() => { void catalogVersion; return openOutlets(); }, [catalogVersion]);
@@ -121,7 +123,7 @@ export default function Register() {
           the takings so far and changes nothing - take one as often as you like. A Z closes this
           outlet's register: the session is settled, and the next sale opens a new one.
         </>}
-        actions={!anyOutlet ? <CloseShift /> : outlets.length > 0 ? (
+        actions={!anyOutlet ? (user.r === "counter" ? <CloseShift /> : undefined) : outlets.length > 0 ? (
           <FilterSelect
             label="Outlet"
             value={loc ? locName(loc) : ""}
@@ -286,7 +288,7 @@ export default function Register() {
         )}
       </Card>
 
-      {anyOutlet && <ShiftReports />}
+      {shiftReports && <ShiftReports />}
 
       {slip && (
         <>

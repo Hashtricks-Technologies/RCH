@@ -1,14 +1,16 @@
 import type { User } from "./types";
+import { userCan } from "./lib/selectors";
 import { DESK_HOME, DESK_NAV, SCREEN, SCREENS, isScreenKey, type ScreenKey, type ScreenMeta } from "./screens";
 
 export interface NavItem { k: ScreenKey; label: string; icon: string }
 export interface NavGroup { group: string; items: NavItem[] }
 
-/** The part of a session the sidebar is built from. */
-type Who = Pick<User, "r">;
+/** The part of a session the sidebar is built from: its desk and its role's permissions. */
+type Who = Pick<User, "r" | "perms">;
 
+/** A desk-bound screen shows on its desks alone; any other shows when any one of its needs is held. */
 const visible = (u: Who, s: ScreenMeta) =>
-  (!s.desks || s.desks.includes(u.r)) && DESK_NAV[u.r].some((g) => g.keys.includes(s.key));
+  (!s.desks || s.desks.includes(u.r)) && (s.needs.length === 0 || s.needs.some((n) => userCan(u, n.f, n.l)));
 
 /** Whether this session may open `key`. */
 export const canSee = (u: Who, key: string): boolean => isScreenKey(key) && visible(u, SCREEN[key]);

@@ -3,6 +3,7 @@ import { counterName } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { fromWireDay, money } from "../../lib/fmt";
+import { useHolds } from "../../lib/selectors";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { Alert, Avatar, Btn, DataTable, Field, Pill, Section } from "../../ui/kit";
@@ -77,8 +78,10 @@ function BillSlip({ bill }: { bill: Dated<Bill> }) {
 function BillDrawer({ id }: DrawerProps) {
   const bills = useApp((s) => s.bills);
   const close = useApp((s) => s.closeDrawer);
-  // ---- bill void: the manager's own door, and nobody else's. The counter reads this drawer too.
+  // ---- bill void: the door of whoever holds Void bill - the seeded Outlet Manager alone. The
+  // counter reads this drawer too.
   const user = useApp((s) => s.user);
+  const mayVoid = useHolds("void_bill");
   const voidBill = useApp((s) => s.voidBill);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -97,9 +100,9 @@ function BillDrawer({ id }: DrawerProps) {
   const L = LOC[bill.loc];
   const st = billStatus(bill.pay);
   const taxable = bill.tot - bill.tax;
-  // ---- bill void: same hospital day, not already taken back, and the manager alone. The
+  // ---- bill void: same hospital day, not already taken back, and a role holding Void bill. The
   // server refuses all three again on its own read - this only decides whether to offer.
-  const canVoid = user?.r === "manager" && voidableToday(bill);
+  const canVoid = mayVoid && voidableToday(bill);
   const doVoid = async () => {
     setBusy(true);
     const ok = await voidBill(bill.no, reason);

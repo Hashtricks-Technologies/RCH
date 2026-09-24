@@ -3,6 +3,7 @@ import { defaultSourceFor, gstForHsn, mayEditItemField, mayEditItemImage, type I
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { money } from "../../lib/fmt";
+import { permsOf } from "../../lib/selectors";
 import { Alert, Btn, BtnRow, Field, FormRow, HsnField, Section, Tag } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { PhotoPicker } from "../../ui/PhotoPicker";
@@ -52,8 +53,10 @@ function ItemDrawer({ id }: { id: string }) {
     );
   }
 
-  const role = user.r;
-  const may = (f: ItemField) => mayEditItemField(role, f);
+  // What the caller's role holds decides which boxes are live: Items & stock for the prices and
+  // the till name, Item master for the rest (`ITEM_FIELD_FEATURES`).
+  const perms = permsOf(user);
+  const may = (f: ItemField) => mayEditItemField(perms, f);
   const retired = item.active === false;
   const trimmed = n.trim();
   const costN = Number(cost);
@@ -138,7 +141,7 @@ function ItemDrawer({ id }: { id: string }) {
       )}
       <Alert tone="i" label="WHO CHANGES WHAT">{whose}</Alert>
 
-      {mayEditItemImage(role) && (
+      {mayEditItemImage(perms) && (
         <>
           <Section title="Photo" tip="What every till and screen shows for this product." />
           <PhotoPicker it={id} />
@@ -184,7 +187,7 @@ function ItemDrawer({ id }: { id: string }) {
           hint={slab}
           onChange={(code, picked) => {
             setHsn(code);
-            // Only fill in a rate this role actually owns. `ITEM_FIELD_ROLES` never gives one
+            // Only fill in a rate this role actually owns. `ITEM_FIELD_FEATURES` never gives one
             // person both boxes - the HSN is the store's, the buyer's and the kitchen's, and the
             // GST rate is the outlet manager's - so for whoever is holding this drawer the code
             // it implies is a sentence to read, not a figure to have changed under them.

@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
 import type { Changed } from "@rch/contract";
-import { creditBreachMessage, istDate } from "@rch/domain";
+import { DESK_DEFAULTS, creditBreachMessage, istDate } from "@rch/domain";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
@@ -613,6 +613,59 @@ describe("refetch - what a write says it changed is what gets read", () => {
   it("reads nothing when a write changed nothing", async () => {
     await refetch([]);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // ---- configurable roles
+  it("re-reads who the operator is on a roles notice, and stops there when nothing they hold moved", async () => {
+    as("counter");
+    const me = S().user!;
+    serve({ "GET /api/v1/me": () => json({ user: me, mustChangePassword: false }) });
+    await refetch(["roles"]);
+    expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/me"]);
+    expect(S().user).toBe(me);
+  });
+
+  it("takes a renamed role's new name without reloading anything else", async () => {
+    as("counter");
+    const renamed = { ...S().user!, rl: "Till Operator" };
+    serve({ "GET /api/v1/me": () => json({ user: renamed, mustChangePassword: false }) });
+    await refetch(["roles"]);
+    expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/me"]);
+    expect(S().user?.rl).toBe("Till Operator");
+  });
+
+  it("reloads the snapshot when the operator's own permissions changed", async () => {
+    as("counter");
+    const before = S().user!;
+    const granted = { ...before, perms: { f: { ...DESK_DEFAULTS.counter.perms.f, credit: "edit" as const }, a: [] } };
+    serve({
+      "GET /api/v1/me": () => json({ user: granted, mustChangePassword: false }),
+      "GET /api/v1/snapshot": () => json({ ...snapshot(), user: granted }),
+    });
+    await refetch(["roles"]);
+    expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/me", "GET /api/v1/snapshot"]);
+    expect(S().user?.perms?.f.credit).toBe("edit");
+  });
+
+  it("reads nothing on a roles notice for the super admin until its Roles tab exists", async () => {
+    as("buyer");
+    useApp.setState({ user: { ...S().user!, admin: true } });
+    await refetch(["roles"]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reads price lists, credit and shifts for whoever holds them, not by desk", async () => {
+    as("counter");
+    await refetch(["priceLists", "shifts", "receivables"]);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    useApp.setState({ user: { ...S().user!, perms: { f: { prices: "view", shift_reports: "view" }, a: [] } } });
+    serve({
+      "GET /api/v1/price-lists": () => json(FX.PRICE_LISTS),
+      "GET /api/v1/shifts": () => json([]),
+    });
+    await refetch(["priceLists", "shifts"]);
+    expect(calls().map((c) => c.at).sort()).toEqual(["GET /api/v1/price-lists", "GET /api/v1/shifts"]);
   });
 
   it("says the refresh failed, not that the write did", async () => {
