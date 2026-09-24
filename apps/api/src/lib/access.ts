@@ -14,12 +14,14 @@ export type RoleAccess = { roleId: string; desk: Role; perms: Permissions; activ
  *  effect at once; this bounds how stale a pod can be if one is ever missed. */
 const ACCESS_TTL_MS = 60_000;
 
-/** The account's role, joined in one primary-key read. `null` for an account that is gone and
- *  for a super admin, which holds no role. */
+/** The account's role, joined in one primary-key read. `null` for an account that is gone, for a
+ *  super admin, which holds no role, and for an account that has been deactivated: its access token
+ *  may not have run out yet, but the gate answers `null` with a 401 on the very next request, so
+ *  switching someone off takes effect at once rather than when the token expires. */
 export async function loadAccess(db: Reader, userId: string): Promise<RoleAccess | null> {
-  const [row] = await db.select({ roleId: roles.id, desk: roles.desk, perms: roles.perms, active: roles.active })
+  const [row] = await db.select({ roleId: roles.id, desk: roles.desk, perms: roles.perms, active: roles.active, userActive: users.active })
     .from(users).innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.id, userId));
-  return row ? { roleId: row.roleId, desk: row.desk, perms: row.perms as Permissions, active: row.active } : null;
+  return row?.userActive ? { roleId: row.roleId, desk: row.desk, perms: row.perms as Permissions, active: row.active } : null;
 }
 
 export type AccessCache = {

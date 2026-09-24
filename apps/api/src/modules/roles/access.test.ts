@@ -98,3 +98,23 @@ describe("a change to a role lands on the next request", () => {
     expect((await app.inject({ method: "GET", url: "/api/v1/register/x", headers: token })).statusCode).toBe(200);
   });
 });
+
+describe("a deactivated account is refused at the gate", () => {
+  it("its access token, still unexpired, gets a 401 on the very next request", async () => {
+    const who = await hire(await newRole("counter", counter), "coffee");
+    const headers = await authHeaders(app, who);
+    const before = await app.inject({ method: "GET", url: "/api/v1/me", headers });
+    expect(before.statusCode, before.body).toBe(200);
+    await asAdmin("POST", `/admin/users/${who}/deactivate`, {});
+    const after = await app.inject({ method: "GET", url: "/api/v1/me", headers });
+    expect(after.statusCode, after.body).toBe(401);
+    expect(after.json().error.message).toBe("Your account was changed - sign in again.");
+    // And a deactivation the pod was not told about - another pod's, or the operator CLI's -
+    // is caught as soon as the cached entry goes.
+    await asAdmin("POST", `/admin/users/${who}/reactivate`, {});
+    expect((await app.inject({ method: "GET", url: "/api/v1/me", headers })).statusCode).toBe(200);
+    await app.db.update(users).set({ active: false }).where(eq(users.id, who));
+    app.access.clear();
+    expect((await app.inject({ method: "GET", url: "/api/v1/snapshot", headers })).statusCode).toBe(401);
+  });
+});

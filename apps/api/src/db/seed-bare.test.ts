@@ -64,3 +64,24 @@ describe("a bare seed", () => {
     await expect(seedDatabase(b.db, { password: "bare-seed-password-1", forcePasswordChange: true, bare: true })).rejects.toThrow(/already has 1 users/);
   });
 });
+
+describe("a reseed over roles the super admin made", () => {
+  let r: TestDb;
+  beforeAll(async () => {
+    r = await withTestSchema("seed_roles");
+    await seedDatabase(r.db, { password: "bare-seed-password-1", forcePasswordChange: true, bare: true });
+    await r.db.insert(s.roles).values({ id: "ROLE-009", name: "Shift Lead", desk: "counter", perms: { f: {}, a: [] } });
+    await seedDatabase(r.db, { password: "bare-seed-password-1", forcePasswordChange: true, force: true, bare: true });
+  });
+  afterAll(async () => { await r.close(); });
+
+  it("keeps them, and resumes the role series one past the highest, never back at the start", async () => {
+    expect((await r.db.select().from(s.roles)).map((x) => x.id).sort()).toContain("ROLE-009");
+    const [row] = await r.db.select().from(s.sequences).where(sql`kind = 'role'`);
+    expect(row.next).toBe(10);
+    // Everything else starts where it always has.
+    const rows = await r.db.select().from(s.sequences);
+    expect(Object.fromEntries(rows.filter((x) => x.kind !== "role").map((x) => [x.kind, x.next])))
+      .toEqual(Object.fromEntries(Object.entries(SEQUENCE_START).filter(([k]) => k !== "role")));
+  });
+});

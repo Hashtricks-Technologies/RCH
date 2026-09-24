@@ -388,7 +388,8 @@ The code enforces these and tests pin them. Breaking one is a bug.
   like every other document number. A Z is still allowed at a closed outlet - money already taken
   must always be reconcilable - so an open register is a blocker on *closing* the outlet instead.
 - **A bill is voided only on the IST day it was billed, and only by a role holding `void_bill`** (the seeded
-  Outlet Manager; a role that takes bills without it gets a 403 saying what to ask for), and only while
+  Outlet Manager; a role that takes bills without it gets a 403 saying what to ask for), never by whoever
+  took it (a 403 even when their role holds `void_bill`: four eyes on every void), and only while
   its register session is still open. The void posts reversal
   moves, frees the credit room it used, and badges the bill rather than erasing it. A bill a live settlement
   has already closed refuses its own void and names the settlement to take back first.
@@ -418,6 +419,8 @@ The code enforces these and tests pin them. Breaking one is a bug.
   with both stripped, as they are with the payer.
 - **Employee numbers are assigned by the server**: `nextEmpNo` in `@rch/domain`, one past the highest
   `RC-<digits>`, under the `user` row of `sequences`, which also hands out user ids that are never reused.
+- **A deactivated account is refused at once.** The gate reads the account's `active` with its role on
+  every request (`loadAccess`), so a still-unexpired access token gets a **401** on its next request.
 - **A staff account is deleted only if it never did anything.** It must be deactivated first, and it can't be
   the caller's own or a super admin. Its shifts go with it, like its sessions: a shift is opened by signing
   in, not by doing anything, and a shift that billed anything is still guarded by the bills. Anything that still references the user (a bill, an approval, a stock

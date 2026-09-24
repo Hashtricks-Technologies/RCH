@@ -12,6 +12,7 @@ import { given } from "../../test/builders.js";
 import { warmPool } from "../../test/db.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
+import { giveRole, seededPlus } from "../../test/roles.js";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -838,6 +839,23 @@ describe("POST /bills/:no/void - the manager takes a bill back", () => {
     }
     const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
     expect(head.voidedAt).toBeNull();
+  });
+
+  it("refuses whoever took the bill, even a role given Void a bill, and lets them void a colleague's", async () => {
+    const undo = await giveRole(app, "u1", "counter", seededPlus("counter", {}, ["void_bill"]));
+    try {
+      const own = await given.bill(app.db, { loc: "coffee", operator: "u1", total: 40, tender: "Cash" });
+      const refused = await voidBill("u1", own, "Rang it up wrong");
+      expect(refused.statusCode, refused.body).toBe(403);
+      expect(refused.json().error.message).toBe("You can't void a bill you took yourself - ask someone else who holds Void a bill.");
+      const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, own));
+      expect(head.voidedAt).toBeNull();
+
+      const theirs = await given.bill(app.db, { loc: "kiosk", operator: "u6", total: 40, tender: "Cash" });
+      const ok = await voidBill("u1", theirs, "Rang up at the wrong counter");
+      expect(ok.statusCode, ok.body).toBe(200);
+      expect(ok.json().result.voided).toBe(true);
+    } finally { await undo(); }
   });
 
   it("takes a bill off a staff member's account - a sale that would have breached now lands", async () => {

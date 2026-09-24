@@ -244,7 +244,8 @@ super admin holds exactly one (`users.role_id`; `users_role_id_ck` allows null o
 composite foreign key `(role_id, role) → roles(id, desk)` keeps `users.role` equal to its role's desk.
 `users.role_label` is kept equal to the role's name (a rename rewrites it). Migration `0026_roles` seeds
 `ROLE-001`…`ROLE-005` from `DESK_DEFAULTS` (one per desk, in `RoleSchema` order) and backfills every account;
-`db:seed` (and `--force`, which never truncates `roles`) puts each seeded account on its desk's lowest active
+`db:seed` (and `--force`, which never truncates `roles`, and so resumes the `role` series one past the highest
+`ROLE-nnn` left on the table) puts each seeded account on its desk's lowest active
 role; `truncateAll` in the test harness keeps `roles` too.
 
 - **Permissions are read per request, never from the token.** `lib/access.ts`'s `loadAccess` joins the account
@@ -256,7 +257,7 @@ role; `truncateAll` in the test harness keeps `roles` too.
 - **`plugins/rbac.ts`, in order:** public passes; `access: "admin"` wants the admin claim, else 404; an admin
   token anywhere else is a 404 unless the route is `allowMcp` or admits it (`admitAdmin` - the manifest's own,
   which `mount()` passes, or `/events`' by hand), and an admitted admin skips permissions; every other token
-  has its role resolved from `app.access`, and a missing role, a switched-off role or a desk other than the
+  has its role resolved from `app.access`, and a deactivated account, a missing role, a switched-off role or a desk other than the
   token's `role` claim is a **401** "Your account was changed - sign in again." (the browser refreshes into a
   token for the account as it stands). Then `admits` (`@rch/domain`) decides: `{ desk }` reads the desk
   alone; `{ needs }` is 404 with no need met, 403

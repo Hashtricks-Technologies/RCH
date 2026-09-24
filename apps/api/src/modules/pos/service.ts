@@ -6,7 +6,7 @@ import { avail, availOf, breachesCredit, creditBreachMessage, dmy, fq, isAccount
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { lockPayerCredit, outstandingFor } from "../../lib/credit.js";
-import { NotFoundError } from "../../lib/errors.js";
+import { ForbiddenError, NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
@@ -252,6 +252,12 @@ export function createPosService(db: Db) {
         // pressing Void on the same bill queue here, and the second reads what the first wrote.
         const bill = await posRepo.headForUpdate(tx, no);
         if (!bill) throw new NotFoundError(`There is no bill ${no}.`);
+        // Four eyes. Void a bill is grantable to any role that sees Bills, a counter's included, and
+        // a till that could unsell its own takings is a till that could pocket them. The seeded
+        // Outlet Manager never bills, so for the seeded roles this never fires.
+        if (bill.operatorId === claims.sub) {
+          throw new ForbiddenError("You can't void a bill you took yourself - ask someone else who holds Void a bill.");
+        }
 
         const reason = body.reason.trim();
         assertRule(reason.length > 0, "Give a reason for voiding this bill");
@@ -292,8 +298,8 @@ export function createPosService(db: Db) {
 
         // No `requireLocOf` here, on purpose: the void-a-bill action is hospital-wide (the seeded
         // Outlet Manager's `loc` is a desk, not a scope), and the route is already closed to
-        // every role without it. The seeded counter that took the bill does not hold it - it is
-        // exactly the party that must not be able to unsell its own takings.
+        // every role without it. Whoever took the bill is refused above, whatever they hold - it
+        // is exactly the party that must not be able to unsell its own takings.
         //
         // And no `allocateId`: a void mints no document. It is a stamp on the bill that exists
         // and a reversal of the moves that exist, so there is no number for it to draw.

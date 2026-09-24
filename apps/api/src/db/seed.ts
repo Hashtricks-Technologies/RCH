@@ -102,12 +102,26 @@ export async function seedDatabase(db: Db, opts: { password: string; forcePasswo
       await tx.insert(s.users).values(userRow(admin, passwordHash, opts.forcePasswordChange, await deskRoles(tx)));
       await tx.insert(s.userPostings).values({ userId: admin.id, loc: admin.loc });
       await ensureSequences(tx);
+      await resumeRoleSeries(tx);
       return;
     }
     await seedMaster(tx, passwordHash, opts.forcePasswordChange);
     await ensureSequences(tx);
+    await resumeRoleSeries(tx);
     await seedDocuments(tx);
   });
+}
+
+/**
+ * The one series a reseed must not restart. `--force` truncates `sequences` with everything else,
+ * so `ensureSequences` puts `role` back at `SEQUENCE_START.role` - but `roles` is not truncated, and
+ * a role the super admin made (`ROLE-006` onward) would collide with the next one created. So the
+ * series resumes one past the highest `ROLE-nnn` still on the table, and never goes backwards.
+ */
+async function resumeRoleSeries(tx: Tx): Promise<void> {
+  await tx.execute(sql`update sequences set next = greatest(next,
+    coalesce((select max(substring(id from '^ROLE-([0-9]+)$')::int) from roles), 0) + 1)
+    where kind = 'role'`);
 }
 
 /** The one account a bare hospital starts with: the admin-flagged fixture (`RC-0001`), the same

@@ -2903,6 +2903,18 @@ The new `role` id series (`ROLE-006` onward) is inserted by `ensureSequences`, w
 of every `db:migrate` (`src/db/migrate.ts`), so a deploy needs no seed step for it. The `rch_app`
 grants are re-issued on every migrate (§5, *The database roles*), which covers the new table.
 
+**When this release is up.** On the live box that is the moment the commit lands on `develop`: a green CI
+run on a push to `develop` deploys it through `deploy-box.yml` (§16.6) with nobody pressing anything, so
+the Z change below is not waiting for a later promotion to `staging` or `production`. Tell the outlets
+*before* the merge, not before a promotion.
+
+**During the deploy itself, don't edit accounts.** For the few seconds between the migration committing
+and the new API container answering, the old API is still serving against the new schema. It knows
+nothing of `users.role_id`, so creating an account on `/admin` in that window breaks
+`users_role_id_ck` and answers a 500, and a role or location change can do the same. Nothing is
+half-written - the transaction rolls back - but hold account edits until `/readyz` is answering from
+the new release, then make them again.
+
 **What changes for the operators, the moment this release is up:**
 
 - **The seeded Counter Operator and Outlet Manager no longer take the Z.** No seeded role holds
@@ -2910,11 +2922,13 @@ grants are re-issued on every migrate (§5, *The database roles*), which covers 
   Close register & take Z - a direct request is a 404. Closing an outlet's day is the super admin's:
   **Admin → Registers**, pick the outlet, **Close register & take Z**. To hand it back, the super
   admin gives a role *Z reports* in **Admin → Roles** - at View for the Z list, at Edit to take one -
-  and every holder of that role gets it on their next request. Tell the outlets before promoting, or
-  the first evening after it nobody at a counter can close the day.
+  and every holder of that role gets it on their next request. Tell the outlets before the merge to
+  `develop` (above), or the first evening after it nobody at a counter can close the day.
 - Everything else each desk could do, it still does: the parity tests pin every route and every
   sidebar of the five seeded roles to what the desks had before (`permissions.test.ts`,
   `nav-parity.test.ts`, `scope.test.ts`).
+- A deactivated account is refused on its very next request (a 401, and the browser signs it out),
+  not when its access token runs out.
 - Sessions signed in across the deploy keep working. Permissions are not in the token: the API reads
   them per request, through a per-pod cache (60 s at most) that any role or account change clears.
 
