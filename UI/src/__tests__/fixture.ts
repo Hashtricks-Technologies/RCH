@@ -137,6 +137,8 @@ export function resetStore() {
     accounts: [], adminActions: [], deskTickets: [],
     // ---- admin: QR codes and ordering hours, empty for the same reason.
     adminQrCodes: [], adminOrderHours: [],
+    // ---- QR orders: the counter's queue, empty until a test serves one.
+    qrOrders: [], qrPaused: {}, qrHours: [], qrOrdersFailed: false,
     // ---- audit log: the tab's list, filter and pill count, back to a first visit's.
     audit: initialAudit(),
   });

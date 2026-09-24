@@ -18,9 +18,10 @@ import { createAdminSlice, type AdminSlice } from "./admin";
 import { createAuditSlice, type AuditSlice } from "./audit";
 import { createReceivablesSlice, type ReceivablesSlice } from "./receivables";
 import { createShiftsSlice, type ShiftsSlice } from "./shifts";
+import { createQrOrdersSlice, type QrOrdersSlice } from "./qrOrders";
 import { activeBill, createTillSlice, tillOf, withoutBill, type TillSlice } from "./till";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice, ShiftsSlice, TillSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice, ShiftsSlice, QrOrdersSlice, TillSlice {
   user: User | null;
   /** Every counter this account may stand at, from the sign-in response. One entry is the
    *  ordinary case and means no picker is ever shown. `user.loc` is the one it is standing at. */
@@ -849,6 +850,7 @@ export const useApp = create<AppState>((set, get) => ({
   ...createAuditSlice(set, get),
   ...createReceivablesSlice(set, get),
   ...createShiftsSlice(set, get),
+  ...createQrOrdersSlice(set, get),
   ...createTillSlice(set, get),
 }));
 

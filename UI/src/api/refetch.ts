@@ -94,6 +94,12 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   shifts: () => operatorCan("shift_reports")
     ? useApp.getState().loadShifts().then(() => undefined)
     : Promise.resolve(),
+  // ---- QR orders: the counter's queue and each outlet's pause switch, for whoever holds QR
+  // orders. A capture, a status step or a pause announces it to every open browser; a store
+  // keeper's tab would be answered 404, so it reads nothing.
+  qrOrders: () => operatorCan("qr_orders")
+    ? useApp.getState().loadQrOrders().then(() => undefined)
+    : Promise.resolve(),
   // ---- roles: a role was created, edited, switched off or given to someone. The super admin's
   // own list comes back for that session; an operator re-reads who they are, because the role
   // they hold may be the one that changed - and if what it grants moved, every screen's data may
