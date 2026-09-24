@@ -57,7 +57,7 @@ describe("the menu readers", () => {
     try {
       const sellable = await sellableAt(app.db, "coffee");
       const menu = menuOf(sellable);
-      expect(menu.map((l) => l.item.n)).toEqual([...menu.map((l) => l.item.n)].sort((a, b) => a.localeCompare(b)));
+      expect(menu.map((l) => l.item.n)).toEqual(menu.map((l) => l.item.n).sort((a, b) => a.localeCompare(b)));
       const juice = menu.find((l) => l.it === "juice")!;
       expect(juice).toMatchObject({ price: 18, mrp: 18, available: true });
       expect(juice.cover).toBeGreaterThan(0);
