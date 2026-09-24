@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canHandOver } from "../../lib/selectors";
+import { canCancelTicket, canHandOver, useCan } from "../../lib/selectors";
 import { U, fq, money, sum } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill, TicketTrail } from "../../ui/kit";
 import { PrintSlipBtn, TicketSlip } from "../../ui/TicketSlip";
@@ -15,6 +15,7 @@ function TicketDrawer({ id }: DrawerProps) {
   const req = useApp((s) => s.req);
   const close = useApp((s) => s.closeDrawer);
   const handover = useApp((s) => s.handover);
+  const may = useCan("issue_desk");
   const [otp, setOtp] = useState("");
   // A handover is a server call now, and the stock only leaves once. A second tap inside one
   // round trip would post a second `ticket_out` - refused, but as an error the window reads as
@@ -78,13 +79,14 @@ function TicketDrawer({ id }: DrawerProps) {
         <>
           <Btn variant="gh" onClick={close}>Close</Btn>
           <div className="sp" />
-          {canHandOver(t.st) ? (
+          {may && canHandOver(t.st) ? (
             <Btn variant="ok" disabled={otp.trim().length !== 6 || busy} onClick={() => handOver(otp)}>
               {busy ? "Handing over…" : "Hand over on OTP"}
             </Btn>
           ) : (
             <span className="mini">
-              {t.st === "Collected" ? "Waiting on the receiving counter"
+              {t.st === "Issued" ? "Waiting for the collector"
+                : t.st === "Collected" ? "Waiting on the receiving counter"
                 : t.st === "Cancelled" ? "Withdrawn - nothing was collected against it" : "Closed"}
             </span>
           )}
@@ -114,7 +116,7 @@ function TicketDrawer({ id }: DrawerProps) {
         </p>
       </div>
 
-      {canHandOver(t.st) && (
+      {may && canHandOver(t.st) && (
         <div className="mtop">
           <Field
             label="OTP quoted by the collector"
@@ -161,7 +163,7 @@ function TicketDrawer({ id }: DrawerProps) {
         />
       </div>
 
-      {canCancelTicket(t.st) && (
+      {may && canCancelTicket(t.st) && (
         <Section title="Cancel this ticket" tip="Nobody collected against it, and the stock should go back">
           {cancelling ? (
             <>

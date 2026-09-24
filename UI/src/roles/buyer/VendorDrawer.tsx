@@ -7,6 +7,8 @@ import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { contractsOf } from "./lib";
+import { permissionRefusal } from "@rch/domain";
+import { useCan } from "../../lib/selectors";
 
 function VendorDrawer({ id }: DrawerProps) {
   const s = useApp();
@@ -14,6 +16,7 @@ function VendorDrawer({ id }: DrawerProps) {
   const updateVendor = useApp((x) => x.updateVendor);
   const setVendorActive = useApp((x) => x.setVendorActive);
   const close = useApp((x) => x.closeDrawer);
+  const may = useCan("vendors");
 
   const isNew = id === "new";
   const existing = isNew ? undefined : s.vendors.find((v) => v.id === id);
@@ -75,7 +78,7 @@ function VendorDrawer({ id }: DrawerProps) {
       sub={isNew ? "New vendor record" : `${existing!.id} · ${existing!.active ? "Active" : "Inactive"}`}
       foot={
         <>
-          {!isNew && (
+          {may && !isNew && (
             <Btn
               variant={existing!.active ? "dg" : "ok"}
               disabled={busy}
@@ -86,10 +89,13 @@ function VendorDrawer({ id }: DrawerProps) {
           )}
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
-          <Btn disabled={busy || !n.trim()} onClick={save}>{busy ? "Saving…" : "Save"}</Btn>
+          {may && <Btn disabled={busy || !n.trim()} onClick={save}>{busy ? "Saving…" : "Save"}</Btn>}
         </>
       }
     >
+      {!may && <Alert tone="i" label="VIEW ONLY">{permissionRefusal("vendors")}</Alert>}
+      {/* A role that sees Vendors but may not change them reads the record with every box shut. */}
+      <fieldset disabled={!may} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <Section title="Vendor details" tip="Name, tax registration and commercial terms.">
         <FormRow cols="f2">
           <Field label="Vendor name">
@@ -133,6 +139,7 @@ function VendorDrawer({ id }: DrawerProps) {
           ))}
         </div>
       </Section>
+      </fieldset>
 
       {!isNew && (() => {
         const contracts = contractsOf(s.contracts, existing!);

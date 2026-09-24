@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, canHandOver, costOf, hasLeft, isTicketOpen, madeItems, menuOf, operationalLocs, qty,
+  avail, canHandOver, costOf, hasLeft, isTicketOpen, madeItems, menuOf, operationalLocs, qty, useCan,
 } from "../../lib/selectors";
 import { fq, isToday, money, sum, U } from "../../lib/fmt";
 import {
@@ -27,6 +27,8 @@ export default function MakeDistribute() {
   const makeProduct = useApp((x) => x.makeProduct);
   const distribute = useApp((x) => x.distribute);
   const openDrawer = useApp((x) => x.openDrawer);
+  const may = useCan("make_distribute");
+  const mayHand = useCan("kitchen_tickets");
   const { batch, tkt, ovr } = s;
 
   // What the kitchen can make is read off the master, not written down here: a fourth finished
@@ -138,10 +140,11 @@ export default function MakeDistribute() {
         crumbs={["Royal Care", "Central Kitchen", "Make & Distribute"]}
         title="Make and distribute"
         tip="Make products and send them out."
+        readOnly={!may && "make_distribute"}
         actions={<span className="mini">{sum(allBatches, (b) => b.qty)} units made today</span>}
       />
 
-      <Grid cols="g21">
+      {may && <Grid cols="g21">
         <Card title="Make products" tip="Pick a product, enter how many, mark it made">
           <div className="tilegrid">
             {PRODS.map((k) => {
@@ -252,7 +255,7 @@ export default function MakeDistribute() {
             {sending ? "Sending…" : dWant <= 0 ? "Enter a quantity" : `Send to ${LOC[dTo].n}`}
           </Btn>
         </Card>
-      </Grid>
+      </Grid>}
 
       <Card title="Made today" tip="Batch log from the Central Kitchen" flush className="mtop">
         <Toolbar
@@ -341,7 +344,7 @@ export default function MakeDistribute() {
               <StatusPill status={t.st} />,
               // Opens the ticket's own window, where the collector's six digits are typed in.
               // Nothing hands a ticket over without them any more.
-              <Btn size="sm" variant="ok" onClick={() => openDrawer("ptkt", t.id)}>Hand over</Btn>,
+              <Btn size="sm" variant={mayHand ? "ok" : "gh"} onClick={() => openDrawer("ptkt", t.id)}>{mayHand ? "Hand over" : "Open"}</Btn>,
             ],
           }))}
           empty={{

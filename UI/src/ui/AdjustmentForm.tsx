@@ -3,10 +3,10 @@ import { useState } from "react";
 // places an operator works - and this form has to reach the sixth, the rejected-goods shelf,
 // because that is the one shelf nothing else in the system can ever take stock off again. So
 // the same domain function the selector delegates to is called here directly, unnarrowed.
-import { avail as freeAt, REASON_LABEL } from "@rch/domain";
+import { avail as freeAt, permissionRefusal, REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
-import { activeItems } from "../lib/selectors";
+import { activeItems, useCan } from "../lib/selectors";
 import { fq, U } from "../lib/fmt";
 import { Alert, Btn, BtnRow, Field, FormRow, Section, Tip } from "./kit";
 import { DrawerFrame } from "./Drawer";
@@ -243,6 +243,14 @@ export default function AdjustmentForm({ locs, fixedLoc, mode = "direct" }: {
  */
 function AdjustStockDrawer({ id }: DrawerProps) {
   const loc = id as StockLoc;
+  const may = useCan("adjustments");
+  if (!may) {
+    return (
+      <DrawerFrame title="Adjust stock" sub="View only">
+        <Alert tone="w" label="VIEW ONLY">{permissionRefusal("adjustments")}</Alert>
+      </DrawerFrame>
+    );
+  }
   return (
     <DrawerFrame
       title={`Adjust stock - ${LOC[loc]?.n ?? loc}`}

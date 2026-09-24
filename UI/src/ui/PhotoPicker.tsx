@@ -4,6 +4,7 @@ import { IT } from "../data/master";
 import { useApp } from "../store";
 import { shrinkPhoto } from "../lib/photo";
 import { Btn, BtnRow, ItemImage } from "./kit";
+import { useCan } from "../lib/selectors";
 
 /**
  * An item's photo with the buttons that set it - shared by the manager's item drawer and the
@@ -21,6 +22,8 @@ export function PhotoPicker({ it }: { it: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // A role without Product photos sees the photo and no way to change it.
+  const may = useCan("item_photos");
 
   const item = IT[it];
   const has = Boolean(item?.img);
@@ -52,6 +55,7 @@ export function PhotoPicker({ it }: { it: string }) {
   return (
     <div className="photopick">
       <ItemImage it={it} size="card" />
+      {may && <>
       <input ref={input} type="file" accept="image/*" hidden aria-label={`Photo of ${item?.n ?? it}`}
         onChange={(e) => void pick(e.target.files?.[0])} />
       <BtnRow>
@@ -64,6 +68,7 @@ export function PhotoPicker({ it }: { it: string }) {
           ? <Btn variant="gh" disabled={busy} onClick={() => void remove()}>Press again to remove</Btn>
           : <Btn variant="gh" disabled={busy} onClick={() => setConfirming(true)}>Remove photo</Btn>)}
       </BtnRow>
+      </>}
     </div>
   );
 }

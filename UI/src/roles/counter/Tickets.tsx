@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canReceiveTicket, itemMatches } from "../../lib/selectors";
+import { canCancelTicket, canReceiveTicket, itemMatches, useCan } from "../../lib/selectors";
 import { fq, sum } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
 import type { LocKey, TktStatus } from "../../types";
@@ -13,6 +13,7 @@ export default function Tickets() {
   const s = useApp();
   const user = useApp((x) => x.user)!;
   const nav = useNavigate();
+  const may = useCan("outlet_tickets");
   const loc = user.loc;
   const L = LOC[loc];
   const [q, setQ] = useState("");
@@ -51,6 +52,7 @@ export default function Tickets() {
         crumbs={["Royal Care", L.n, "Pick Tickets"]}
         title="Pick tickets"
         tip="Stock this counter can collect."
+        readOnly={!may && "outlet_tickets"}
         actions={<Btn variant="gh" onClick={() => nav("/outlet-requests")}>Stock requests</Btn>}
       />
 
@@ -111,7 +113,7 @@ export default function Tickets() {
                 <>{first}{more > 0 ? ` +${more} more` : ""}</>,
                 t.lines.length === 1 ? fq(t.lines[0].qty, t.lines[0].it) : sum(t.lines, (l) => l.qty),
                 <StatusPill status={t.st} />,
-                canReceiveTicket(t.st)
+                may && canReceiveTicket(t.st)
                   ? <Btn size="xs" onClick={() => s.receiveTicket(t.id)}>Receive</Btn>
                   : <Btn size="xs" variant="gh" onClick={() => s.openDrawer("ctkt", t.id)}>Open</Btn>,
               ],
@@ -161,7 +163,7 @@ export default function Tickets() {
                     t.lines.length === 1 ? fq(t.lines[0].qty, t.lines[0].it) : sum(t.lines, (l) => l.qty),
                     <StatusPill status={t.st} />,
                     <Btn size="xs" variant="gh" onClick={() => s.openDrawer("ctkt", t.id)}>
-                      {canCancelTicket(t.st) ? "Withdraw" : "Open"}
+                      {may && canCancelTicket(t.st) ? "Withdraw" : "Open"}
                     </Btn>,
                   ],
                 };

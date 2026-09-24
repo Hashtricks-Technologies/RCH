@@ -1,6 +1,6 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { isReqOpen, counterNameOf } from "../../lib/selectors";
+import { isReqOpen, counterNameOf, useCan } from "../../lib/selectors";
 import { fq, U, unitTotal } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -21,6 +21,7 @@ function RequestDrawer({ id }: DrawerProps) {
   const req = useApp((s) => s.req.find((r) => r.id === id));
   const close = useApp((s) => s.closeDrawer);
   const cancelRequest = useApp((s) => s.cancelRequest);
+  const may = useCan("outlet_requests");
 
   if (!req) {
     return (
@@ -41,12 +42,14 @@ function RequestDrawer({ id }: DrawerProps) {
       title={<span className="mono">{req.id}</span>}
       sub={`${L.n} · raised by ${req.by} at ${req.at}${req.urg ? " · urgent" : ""}`}
       foot={<>
-        <Btn variant="dg" disabled={!open} onClick={() => cancelRequest(req.id)}
-          tip={open
-            ? "This request can still be cancelled - the store keeper has not issued a ticket against it yet."
-            : "Cancelling is only possible before the store keeper issues a ticket against this request."}>
-          Cancel request
-        </Btn>
+        {may && (
+          <Btn variant="dg" disabled={!open} onClick={() => cancelRequest(req.id)}
+            tip={open
+              ? "This request can still be cancelled - the store keeper has not issued a ticket against it yet."
+              : "Cancelling is only possible before the store keeper issues a ticket against this request."}>
+            Cancel request
+          </Btn>
+        )}
         <div className="sp" />
         <Btn variant="gh" onClick={close}>Close</Btn>
       </>}

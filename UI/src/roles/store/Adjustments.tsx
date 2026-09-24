@@ -3,7 +3,7 @@ import { QUARANTINE } from "@rch/contract";
 import { REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { operationalLocs } from "../../lib/selectors";
+import { operationalLocs, useCan } from "../../lib/selectors";
 import { fq, fromWireDay, money0, sum, U } from "../../lib/fmt";
 import { Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
 import AdjustmentForm, { REASONS } from "../../ui/AdjustmentForm";
@@ -15,6 +15,7 @@ const FILTERS = ["All", ...REASONS.map((r) => REASON_LABEL[r.r])] as const;
 const toneOf = (down: number, up: number) => (down > 0 && up > 0 ? "in" : down > 0 ? "cr" : "ok");
 
 export default function Adjustments() {
+  const may = useCan("adjustments");
   const adjustments = useApp((x) => x.adjustments);
   const [q, setQ] = useState("");
   const [reason, setReason] = useState(0);
@@ -53,12 +54,15 @@ export default function Adjustments() {
         crumbs={["Royal Care", "Central Store", "Adjustments"]}
         title="Write-offs and stock counts"
         tip="Stock written off or corrected after a count."
+        readOnly={!may && "adjustments"}
         actions={<span className="mini">Written off to date {money0(lost)}</span>}
       />
 
-      <Card title="New adjustment" tip="Correct one shelf; the books follow, and the reason stays on the record.">
-        <AdjustmentForm locs={SHELVES} />
-      </Card>
+      {may && (
+        <Card title="New adjustment" tip="Correct one shelf; the books follow, and the reason stays on the record.">
+          <AdjustmentForm locs={SHELVES} />
+        </Card>
+      )}
 
       <Card title="Adjustment register" sub={`${rows.length} of ${adjustments.length} on record`} flush className="mtop">
         <Toolbar

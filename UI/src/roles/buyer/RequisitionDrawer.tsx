@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { DECISION_TONE, addedByProcurement, decisionSentence, prqDecision, qty } from "../../lib/selectors";
+import { DECISION_TONE, addedByProcurement, decisionSentence, prqDecision, qty, useCan } from "../../lib/selectors";
 import { U, fq, money, sum } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Feed, Field, Section, StatusPill, TableFoot } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
@@ -22,6 +22,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
   const approve = useApp((x) => x.approveRequisition);
   const decline = useApp((x) => x.declineRequisition);
   const close = useApp((x) => x.closeDrawer);
+  const may = useCan("requisitions");
   const p = s.prq.find((x) => x.id === id);
 
   const [appr, setAppr] = useState<number[]>(() => (p?.lines ?? []).map((l) => l.qty));
@@ -39,7 +40,8 @@ function RequisitionDrawer({ id }: DrawerProps) {
     );
   }
 
-  const open = p.st === "Sent";
+  // Only a role that may change Requisitions decides one; any other reads it as it stands.
+  const open = p.st === "Sent" && may;
   const d = prqDecision(p);
   const decided = p.st === "Approved" || p.st === "Partially approved";
   const apprAt = (i: number) => {
@@ -84,6 +86,8 @@ function RequisitionDrawer({ id }: DrawerProps) {
           <input type="number" className="mono" min={0} max={l.qty} step={U(l.it) === "nos" ? 1 : 0.5}
             value={appr[i] ?? 0} aria-label={`Approved quantity for ${it?.n ?? l.it}`}
             onChange={(e) => setLine(i, e.target.value)} />
+        ) : p.st === "Sent" ? (
+          <span className="dim">Not decided</span>
         ) : (
           <b>{fq(l.appr, l.it)}</b>
         ),

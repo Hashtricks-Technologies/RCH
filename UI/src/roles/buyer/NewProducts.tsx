@@ -5,6 +5,7 @@ import type { ProductReqStatus } from "../../types";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
+import { useCan } from "../../lib/selectors";
 
 const STAGES: (ProductReqStatus | "All")[] = ["All", "Requested", "Created", "Declined"];
 const tone = (st: ProductReqStatus) => (st === "Requested" ? "wn" : st === "Created" ? "ok" : "cr");
@@ -18,6 +19,7 @@ export default function NewProducts() {
   const reqs = useApp((s) => s.productReqs);
   const answer = useApp((s) => s.answerProductRequest);
   const openDrawer = useApp((s) => s.openDrawer);
+  const may = useCan("new_products");
 
   const [q, setQ] = useState("");
   const [stage, setStage] = useState<ProductReqStatus | "All">("Requested");
@@ -52,7 +54,8 @@ export default function NewProducts() {
         crumbs={["Purchasing", "New Products"]}
         title="New Products"
         tip="Items managers want added to the master."
-        actions={<Btn onClick={() => openDrawer("bnewitem", "new")}>+ Add product</Btn>}
+        readOnly={!may && "new_products"}
+        actions={may && <Btn onClick={() => openDrawer("bnewitem", "new")}>+ Add product</Btn>}
       />
 
       {pending.length > 0 && (
@@ -92,7 +95,7 @@ export default function NewProducts() {
                 <Pill tone={tone(r.st)}>{r.st}</Pill>
                 {r.note && <div className="mini">{r.note}</div>}
               </>,
-              r.st === "Requested" ? (
+              may && r.st === "Requested" ? (
                 <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
                   <input
                     style={{ width: 140 }}

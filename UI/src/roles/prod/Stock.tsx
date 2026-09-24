@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { isReqOpen, isRetired, parOf, qty, stateLabel, stateTone, stockValue } from "../../lib/selectors";
+import { isReqOpen, isRetired, parOf, qty, stateLabel, stateTone, stockValue, useCan } from "../../lib/selectors";
 import { fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Tag, Toolbar,
@@ -56,6 +56,9 @@ export default function Stock() {
   const s = useApp();
   const requestFromStore = useApp((x) => x.requestFromStore);
   const openDrawer = useApp((x) => x.openDrawer);
+  const mayAdjust = useCan("adjustments");
+  const mayCreate = useCan("item_master");
+  const mayAsk = useCan("kitchen_requests");
   const [q, setQ] = useState("");
   const [fgState, setFgState] = useState<StateF>("All");
   const [rq, setRq] = useState("");
@@ -130,7 +133,7 @@ export default function Stock() {
       // The kitchen keeps an item's name, group, HSN and reorder level, the same as the store
       // and the buyer; the drawer greys out the manager's cost, GST and printed MRP.
       <Btn size="xs" variant="gh" onClick={() => openDrawer("item", k)}>
-        {isRetired(k) ? "Restore" : "Edit"}
+        {!mayCreate ? "View" : isRetired(k) ? "Restore" : "Edit"}
       </Btn>,
     ];
   };
@@ -145,8 +148,8 @@ export default function Stock() {
           <span className="mini">Stock value {money0(total)}</span>
           {/* ---- adjustments: a tray that went over or a bag that split leaves the kitchen
               without going anywhere, and the books have to follow it with a reason on them. */}
-          <Btn variant="gh" onClick={() => openDrawer("adjstock", "kitchen")}>Write off</Btn>
-          <Btn onClick={() => openDrawer("pnew", "new")}>New product</Btn>
+          {mayAdjust && <Btn variant="gh" onClick={() => openDrawer("adjstock", "kitchen")}>Write off</Btn>}
+          {mayCreate && <Btn onClick={() => openDrawer("pnew", "new")}>New product</Btn>}
         </>}
       />
 
@@ -165,7 +168,7 @@ export default function Stock() {
           filters={<FilterSelect label="State" value={fgState} options={STATES} onChange={(v) => setFgState(v as StateF)} />}
           right={fgFiltering
             ? <Btn size="sm" variant="gh" onClick={clearFg}>Clear filters</Btn>
-            : <Btn size="sm" variant="gh" onClick={() => openDrawer("pnew", "new")}>New product</Btn>}
+            : mayCreate && <Btn size="sm" variant="gh" onClick={() => openDrawer("pnew", "new")}>New product</Btn>}
         />
         <DataTable
           cols={baseCols}
@@ -177,7 +180,7 @@ export default function Stock() {
               : "Make a batch from Make & Distribute, or add a new product and book its opening stock.",
             action: fgFiltering
               ? <Btn size="sm" onClick={clearFg}>Clear filters</Btn>
-              : <Btn size="sm" onClick={() => openDrawer("pnew", "new")}>New product</Btn>,
+              : mayCreate && <Btn size="sm" onClick={() => openDrawer("pnew", "new")}>New product</Btn>,
           }}
         />
         <TableFoot
@@ -212,7 +215,8 @@ export default function Stock() {
                 key: k,
                 cells: [
                   ...baseCells(k),
-                  have < par(k)
+                  !mayAsk ? <span className="dim mini">-</span>
+                  : have < par(k)
                     ? <>
                         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           <input

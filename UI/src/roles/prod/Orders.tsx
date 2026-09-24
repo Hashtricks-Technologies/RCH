@@ -3,7 +3,7 @@ import { useState } from "react";
 import { dmy, round3 } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { allOutlets, avail, canDispatch, canMoveOrder, locName, qty } from "../../lib/selectors";
+import { allOutlets, avail, canDispatch, canMoveOrder, locName, qty, useCan } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Tip, Toolbar,
@@ -35,6 +35,8 @@ export default function Orders() {
   const dispatchOrder = useApp((x) => x.dispatchOrder);
   const openDrawer = useApp((x) => x.openDrawer);
   const makeProduct = useApp((x) => x.makeProduct);
+  const may = useCan("kitchen_orders");
+  const mayMake = useCan("make_distribute");
   const { pord, tkt } = s;
 
   const [q, setQ] = useState("");
@@ -79,6 +81,7 @@ export default function Orders() {
 
   /** The one control that moves a card one column right. */
   const advance = (o: ProdOrder) => {
+    if (!may) return null;
     if (canMoveOrder(o.st, "Accepted")) return <Btn size="xs" onClick={() => setOrderStatus(o.id, "Accepted")}>Accept</Btn>;
     if (canMoveOrder(o.st, "In kitchen")) return <Btn size="xs" onClick={() => setOrderStatus(o.id, "In kitchen")}>Start making</Btn>;
     if (canMoveOrder(o.st, "Ready")) return <Btn size="xs" onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>;
@@ -145,7 +148,7 @@ export default function Orders() {
                     Distribute, find the item again and retype it - four steps to act on one the
                     kitchen is already looking at. Every line on a production order is a finished
                     good (the server refuses anything else onto one), so every gap is batchable. */}
-                {gap > 0 && (
+                {mayMake && gap > 0 && (
                   <span className="kan-make">
                     <Btn size="xs" variant="gh" disabled={making === key}
                       tip={`Book a batch of ${fq(gap, l.it)} ${U(l.it)} onto the kitchen's rack - the shortfall on this line, and nothing more.`}
@@ -161,7 +164,7 @@ export default function Orders() {
         <div className="kan-foot">
           <span className="mini">{o.lines.length} item{o.lines.length === 1 ? "" : "s"} · {totalQty(o)} units</span>
           <div className="sp" />
-          {canMoveOrder(o.st, "Declined") && <Btn size="xs" variant="dg" onClick={() => setOrderStatus(o.id, "Declined")}>Decline</Btn>}
+          {may && canMoveOrder(o.st, "Declined") && <Btn size="xs" variant="dg" onClick={() => setOrderStatus(o.id, "Declined")}>Decline</Btn>}
           {advance(o)}
           {o.st === "Dispatched" && (t
             ? <Pill tone="ac">{t.id}</Pill>
@@ -177,6 +180,7 @@ export default function Orders() {
         crumbs={["Royal Care", "Central Kitchen", "Orders"]}
         title="Kitchen order board"
         tip="Outlet orders, one column per stage."
+        readOnly={!may && "kitchen_orders"}
         actions={<>
           <span className="mini">
             {onBoard.length} on the board{filtering ? ` of ${pord.filter((o) => o.st !== "Declined").length}` : ""}

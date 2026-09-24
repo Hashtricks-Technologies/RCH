@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { addedByProcurement } from "../../lib/selectors";
+import { addedByProcurement, useCan } from "../../lib/selectors";
 import { money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -35,6 +35,7 @@ const PROGRESS = ["All", "Not ordered", "Ordered", "Partially received", "Receiv
 export default function Requisitions() {
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
+  const may = useCan("requisitions");
   const { prq, po, vendors } = s;
 
   const [qa, setQa] = useState("");
@@ -88,7 +89,7 @@ export default function Requisitions() {
       <>{p.id}<small>{p.by} · {p.at}</small></>,
       <>{p.lines.length}</>,
       <>{money0(lineValue(p.lines))}</>,
-      <Btn size="xs" onClick={() => openDrawer("bprq", p.id)}>Approve</Btn>,
+      <Btn size="xs" onClick={() => openDrawer("bprq", p.id)}>{may ? "Approve" : "View"}</Btn>,
     ],
   }));
 
@@ -133,6 +134,7 @@ export default function Requisitions() {
         crumbs={["Royal Care", "Procurement", "Requisitions"]}
         title="Requisitions"
         tip="Purchase requests from the central store."
+        readOnly={!may && "requisitions"}
         actions={<Pill tone={waiting.length ? "wn" : "ok"}>{waiting.length} waiting on you</Pill>}
       />
 

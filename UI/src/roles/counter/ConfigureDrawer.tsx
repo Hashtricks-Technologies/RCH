@@ -1,7 +1,7 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, availOf, counterNameOf, daysCover, menuOf, parOf, priceOf, qty, stateLabel, stateTone,
+  avail, availOf, counterNameOf, daysCover, menuOf, parOf, priceOf, qty, stateLabel, stateTone, useCan,
 } from "../../lib/selectors";
 import { fq, money, U } from "../../lib/fmt";
 import { Alert, Btn, ItemImage, Pill, Switch, Tip } from "../../ui/kit";
@@ -9,6 +9,7 @@ import { DrawerFrame } from "../../ui/Drawer";
 import { PhotoPicker } from "../../ui/PhotoPicker";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { TypeTag } from "./Pos";
+import { permissionRefusal } from "@rch/domain";
 
 /**
  * Configure - the same panel opened from the POS tile menu and the Stock in
@@ -21,6 +22,7 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
   const user = useApp((x) => x.user)!;
   const toggleAvail = useApp((x) => x.toggleAvail);
   const close = useApp((x) => x.closeDrawer);
+  const maySwitch = useCan("availability");
   const loc = user.loc;
   const item = IT[it];
   if (!item) return <DrawerFrame title="Not found"><p className="mini">That product is no longer on the master.</p></DrawerFrame>;
@@ -65,7 +67,8 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
       {sellableHere ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
-            <Switch on={!manualOff} label={`${counterNameOf(it)} at ${LOC[loc].n}`} onChange={() => toggleAvail(loc, it)} />
+            <Switch on={!manualOff} label={`${counterNameOf(it)} at ${LOC[loc].n}`} onChange={() => toggleAvail(loc, it)}
+              disabled={!maySwitch} tip={maySwitch ? undefined : permissionRefusal("availability")} />
             <div className="tipped">
               <b style={{ fontSize: 12.5 }}>Available at {LOC[loc].n}</b>
               <Tip text="Turn this off when the machine is down or the product is spoiled." label={`Available at ${LOC[loc].n}`} />

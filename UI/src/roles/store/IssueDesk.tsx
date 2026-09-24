@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canIssueTicket, freeToPromise, operationalLocs } from "../../lib/selectors";
+import { canIssueTicket, freeToPromise, operationalLocs, useCan } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterBtn, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -33,6 +33,7 @@ export default function IssueDesk() {
   const s = useApp();
   const issueTicket = useApp((x) => x.issueTicket);
   const openDrawer = useApp((x) => x.openDrawer);
+  const may = useCan("issue_desk");
   // "All" plus every location a ticket or request can come from - the same cycle drives all three
   // filter buttons, so they read the same way. `LOC` is empty until the snapshot lands and is
   // replaced in place after that, so both the options and their labels are read during render
@@ -110,6 +111,7 @@ export default function IssueDesk() {
         crumbs={["Royal Care", "Central Store", "Issue"]}
         title="Issue desk"
         tip="Hand over stock that has been approved."
+        readOnly={!may && "issue_desk"}
       />
 
       <Grid cols="g3">
@@ -174,7 +176,7 @@ export default function IssueDesk() {
                     <div className="mini">tightest {IT[w.l.it].n} {fq(w.have, w.l.it)} {U(w.l.it)}</div>
                   </>
                 ),
-                <Btn
+                !may ? <Btn size="sm" variant="gh" onClick={() => openDrawer("sissue", r.id)}>Open</Btn> : <Btn
                   size="sm"
                   disabled={w === null || w.ratio < 1}
                   tip={w !== null && w.ratio < 1 ? `${IT[w.l.it].n} is committed elsewhere` : undefined}
@@ -237,7 +239,9 @@ export default function IssueDesk() {
               <>{LOC[t.to].n}<div className="mini">{LOC[t.to].floor}</div></>,
               <>{t.lines.length}</>,
               <b>{sum(t.lines, (l) => l.qty)}</b>,
-              <Btn size="sm" variant="ok" onClick={() => openDrawer("stkt", t.id)}>Take OTP</Btn>,
+              may
+                ? <Btn size="sm" variant="ok" onClick={() => openDrawer("stkt", t.id)}>Take OTP</Btn>
+                : <Btn size="sm" variant="gh" onClick={() => openDrawer("stkt", t.id)}>Open</Btn>,
             ],
           }))}
           empty={filteredB

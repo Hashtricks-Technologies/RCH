@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, costOf } from "../../lib/selectors";
+import { activeItems, costOf, useCan } from "../../lib/selectors";
 import { U, fromWireDay, money, money0, pct, sum, toInputDate } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, FilterBtn, FilterSelect,
@@ -61,6 +61,7 @@ export default function Contracts() {
   const vendors = useApp((s) => s.vendors);
   const updateContract = useApp((s) => s.updateContract);
   const removeContract = useApp((s) => s.removeContract);
+  const may = useCan("rate_contracts");
   const notify = useApp((s) => s.notify);
   const openDrawer = useApp((s) => s.openDrawer);
 
@@ -147,11 +148,12 @@ export default function Contracts() {
         crumbs={["Royal Care", "Procurement", "Rate Contracts"]}
         title="Rate contracts"
         tip="Agreed vendor rates used to price orders."
-        actions={
+        readOnly={!may && "rate_contracts"}
+        actions={may && (
           <Btn onClick={() => { openDrawer("bcontract", "new"); setEditId(null); }}>
             Add contract
           </Btn>
-        }
+        )}
       />
 
       <Kpis
@@ -218,7 +220,7 @@ export default function Contracts() {
                 { h: "Min. order", r: true, w: "8%" },
                 { h: "State", w: "8%" },
                 { h: "Rate history", w: "14%", tip: "Every change to the rate: old and new, the difference, who changed it, when, and the purchase order it came from" },
-                { h: "Action", w: "14%", tip: "Closing a contract keeps it on record; it just stops pricing an order" },
+                ...(may ? [{ h: "Action", w: "14%", tip: "Closing a contract keeps it on record; it just stops pricing an order" }] : []),
               ]}
               rows={rows.map((c) => {
                 const v = variance(c);
@@ -277,7 +279,7 @@ export default function Contracts() {
                     ),
                     c.active ? <Pill tone="ok">Live</Pill> : <Pill tone="mu">Closed</Pill>,
                     <RateHistory c={c} />,
-                    editing ? (
+                    ...(!may ? [] : [editing ? (
                       <BtnRow>
                         {/* The press commits a rate still being typed before `saveEdit` reads it. */}
                         <span onMouseDown={commitTyping}>
@@ -298,7 +300,7 @@ export default function Contracts() {
                           </Btn>
                         )}
                       </BtnRow>
-                    ),
+                    )]),
                   ],
                 };
               })}
@@ -311,7 +313,7 @@ export default function Contracts() {
                 : {
                   title: "No rate contract on record",
                   sub: "Agree a rate with a vendor and record it here, so every purchase order prices against it.",
-                  action: <Btn size="sm" onClick={() => openDrawer("bcontract", "new")}>Add contract</Btn>,
+                  action: may && <Btn size="sm" onClick={() => openDrawer("bcontract", "new")}>Add contract</Btn>,
                 }}
             />
           </div>

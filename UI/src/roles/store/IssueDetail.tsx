@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canHandOver, canIssueTicket, freeToPromise } from "../../lib/selectors";
+import { canHandOver, canIssueTicket, freeToPromise, useCan } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill, TableFoot, TicketTrail,
@@ -32,6 +32,7 @@ function IssueDetail({ id }: DrawerProps) {
   const handover = useApp((x) => x.handover);
   const openDrawer = useApp((x) => x.openDrawer);
   const close = useApp((x) => x.closeDrawer);
+  const may = useCan("issue_desk");
 
   const [otp, setOtp] = useState("");
   // A handover is a server call now, and the stock only leaves once. A second tap inside one
@@ -79,7 +80,7 @@ function IssueDetail({ id }: DrawerProps) {
         <>
           <Btn variant="gh" onClick={close}>Close</Btn>
           <div className="sp" />
-          {r.ticket === null && appr > 0 ? (
+          {!may ? null : r.ticket === null && appr > 0 ? (
             <Btn
               disabled={!canIssue}
               tip={uncovered.length ? `${IT[uncovered[0].it]?.n ?? uncovered[0].it} is committed elsewhere` : undefined}
@@ -206,7 +207,7 @@ function IssueDetail({ id }: DrawerProps) {
             </p>
           </div>
 
-          {ticket.st === "Issued" && (
+          {may && ticket.st === "Issued" && (
             <div className="mtop">
               <Field
                 label="OTP quoted by the collector"

@@ -4,7 +4,7 @@ import { IT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { U, fq, money, unitTotal } from "../../lib/fmt";
-import { canCloseShort, netReceived, round3 } from "../../lib/selectors";
+import { canCloseShort, netReceived, round3, useCan } from "../../lib/selectors";
 import {
   Alert, Btn, BtnRow, DataTable, DraftLineInput, Field, FormRow, Section, TableFoot,
 } from "../../ui/kit";
@@ -23,6 +23,8 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const close = useApp((x) => x.closeDrawer);
   const openDrawer = useApp((x) => x.openDrawer);
   const notify = useApp((x) => x.notify);
+  const mayReceive = useCan("goods_receipt");
+  const mayShort = useCan("purchase_orders");
   const po = s.po.find((x) => x.id === id);
   /** The hospital's own calendar date, not the host's: a batch that expires tomorrow morning IST
    *  is not expired because the browser is running somewhere still on yesterday. Read per render
@@ -245,17 +247,19 @@ function PoReceiptDrawer({ id }: DrawerProps) {
       sub={`${vendorName(s.vendors, po.vendor)} · ${po.st} · expected ${po.eta}`}
       foot={
         <>
-          {canCloseShort(po.st) && (
+          {mayShort && canCloseShort(po.st) && (
             <Btn variant="dg" onClick={() => setClosingShort(true)}>Close short</Btn>
           )}
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
           {/* The press commits whatever is still being typed before `book` reads the lines. */}
-          <span onMouseDown={commitTyping}>
-            <Btn variant="ok" disabled={busy} onClick={book}>
-              {busy ? "Booking in…" : "Book into the central store"}
-            </Btn>
-          </span>
+          {mayReceive && (
+            <span onMouseDown={commitTyping}>
+              <Btn variant="ok" disabled={busy} onClick={book}>
+                {busy ? "Booking in…" : "Book into the central store"}
+              </Btn>
+            </span>
+          )}
         </>
       }
     >

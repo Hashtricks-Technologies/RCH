@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { IT, PO_APPROVAL_LIMIT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { canCancelPo, canSendPo, netReceived, poValue } from "../../lib/selectors";
+import { canCancelPo, canSendPo, netReceived, poValue, useCan } from "../../lib/selectors";
 import { U, fq, fromWireDay, money, money0, pct } from "../../lib/fmt";
 // The two typed-in boxes this drawer pioneered live in the kit now: six other tables on three
 // other screens need the same "absorb the typing, commit once" behaviour, and a second copy is
@@ -54,6 +54,7 @@ function PoDrawer({ id }: DrawerProps) {
   const close = useApp((x) => x.closeDrawer);
   const notify = useApp((x) => x.notify);
   const po = s.po.find((x) => x.id === id);
+  const may = useCan("purchase_orders");
 
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
@@ -94,7 +95,7 @@ function PoDrawer({ id }: DrawerProps) {
   const grns = s.grn.filter((g) => g.po === po.id);
   const vendorLabel = vendorName(s.vendors, po.vendor);
 
-  if (po.st === "Draft") {
+  if (po.st === "Draft" && may) {
     const overSlab = value > PO_APPROVAL_LIMIT;
     const offContract = po.lines.filter((l) => !contractFor(s, po.vendor, l.it)).length;
     const deviating = po.lines.filter((l) => {

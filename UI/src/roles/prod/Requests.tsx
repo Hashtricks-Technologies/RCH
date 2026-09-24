@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, isReqOpen, qty } from "../../lib/selectors";
+import { activeItems, isReqOpen, qty, useCan } from "../../lib/selectors";
 import { fq, sum, U, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterSelect, FormRow, PageHead,
@@ -35,6 +35,7 @@ type Show = (typeof SHOW)[number];
 export default function Requests() {
   const s = useApp();
   const user = useApp((x) => x.user)!;
+  const may = useCan("kitchen_requests");
   const L = LOC.kitchen;
   // `IT` is empty until the snapshot lands and is replaced in place after that
   // (`hydrateMaster` / `hydrateItems`), so this list is built during render and pinned to
@@ -105,7 +106,8 @@ export default function Requests() {
         crumbs={["Royal Care", "Central Kitchen", "Stock Requests"]}
         title="Stock requests to the central store"
         tip="Ask the central store for raw materials and packaging."
-        actions={<Btn variant="gh" onClick={addLine}>Add item</Btn>}
+        readOnly={!may && "kitchen_requests"}
+        actions={may && <Btn variant="gh" onClick={addLine}>Add item</Btn>}
       />
 
       {openCount > 0 && (
@@ -123,7 +125,7 @@ export default function Requests() {
         </Alert>
       )}
 
-      <Card title="New request" sub={`From ${L.n} (${L.c}) · raised by ${user.n}`}
+      {may && <Card title="New request" sub={`From ${L.n} (${L.c}) · raised by ${user.n}`}
         right={<Btn variant="gh" size="sm" onClick={addLine}>Add item</Btn>}>
         <div className="tw">
           <table className="lgrid">
@@ -218,7 +220,7 @@ export default function Requests() {
           </Btn>
           <Btn variant="gh" disabled={draft.length === 0 && !note} onClick={clearDraft}>Clear</Btn>
         </BtnRow>
-      </Card>
+      </Card>}
 
       <div className="mtop" />
       <Card flush>
@@ -255,7 +257,7 @@ export default function Requests() {
               sum(r.lines, (l) => l.appr) || <span className="dim">-</span>,
               <StatusPill status={r.st} />,
               r.ticket ? <span className="mono">{r.ticket}</span> : <span className="dim">-</span>,
-              isReqOpen(r.st)
+              may && isReqOpen(r.st)
                 ? <Btn size="xs" variant="dg" onClick={() => s.cancelRequest(r.id)}>Cancel</Btn>
                 : <span className="dim mini">-</span>,
             ],
@@ -265,7 +267,7 @@ export default function Requests() {
             sub: filtering
               ? "Clear the search or switch Show back to All."
               : "Add an item above and submit - one request can carry everything the kitchen is short of.",
-            action: <Btn size="sm" onClick={() => (filtering ? clearFilters() : addLine())}>
+            action: (filtering || may) && <Btn size="sm" onClick={() => (filtering ? clearFilters() : addLine())}>
               {filtering ? "Clear filters" : "Add item"}
             </Btn>,
           }}

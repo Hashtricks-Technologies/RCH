@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canReceiveTicket, counterNameOf } from "../../lib/selectors";
+import { canCancelTicket, canReceiveTicket, counterNameOf, useCan } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -22,6 +22,7 @@ function TicketDrawer({ id }: DrawerProps) {
   const close = useApp((s) => s.closeDrawer);
   const receiveTicket = useApp((s) => s.receiveTicket);
   const cancelTicket = useApp((s) => s.cancelTicket);
+  const may = useCan("outlet_tickets");
   const [why, setWhy] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
@@ -44,10 +45,10 @@ function TicketDrawer({ id }: DrawerProps) {
   // one to collect and confirm; a ticket *from* here is stock this counter granted away, and the
   // server refuses a receipt on it (`requireLocOf(claims, t.to)`) - so the button is not drawn.
   const sentFromHere = tkt.from === user.loc;
-  const canReceive = tkt.to === user.loc && canReceiveTicket(tkt.st);
+  const canReceive = may && tkt.to === user.loc && canReceiveTicket(tkt.st);
   // A transfer this counter granted out of its own stock is its own to withdraw while nobody
   // has collected it. A ticket bound *for* here is the store's or the kitchen's to withdraw.
-  const canWithdraw = sentFromHere && canCancelTicket(tkt.st);
+  const canWithdraw = may && sentFromHere && canCancelTicket(tkt.st);
   // The server sends the six digits to the collecting location and to nobody else, so an empty
   // string is not a missing OTP - it is one that was never this screen's to show.
   const holdsOtp = tkt.otp !== "";
@@ -68,7 +69,7 @@ function TicketDrawer({ id }: DrawerProps) {
               ? "This one was withdrawn, so the stock never left this counter."
               : LOC[tkt.to].n + " confirms receipt at their end - this counter's part ended at the handover."} />
           </span>
-          : <Btn disabled={!canReceive} onClick={() => receiveTicket(tkt.id)}
+          : may && <Btn disabled={!canReceive} onClick={() => receiveTicket(tkt.id)}
             tip={canReceive
               ? "Check the quantities physically, then confirm receipt to add them to this counter's stock."
               : tkt.st === "Issued"

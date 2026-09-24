@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT } from "../../data/master";
 import { useApp } from "../../store";
-import { poValue } from "../../lib/selectors";
+import { poValue, useCan } from "../../lib/selectors";
 import { money0, sum } from "../../lib/fmt";
 import { Btn, Card, DataTable, FilterSelect, PageHead, Pill, Tag, TableFoot, Toolbar } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
@@ -15,6 +15,7 @@ const CONTRACTS = ["All", "On contract", "No live contract"];
 export default function Vendors() {
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
+  const may = useCan("vendors");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const [group, setGroup] = useState("All");
@@ -91,7 +92,8 @@ export default function Vendors() {
         crumbs={["Royal Care", "Procurement", "Vendors"]}
         title="Vendors"
         tip="Suppliers and their rate contracts."
-        actions={<Btn onClick={() => openDrawer("bven", "new")}>Add vendor</Btn>}
+        readOnly={!may && "vendors"}
+        actions={may && <Btn onClick={() => openDrawer("bven", "new")}>Add vendor</Btn>}
       />
 
       <Card title="Vendor directory" sub={`${sorted.length} of ${s.vendors.length} vendor(s)`} flush>
@@ -130,7 +132,7 @@ export default function Vendors() {
             : {
               title: "No vendors on file",
               sub: "Add a vendor before raising a purchase order.",
-              action: <Btn size="sm" onClick={() => openDrawer("bven", "new")}>Add vendor</Btn>,
+              action: may && <Btn size="sm" onClick={() => openDrawer("bven", "new")}>Add vendor</Btn>,
             }}
         />
         <TableFoot

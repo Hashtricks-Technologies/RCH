@@ -5,7 +5,9 @@ import { useApp } from "../store";
 import { money } from "../lib/fmt";
 import { Alert, Btn, BtnRow, Field, FormRow, HsnField, Section } from "./kit";
 import { DrawerFrame } from "./Drawer";
+import { permissionRefusal } from "@rch/domain";
 import type { ItemType, LocKey } from "../types";
+import { useCan } from "../lib/selectors";
 
 /**
  * The one Add Product form.
@@ -79,7 +81,22 @@ const SCOPES: Record<ProductScope, ScopeSpec> = {
 const crit = { color: "var(--crit)" };
 const critBox = { borderColor: "var(--crit)" };
 
-export function NewProductForm({ scope, title, sub, intro, initialName, onCreated }: {
+type FormProps = Parameters<typeof NewProductBody>[0];
+/** Adding to the item master is `item_master` at edit, whichever desk opens the panel; a role
+ *  without it is told what to ask for instead of being handed a form the server would refuse. */
+export function NewProductForm(props: FormProps) {
+  const may = useCan("item_master");
+  if (!may) {
+    return (
+      <DrawerFrame title={props.title} sub="View only">
+        <Alert tone="w" label="VIEW ONLY">{permissionRefusal("item_master")}</Alert>
+      </DrawerFrame>
+    );
+  }
+  return <NewProductBody {...props} />;
+}
+
+function NewProductBody({ scope, title, sub, intro, initialName, onCreated }: {
   scope: ProductScope;
   title: string;
   sub: string;

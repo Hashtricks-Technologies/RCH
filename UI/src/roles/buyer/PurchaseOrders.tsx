@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, PO_APPROVAL_LIMIT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { netReceived, poValue, round3 } from "../../lib/selectors";
+import { netReceived, poValue, round3, useCan } from "../../lib/selectors";
 import { money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, FilterSelect, Kpis, PageHead, Pill, StatusPill, Tip, Toolbar,
@@ -68,6 +68,8 @@ const OPEN_BTN = {
 export default function PurchaseOrders() {
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
+  const may = useCan("purchase_orders");
+  const mayReceive = useCan("goods_receipt");
 
   const [q, setQ] = useState("");
   const [vendor, setVendor] = useState("All");
@@ -131,10 +133,10 @@ export default function PurchaseOrders() {
             {(o.st === "Partially received" || o.st === "Received") && <StatusPill status={o.st} />}
             {o.needsApproval && <Pill tone="wn">Needs finance approval</Pill>}
             <div className="sp" />
-            {o.st === "Draft" && (
+            {may && o.st === "Draft" && (
               <Btn size="xs" onClick={() => openDrawer("bpo", o.id)}>Edit &amp; send</Btn>
             )}
-            {(o.st === "Ordered" || o.st === "Partially received") && (
+            {mayReceive && (o.st === "Ordered" || o.st === "Partially received") && (
               <Btn size="xs" variant="ok" onClick={() => openDrawer("bgrn", o.id)}>Receive</Btn>
             )}
           </div>
@@ -149,6 +151,7 @@ export default function PurchaseOrders() {
         crumbs={["Royal Care", "Procurement", "Purchase Orders"]}
         title="Purchase orders"
         tip="Every purchase order, by status."
+        readOnly={!may && "purchase_orders"}
       />
 
       <Kpis items={[

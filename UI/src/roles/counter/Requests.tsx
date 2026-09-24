@@ -3,7 +3,7 @@ import { sourceOf } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, avail, isReqOpen, menuOf, qty, counterNameOf } from "../../lib/selectors";
+import { activeItems, avail, isReqOpen, menuOf, qty, counterNameOf, useCan } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FormRow, ItemImage, PageHead, Pill, Section,
@@ -21,6 +21,7 @@ const lineErr = (l: DraftLine) =>
 export default function Requests() {
   const s = useApp();
   const user = useApp((x) => x.user)!;
+  const may = useCan("outlet_requests");
   const loc = user.loc;
   const L = LOC[loc];
   // `IT` is empty until the snapshot lands and is replaced in place after that
@@ -99,7 +100,8 @@ export default function Requests() {
         crumbs={["Royal Care", L.n, "Stock Requests"]}
         title="Stock requests"
         tip="Ask for stock - it is routed to the central store or the kitchen automatically."
-        actions={<Btn variant="gh" onClick={addLine}>Add item</Btn>}
+        readOnly={!may && "outlet_requests"}
+        actions={may && <Btn variant="gh" onClick={addLine}>Add item</Btn>}
       />
 
       {inbound.length > 0 && (
@@ -151,7 +153,7 @@ export default function Requests() {
                   </Alert>
                 )}
 
-                {declining ? (
+                {!may ? null : declining ? (
                   <div className="askcard-act askcard-decline">
                     <Field label="Why are you declining" tip="The other counter sees this.">
                       <input autoFocus placeholder="We need it for the evening rush"
@@ -194,7 +196,7 @@ export default function Requests() {
         </Card>
       )}
 
-      <Card title="New request" sub={`From ${L.n} (${L.c}) · raised by ${user.n}`}
+      {may && <Card title="New request" sub={`From ${L.n} (${L.c}) · raised by ${user.n}`}
         right={<Btn variant="gh" size="sm" onClick={addLine}>Add item</Btn>} className="mtop">
         <div className="tw">
           <table className="lgrid">
@@ -298,7 +300,7 @@ export default function Requests() {
           </Btn>
           <Btn variant="gh" disabled={draft.length === 0 && !note} onClick={clearDraft}>Clear</Btn>
         </BtnRow>
-      </Card>
+      </Card>}
 
       <Card title="Requests to the central store" sub={`${mine.length} from ${L.n}`} flush className="mtop"
         tip="Can be cancelled from its detail any time before the store keeper issues a ticket against it - including after the outlet manager has approved it.">

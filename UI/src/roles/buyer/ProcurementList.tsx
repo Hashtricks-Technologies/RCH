@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { costOf, procurementList, qty, round3 } from "../../lib/selectors";
+import { costOf, procurementList, qty, round3, useCan } from "../../lib/selectors";
 import { fq, fromWireDay, money, money0, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, DraftLineInput, FilterSelect, Grid, PageHead, Tag, TableFoot,
@@ -93,6 +93,7 @@ export default function ProcurementList() {
   const createPo = useApp((x) => x.createPo);
   const openDrawer = useApp((x) => x.openDrawer);
   const notify = useApp((x) => x.notify);
+  const may = useCan("procurement_list");
   // Vendor is chosen PER LINE, not once for the whole order - the same item can
   // legitimately come from several suppliers, and the buyer picks which one on
   // the row itself. The pick lives in the store (`poolVendor`), not here: vendors
@@ -208,23 +209,23 @@ export default function ProcurementList() {
     return {
       key: g.it,
       cells: [
-        <input
+        may ? <input
           type="checkbox" checked={!!sel[g.it]} onChange={() => toggle(g.it)}
           aria-label={`Select ${it?.n ?? g.it}`}
-        />,
+        /> : null,
         <>{it?.n ?? g.it}<small>{it?.c ?? ""}</small></>,
         <>{U(g.it)}</>,
         <>{fq(g.pending, g.it)}</>,
         // Typed in freely, committed on the way out, and still clamped to what the line has
         // left by `setQtyForItem`: reading the box on every keystroke turned 12.5 into 1, 12,
         // 12.5 and emptied the row to zero the moment the buyer cleared it to retype.
-        <DraftLineInput
+        !may ? <>{fq(qtyFor(g), g.it)}</> : <DraftLineInput
           value={qtyFor(g)} min={0} step={U(g.it) === "nos" ? 1 : 0.5}
           ariaLabel={`Quantity of ${it?.n ?? g.it} to pick`}
           onCommit={(n) => setQtyForItem(g, n)}
         />,
         <>{fq(qty(s, "store", g.it), g.it)}</>,
-        <select
+        !may ? <>{vendorOf(g) ? vendorName(s.vendors, vendorOf(g)) : <span className="dim">No vendor</span>}</> : <select
           value={vendorOf(g)} aria-label={`Vendor for ${it?.n ?? g.it}`}
           onChange={(e) => chooseVendor(g, e.target.value)}
         >
@@ -243,7 +244,7 @@ export default function ProcurementList() {
             </>
           );
         })(),
-        <DraftLineInput
+        !may ? <>{money(rateOf(g))}</> : <DraftLineInput
           value={rateOf(g)} min={0} step={0.01} positiveOnly
           ariaLabel={`Rate for ${it?.n ?? g.it}`}
           onCommit={(n) => setRateOverride((m) => ({ ...m, [g.it]: n }))}
@@ -282,7 +283,8 @@ export default function ProcurementList() {
         crumbs={["Royal Care", "Procurement", "Procurement List"]}
         title="Procurement list"
         tip="Approved items waiting to be ordered."
-        actions={<Btn onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>}
+        readOnly={!may && "procurement_list"}
+        actions={may && <Btn onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>}
       />
 
       <Grid cols="g21">
@@ -323,7 +325,7 @@ export default function ProcurementList() {
             : {
               title: "Nothing on the procurement list",
               sub: "Approve a requisition and its items collect here - or add items yourself.",
-              action: <Btn size="sm" onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>,
+              action: may && <Btn size="sm" onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>,
             }}
         />
         <TableFoot
@@ -332,7 +334,7 @@ export default function ProcurementList() {
         />
       </Card>
 
-      {groups.length > 0 && (
+      {may && groups.length > 0 && (
         <div style={{ position: "sticky", top: 12, alignSelf: "start" }}>
           <Card
             title="Order cart"

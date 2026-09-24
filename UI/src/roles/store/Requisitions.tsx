@@ -4,7 +4,7 @@ import { IT } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, addedByProcurement, avail, awaitingApproval, onOrder, prqDecision, prqProgress, qty } from "../../lib/selectors";
+import { activeItems, addedByProcurement, avail, awaitingApproval, onOrder, prqDecision, prqProgress, qty, useCan } from "../../lib/selectors";
 import { U, fq, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterBtn, FilterSelect, Grid,
@@ -35,6 +35,7 @@ export default function Requisitions() {
   const notify = useApp((x) => x.notify);
 
   const openDrawer = useApp((x) => x.openDrawer);
+  const may = useCan("store_requisitions");
 
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -160,7 +161,8 @@ export default function Requisitions() {
         crumbs={["Royal Care", "Central Store", "Purchasing"]}
         title="Stock requisitions"
         tip="Ask procurement to buy stock."
-        actions={<Btn variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>}
+        readOnly={!may && "store_requisitions"}
+        actions={may && <Btn variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>}
       />
 
       {alreadyOpen.length > 0 && (
@@ -172,14 +174,14 @@ export default function Requisitions() {
       )}
 
       {low.length > 0 && (
-        <Alert tone="w" label="REORDER" action={<Btn size="sm" onClick={fillFromLow}>Stage {low.length} item{low.length > 1 ? "s" : ""}</Btn>}>
+        <Alert tone="w" label="REORDER" action={may && <Btn size="sm" onClick={fillFromLow}>Stage {low.length} item{low.length > 1 ? "s" : ""}</Btn>}>
           {low.length} central store item{low.length > 1 ? "s are" : " is"} below reorder level. Suggested quantity
           brings each back to 1.6 × the reorder level.
         </Alert>
       )}
 
       <Grid>
-        <Card
+        {may && <Card
           title="New requisition"
           sub={`${prqDraft.length} item${prqDraft.length === 1 ? "" : "s"}${draftQty ? " · " + draftQty : ""} · ${money0(draftValue)} estimated`}
           right={<Btn size="sm" variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>}
@@ -306,7 +308,7 @@ export default function Requisitions() {
               {busy ? "Sending…" : "Send to procurement"}
             </Btn>
           </BtnRow>
-        </Card>
+        </Card>}
 
         <Card
           title="Previous requisitions"
@@ -397,7 +399,7 @@ export default function Requisitions() {
               : {
                 title: "No requisitions raised yet",
                 sub: "Build one above and send it to the procurement team.",
-                action: <Btn size="sm" onClick={fillFromLow}>Fill from below-reorder items</Btn>,
+                action: may && <Btn size="sm" onClick={fillFromLow}>Fill from below-reorder items</Btn>,
               }}
           />
           <TableFoot

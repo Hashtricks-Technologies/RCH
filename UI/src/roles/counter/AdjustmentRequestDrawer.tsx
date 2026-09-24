@@ -1,4 +1,4 @@
-import { counterNameOf } from "../../lib/selectors";
+import { counterNameOf, useCan } from "../../lib/selectors";
 import { useApp } from "../../store";
 import { fq, U } from "../../lib/fmt";
 import { REASON_LABEL } from "@rch/domain";
@@ -14,6 +14,7 @@ function AdjustmentRequestDrawer({ id }: DrawerProps) {
   const r = useApp((s) => s.adjReq.find((x) => x.id === id));
   const close = useApp((s) => s.closeDrawer);
   const cancelAdjustmentRequest = useApp((s) => s.cancelAdjustmentRequest);
+  const may = useCan("outlet_stock");
 
   if (!r) {
     return (
@@ -31,10 +32,12 @@ function AdjustmentRequestDrawer({ id }: DrawerProps) {
       title={<span className="mono">{r.id}</span>}
       sub={`Raised by ${r.by} at ${r.at}`}
       foot={<>
-        <Btn variant="dg" disabled={!open} onClick={() => cancelAdjustmentRequest(r.id)}
-          tip={open ? "Withdraw this ask before the outlet manager decides it." : "Only an undecided request can be withdrawn."}>
-          Cancel request
-        </Btn>
+        {may && (
+          <Btn variant="dg" disabled={!open} onClick={() => cancelAdjustmentRequest(r.id)}
+            tip={open ? "Withdraw this ask before the outlet manager decides it." : "Only an undecided request can be withdrawn."}>
+            Cancel request
+          </Btn>
+        )}
         <div className="sp" />
         <Btn variant="gh" onClick={close}>Close</Btn>
       </>}

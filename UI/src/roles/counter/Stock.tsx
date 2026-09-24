@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone, counterNameOf, itemMatches } from "../../lib/selectors";
+import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone, counterNameOf, itemMatches, useCan } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterBtn, FilterSelect, ItemImage, PageHead, Pill, StatusPill, TileMenu, Toolbar,
@@ -20,6 +20,9 @@ export default function Stock() {
   const user = useApp((x) => x.user)!;
   const openDrawer = useApp((x) => x.openDrawer);
   const nav = useNavigate();
+  const mayAdjust = useCan("outlet_stock");
+  const mayRequest = useCan("outlet_requests");
+  const maySwitch = useCan("availability");
   const loc = user.loc;
   const L = LOC[loc];
   const [q, setQ] = useState("");
@@ -84,8 +87,9 @@ export default function Stock() {
           other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level - a
           counter holds a day of stock, so it is far below the central store's par and only what falls under it reads low.
         </>}
+        readOnly={!mayAdjust && "outlet_stock"}
         actions={<>
-          <Btn variant="gh" onClick={() => openDrawer("creqadj", "new")}>Request adjustment</Btn>
+          {mayAdjust && <Btn variant="gh" onClick={() => openDrawer("creqadj", "new")}>Request adjustment</Btn>}
           <Btn variant="gh" onClick={() => nav("/outlet-requests")}>Stock requests</Btn>
         </>}
       />
@@ -115,7 +119,7 @@ export default function Stock() {
             </p>
             {filtered
               ? <Btn size="sm" onClick={clearAll}>Clear filters</Btn>
-              : <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>}
+              : mayRequest && <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>}
           </div>
         ) : (
           <div className="stkgrid" style={{ padding: 13 }}>
@@ -138,7 +142,7 @@ export default function Stock() {
                     <TileMenu
                       items={[
                         { key: "cfg", label: "Configure", onClick: () => openDrawer("cconfig", r.it) },
-                        ...(sellableHere ? [{
+                        ...(sellableHere && maySwitch ? [{
                           key: "toggle",
                           label: manualOff ? "Turn on" : "Turn off",
                           onClick: () => s.toggleAvail(loc, r.it),
@@ -182,7 +186,7 @@ export default function Stock() {
 
                   <div className="stkcard-foot">
                     {r.low
-                      ? <Btn size="sm" variant="gh" onClick={() => request(r.it, r.suggested)}>
+                      ? mayRequest && <Btn size="sm" variant="gh" onClick={() => request(r.it, r.suggested)}>
                           Request {fq(r.suggested, r.it)} {U(r.it)}
                         </Btn>
                       : <span className="stkcard-ok">Sufficient stock</span>}

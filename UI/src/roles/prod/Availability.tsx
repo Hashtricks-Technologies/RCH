@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, madeItems, menuOf, openOutlets, qty } from "../../lib/selectors";
+import { availOf, madeItems, menuOf, openOutlets, qty, useCan } from "../../lib/selectors";
 import { fq, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
+import { permissionRefusal } from "@rch/domain";
 
 const SWITCH = ["All", "Switched on", "Switched off"] as const;
 type SwitchF = (typeof SWITCH)[number];
@@ -13,6 +14,7 @@ type SwitchF = (typeof SWITCH)[number];
 export default function Availability() {
   const s = useApp();
   const toggleAvail = useApp((x) => x.toggleAvail);
+  const may = useCan("availability");
   const [q, setQ] = useState("");
   const [sw, setSw] = useState<SwitchF>("All");
 
@@ -97,7 +99,8 @@ export default function Availability() {
                         ))}
                       </div>
                     : <span className="dim mini">On at {carries.map((l) => LOC[l].n).join(", ")}</span>,
-                <Switch on={on} onChange={() => toggleAvail("kitchen", k)} label={`${IT[k]?.n ?? k} in the kitchen`} />,
+                <Switch on={on} onChange={() => toggleAvail("kitchen", k)} label={`${IT[k]?.n ?? k} in the kitchen`}
+                  disabled={!may} tip={may ? undefined : permissionRefusal("availability")} />,
               ],
             };
           })}

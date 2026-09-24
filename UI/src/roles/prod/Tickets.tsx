@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canHandOver, canReceiveTicket } from "../../lib/selectors";
+import { canCancelTicket, canHandOver, canReceiveTicket, useCan } from "../../lib/selectors";
 import { fq, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Otp, PageHead, StatusPill, TableFoot, Toolbar,
@@ -41,6 +41,7 @@ export default function Tickets() {
   const s = useApp();
   const receiveTicket = useApp((x) => x.receiveTicket);
   const cancelTicket = useApp((x) => x.cancelTicket);
+  const may = useCan("kitchen_tickets");
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
@@ -70,6 +71,7 @@ export default function Tickets() {
         crumbs={["Royal Care", "Central Kitchen", "Pick Tickets"]}
         title="Pick tickets"
         tip="Stock coming into and going out of the kitchen."
+        readOnly={!may && "kitchen_tickets"}
         actions={<Btn variant="gh" onClick={() => nav("/kitchen-requests")}>Stock requests</Btn>}
       />
 
@@ -126,7 +128,7 @@ export default function Tickets() {
                     {t.st === "Cancelled" ? "withdrawn - the OTP was never used" : "used at handover"}
                   </span>,
               <StatusPill status={t.st} />,
-              canReceiveTicket(t.st)
+              may && canReceiveTicket(t.st)
                 ? <Btn size="xs" onClick={() => receiveTicket(t.id)}>Receive</Btn>
                 : <span className="dim mini">
                     {t.st === "Issued" ? "not collected"
@@ -183,7 +185,7 @@ export default function Tickets() {
                 : <span className="dim mini">
                     {t.st === "Cancelled" ? "withdrawn - the OTP was never used" : "used at handover"}
                   </span>,
-              canHandOver(t.st)
+              may && canHandOver(t.st)
                 ? <>
                     <StatusPill status={t.st} />
                     <div style={{ marginTop: 6 }}>
@@ -211,7 +213,8 @@ export default function Tickets() {
                 : <>
                     <StatusPill status={t.st} />
                     <div className="mini">
-                      {t.st === "Collected" ? `in transit to ${LOC[t.to].n}`
+                      {t.st === "Issued" ? "waiting at the pass"
+                        : t.st === "Collected" ? `in transit to ${LOC[t.to].n}`
                         : t.st === "Cancelled" ? "withdrawn - it never left the kitchen"
                           : `on the shelf at ${LOC[t.to].n}`}
                     </div>

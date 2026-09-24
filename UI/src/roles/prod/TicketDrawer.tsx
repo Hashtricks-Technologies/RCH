@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canHandOver } from "../../lib/selectors";
+import { canHandOver, useCan } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Field, Section, StatusPill, TicketTrail, Tip } from "../../ui/kit";
 import { PrintSlipBtn, TicketSlip } from "../../ui/TicketSlip";
@@ -24,6 +24,7 @@ function TicketDrawer({ id }: DrawerProps) {
   const t = useApp((s) => s.tkt.find((x) => x.id === id));
   const close = useApp((s) => s.closeDrawer);
   const handover = useApp((s) => s.handover);
+  const may = useCan("kitchen_tickets");
   const [otp, setOtp] = useState("");
   // One tap, one handover: the stock leaves once, and a second tap inside the round trip would
   // post a second `ticket_out` - refused, but the window would read the refusal as its own fault.
@@ -52,7 +53,7 @@ function TicketDrawer({ id }: DrawerProps) {
     );
   }
 
-  const open = canHandOver(t.st);
+  const open = may && canHandOver(t.st);
 
   return (
     <DrawerFrame
@@ -67,7 +68,8 @@ function TicketDrawer({ id }: DrawerProps) {
           </Btn>
         ) : (
           <span className="mini">
-            {t.st === "Collected" ? `In transit to ${LOC[t.to].n}`
+            {t.st === "Issued" ? "Waiting at the pass"
+              : t.st === "Collected" ? `In transit to ${LOC[t.to].n}`
               : t.st === "Cancelled" ? "Withdrawn - nothing was collected against it" : "Closed"}
           </span>
         )}

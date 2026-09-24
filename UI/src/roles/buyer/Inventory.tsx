@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { avail, inTransit, isRetired, operationalLocs, qty, stateTone, stockValue } from "../../lib/selectors";
+import { avail, inTransit, isRetired, operationalLocs, qty, stateTone, stockValue, useCan } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, Tag, TableFoot, Toolbar,
@@ -18,6 +18,7 @@ export default function Inventory() {
   const s = useApp();
   // ---- item patch ----
   const openDrawer = useApp((x) => x.openDrawer);
+  const mayEdit = useCan("item_master");
   const [q, setQ] = useState("");
   const [type, setType] = useState("All");
   const [group, setGroup] = useState("All");
@@ -115,7 +116,7 @@ export default function Inventory() {
         // Read-only about stock, not about the master: the buyer keeps an item's name, group,
         // HSN and reorder level, and the drawer greys out the manager's commercial figures.
         <Btn size="xs" variant="gh" onClick={() => openDrawer("item", k)}>
-          {isRetired(k) ? "Restore" : "Edit"}
+          {!mayEdit ? "View" : isRetired(k) ? "Restore" : "Edit"}
         </Btn>,
       ],
     };

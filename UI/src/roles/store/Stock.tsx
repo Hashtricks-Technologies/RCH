@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import {
   // ---- item patch ----
   activeItems, avail, awaitingApproval, daysCover, inTransitIndex, isRetired, onOrder, onOrderIndex, qty, resv,
-  stateLabel, stateTone, stockValue,
+  stateLabel, stateTone, stockValue, useCan,
 } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
@@ -21,6 +21,8 @@ export default function Stock() {
   const setPrqDraft = useApp((x) => x.setPrqDraft);
   const notify = useApp((x) => x.notify);
   const openDrawer = useApp((x) => x.openDrawer);
+  const mayCreate = useCan("item_master");
+  const mayRaise = useCan("store_requisitions");
 
   const [q, setQ] = useState("");
   const [ti, setTi] = useState(0);
@@ -116,7 +118,7 @@ export default function Stock() {
         actions={
           <>
             <Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>
-            <Btn onClick={() => openDrawer("sitem", "new")}>Add product</Btn>
+            {mayCreate && <Btn onClick={() => openDrawer("sitem", "new")}>Add product</Btn>}
           </>
         }
       />
@@ -186,13 +188,13 @@ export default function Stock() {
                 // The store keeper owns the name, the group, the HSN and the reorder level; the
                 // drawer greys out the manager's three commercial figures beside them.
                 <BtnRow>
-                  {r.low && !isRetired(r.it) && (
+                  {mayRaise && r.low && !isRetired(r.it) && (
                     <Btn size="xs" variant="gh" onClick={() => addToRequisition(r.it)}>
                       Add to requisition
                     </Btn>
                   )}
                   <Btn size="xs" variant="gh" onClick={() => openDrawer("item", r.it)}>
-                    {isRetired(r.it) ? "Restore" : "Edit"}
+                    {!mayCreate ? "View" : isRetired(r.it) ? "Restore" : "Edit"}
                   </Btn>
                 </BtnRow>,
               ],
@@ -202,7 +204,7 @@ export default function Stock() {
             ? {
               title: "The catalogue is empty",
               sub: "Add a product to open the central store stock list.",
-              action: <Btn size="sm" onClick={() => openDrawer("sitem", "new")}>Add product</Btn>,
+              action: mayCreate && <Btn size="sm" onClick={() => openDrawer("sitem", "new")}>Add product</Btn>,
             }
             : {
               title: "Nothing matches those filters",

@@ -2,7 +2,7 @@
 import { dmy } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, canDispatch, canMoveOrder, qty } from "../../lib/selectors";
+import { avail, canDispatch, canMoveOrder, qty, useCan } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, DataTable, Feed, Pill, Section, StatusPill, TableFoot,
@@ -15,6 +15,7 @@ function OrderDrawer({ id }: DrawerProps) {
   const close = useApp((x) => x.closeDrawer);
   const setOrderStatus = useApp((x) => x.setOrderStatus);
   const dispatchOrder = useApp((x) => x.dispatchOrder);
+  const may = useCan("kitchen_orders");
   const o = s.pord.find((x) => x.id === id);
 
   if (!o) {
@@ -32,6 +33,7 @@ function OrderDrawer({ id }: DrawerProps) {
   const foot = (
     <>
       <Btn variant="gh" onClick={close}>Close</Btn>
+      {may && <>
       {canMoveOrder(o.st, "Accepted") && <>
         <Btn variant="dg" onClick={() => setOrderStatus(o.id, "Declined")}>Decline</Btn>
         <Btn onClick={() => setOrderStatus(o.id, "Accepted")}>Accept order</Btn>
@@ -45,6 +47,7 @@ function OrderDrawer({ id }: DrawerProps) {
           {short.length ? "Short - cannot dispatch" : "Dispatch to counter"}
         </Btn>
       )}
+      </>}
     </>
   );
 
