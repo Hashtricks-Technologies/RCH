@@ -57,6 +57,13 @@ export default function QrOrders() {
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [pausing, setPausing] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  // The hours line reads the clock, so it is read again each minute: a screen left idle at the
+  // counter still turns "open until 20:00" into closed at 20:00.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => { setNow(new Date()); }, 60_000);
+    return () => { clearInterval(t); };
+  }, []);
 
   // The queue is read as the screen opens, as well as by the shell, so a tab left open on it
   // after an outage has a way back that does not need a write to happen first.
@@ -80,7 +87,7 @@ export default function QrOrders() {
     try { await setPause(here, !paused[here]); } finally { setPausing(false); }
   };
 
-  const status = here ? statusLine(paused[here] === true, hours.find((h) => h.loc === here)?.days ?? []) : null;
+  const status = here ? statusLine(paused[here] === true, hours.find((h) => h.loc === here)?.days ?? [], now) : null;
 
   const card = (o: QrOrder) => {
     const next = nextQrStep(o.mode, o.status);
@@ -175,8 +182,8 @@ export default function QrOrders() {
 }
 
 /** The one line under the head: paused, open until when, or why not. */
-function statusLine(isPaused: boolean, days: Parameters<typeof qrOpenAt>[0]): string {
+function statusLine(isPaused: boolean, days: Parameters<typeof qrOpenAt>[0], now: Date): string {
   if (isPaused) return "QR ordering is paused at this counter.";
-  const o = qrOpenAt(days, new Date());
+  const o = qrOpenAt(days, now);
   return o.open && o.today ? `QR ordering open until ${o.today.closes}.` : o.why ?? "QR ordering is closed.";
 }

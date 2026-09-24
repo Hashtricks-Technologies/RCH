@@ -238,6 +238,23 @@ describe("the QR orders screen", () => {
     m.unmount();
   });
 
+  it("turns the hours line to closed on an idle screen when the window shuts", async () => {
+    as("counter");
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-09-24T06:29:00.000Z"));   // 11:59 IST
+      const noon = [0, 1, 2, 3, 4, 5, 6].map((dow) => ({ dow, opens: "09:00", closes: "12:00" }));
+      serve({ "GET /api/v1/qr-orders": () => queue([], false, [{ loc: "coffee", days: noon }]) });
+      const m = mount(createElement(QrOrders));
+      await settle();
+      const line = () => m.host.querySelector("[data-qr-status]")!.textContent;
+      expect(line()).toBe("QR ordering open until 12:00.");
+      await act(async () => { vi.advanceTimersByTime(2 * 60_000); });
+      expect(line()).not.toContain("open until");
+      m.unmount();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("pauses this counter's QR ordering from the head, and says when it is open", async () => {
     as("counter");
     let paused = false;
