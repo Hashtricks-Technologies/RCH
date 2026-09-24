@@ -1,26 +1,20 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import App from "./App";
-import { startEventStream } from "./api/events";
-import { useApp } from "./store";
-import ErrorBoundary from "./ui/ErrorBoundary";
-import "./styles.css";
+import { isOrderPath } from "./lib/orderPath";
 
-// Live updates follow the session; this is the only place that turns the follower on.
-startEventStream();
+/**
+ * Two apps share this entry, and the path decides which one loads - before anything else runs.
+ *
+ * `/order/...` is the customer's QR ordering page: a phone with no session, so it gets no
+ * `restore()`, no event stream and none of the staff app's code or styles. Everything else is the
+ * staff app. Each is its own chunk, so neither downloads the other.
+ */
+const root = createRoot(document.getElementById("root")!);
 
-// A reload keeps the HttpOnly refresh cookie but not the in-memory access token.
-// Start the exchange before the first render, so the gate shows "Loading…" rather
-// than flashing the sign-in form at someone who is already signed in.
-void useApp.getState().restore();
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </ErrorBoundary>
-  </StrictMode>
-);
+if (isOrderPath(window.location.pathname)) {
+  void import("./pages/public/OrderApp").then(({ default: OrderApp }) => {
+    root.render(<StrictMode><OrderApp /></StrictMode>);
+  });
+} else {
+  void import("./staff").then(({ bootStaff }) => { bootStaff(root); });
+}

@@ -4,7 +4,10 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  base: "./",
+  // Absolute, not "./": the public QR page lives two and four segments deep (/order/<token>,
+  // /order/<token>/o/<id>), where a relative "./assets/..." resolves under the path and every
+  // script comes back as index.html. The app is always served from the origin's root.
+  base: "/",
   server: {
     proxy: {
       // Listed first. Vite uses the first proxy key that matches, and `/api` would otherwise send
@@ -24,8 +27,8 @@ export default defineConfig({
     // same box) the default 5 s has timed out on a test that passes alone in a second.
     testTimeout: 20_000,
     // The thresholds are set a point or two **under what the whole suite measures today**
-    // (statements 81.62, branches 68.31, functions 74.89, lines 84.39 once configurable roles
-    // landed, 2026-09-24; 77.90 / 62.24 / 70.30 / 80.89 once outlet management met the named
+    // (statements 82.39, branches 69.61, functions 75.80, lines 85.03 once the public QR ordering
+    // page landed, 2026-09-24; 81.62 / 68.31 / 74.89 / 84.39 once configurable roles landed, 2026-09-24; 77.90 / 62.24 / 70.30 / 80.89 once outlet management met the named
     // price lists, 2026-09-15; 74.21 / 56.26 / 65.78 / 77.52 at the close of the
     // audit fix wave, 2026-09-12; 71.07 / 52.74 / 62.37 / 74.42 before it) - the point is not to
     // chase a number, it is that deleting a test or shipping an untested screen cannot pass CI
@@ -41,9 +44,11 @@ export default defineConfig({
       // itself, v8 reports only what the run happened to load, and an untested screen then
       // improves the percentage by not being there.
       include: ["src/**"],
-      exclude: ["src/__tests__/**", "src/main.tsx", "src/vite-env.d.ts"],
+      // `staff.tsx` is the staff app's start-up that `main.tsx` used to hold inline, excluded for
+      // the same reason: it mounts the real app against the real document.
+      exclude: ["src/__tests__/**", "src/main.tsx", "src/staff.tsx", "src/vite-env.d.ts"],
       reporter: ["text-summary"],
-      thresholds: { lines: 82, branches: 66 },
+      thresholds: { lines: 83, branches: 67 },
     },
   },
 });
