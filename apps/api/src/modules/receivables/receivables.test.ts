@@ -375,12 +375,12 @@ describe("who owes what", () => {
   });
 });
 
-describe("who reads the accounts is whoever holds Credit & settlements", () => {
-  it("answers a counter role granted Credit exactly as it answers the manager", async () => {
+describe("who reads the accounts is whoever holds Receivables & settlements", () => {
+  it("answers a counter role granted Settlements exactly as it answers the manager", async () => {
     await given.bill(app.db, { loc: "coffee", tender: "Doctor credit", payer: DOCTOR, total: 300, lines: [{ it: "water", qty: 1, rate: 300 }] });
     const paid = await write("POST", "u2", "/settlements", { kind: "doctor", id: DOCTOR.id, amount: 100, mode: "Cash" });
     expect(paid.statusCode, paid.body).toBe(200);
-    const undo = await giveRole(app, "u1", "counter", seededPlus("counter", { credit: "view" }));
+    const undo = await giveRole(app, "u1", "counter", seededPlus("counter", { settlements: "view" }));
     try {
       const mine = await get("u1", "/receivables");
       expect(mine.json()).toEqual(await rows());
@@ -390,7 +390,15 @@ describe("who reads the accounts is whoever holds Credit & settlements", () => {
     } finally { await undo(); }
   });
 
-  it("answers a manager-desk role without Credit an empty list, never a 403", async () => {
+  it("answers a role holding only the rate card an empty list: who owes what is the settlements desk's", async () => {
+    const undo = await giveRole(app, "u1", "counter", seededPlus("counter", { credit: "edit" }));
+    try {
+      for (const url of ["/receivables", "/settlements"]) expect((await get("u1", url)).json(), url).toEqual([]);
+      expect((await get("u1", `/receivables/doctor/${DOCTOR.id}`)).statusCode).toBe(404);
+    } finally { await undo(); }
+  });
+
+  it("answers a manager-desk role without Settlements an empty list, never a 403", async () => {
     const undo = await giveRole(app, "u2", "manager", { f: { prices: "edit" }, a: [] });
     try {
       for (const url of ["/receivables", "/settlements"]) {

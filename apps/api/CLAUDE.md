@@ -261,7 +261,9 @@ role; `truncateAll` in the test harness keeps `roles` too.
   token for the account as it stands). Then `admits` (`@rch/domain`) decides: `{ desk }` reads the desk
   alone; `{ needs }` is 404 with no need met, 403
   with `permissionRefusal`'s sentence where the feature is held at view and edit was needed (or the parent
-  of a missing action is held). Finally the must-change-password 403.
+  of a missing action is held) **and the desk could be given what is missing** - a level or action the desk
+  can never hold stays a 404 (the seeded manager on `POST /bills`: Bills at edit is the counter desk's
+  alone). Finally the must-change-password 403.
 - **`req.actor`** (`Actor` in `plugins/rbac.ts`, declared on `FastifyRequest` the way `req.user` is) is set on
   every non-public route: `{ ...claims, perms, wide }`. `wide` is `admits`' answer - the matched need is a
   hospital-wide feature, or the role holds `all_outlets`; for `"any"` and `{ desk }` it is `all_outlets`. A
@@ -344,17 +346,18 @@ Two reads split deliberately:
 
 - **Items.** `loadItems` (`lib/master.ts`) is what rules read, and filters out retired items. `readItems` is
   what the wire carries: the whole master, because old documents still name retired items.
-- **Payers.** `GET /roster` returns live payers for the till, scoped empty for a role holding neither
-  `billing` nor `credit` (of the seeded roles: the store, the kitchen and the buyer). The register itself is the super admin's (`modules/admin`: `GET`/`POST /admin/payers`,
+- **Payers.** `GET /roster` returns live payers for the till, scoped empty for a role holding none of
+  `billing`, `credit` and `settlements` (of the seeded roles: the store, the kitchen and the buyer). The register itself is the super admin's (`modules/admin`: `GET`/`POST /admin/payers`,
   `PATCH /admin/payers/:kind/:id`), which reads inactive ones too and carries what each still owes; the
   `payers import` CLI stays for a ward list nobody types twice.
 - **The rate card and the receivables list are scoped, not gated.** `GET /payer-terms`, `GET /receivables`
-  and `GET /settlements` are all `access: "any"`. The rate card answers empty to a role holding neither
-  `billing` nor `credit`; the last two answer empty, short-circuiting before they query anything, to a role
-  without `credit` (of the seeded roles, everybody but the Outlet Manager). That is deliberate: a credit write announces
+  and `GET /settlements` are all `access: "any"`. The rate card answers empty to a role holding none of
+  `billing`, `credit` and `settlements`; the last two answer empty, short-circuiting before they query
+  anything, to a role without `settlements` - `credit` alone is the rate card, not who owes what (of the
+  seeded roles, everybody but the Outlet Manager). That is deliberate: a credit write announces
   `terms`/`receivables` to **every** open browser, and a route another role is forbidden would fail that
   tab's whole refetch with a toast about a screen of theirs that never changed - the trap `UI/CLAUDE.md`
-  documents for `priceLists`. `GET /receivables/:kind/:id` is gated (`need(credit, view)`), because a statement is opened by
+  documents for `priceLists`. `GET /receivables/:kind/:id` is gated (`need(settlements, view)`), because a statement is opened by
   hand from a drawer and is never in a `changed`.
 
 The snapshot and every `access: "any"` GET that carries one of its collections (`/stock`, `/bills`,
@@ -365,16 +368,30 @@ and the role's permissions as resolved for this request - never the desk alone. 
 gives the five seeded roles exactly what their desks read before roles were configurable
 (`scope.test.ts` pins it against a literal copy of the desk-only cuts):
 
-- **The counter cut** - own outlet's stock, menu, requests, tickets, bills, sales, shop asks, product
-  requests, kitchen orders, adjustments and adjustment requests - applies when
-  `!readsHospitalWide(desk, perms)` (@rch/domain): a counter-desk role that holds neither `all_outlets` nor
-  any hospital-wide feature. A counter role given, say, `approvals:view` reads every outlet's.
+- **The location cut is per collection** (`readsWide(desk, perms, collection)` in @rch/domain). The store,
+  kitchen and purchasing desks are never cut. A counter- or manager-desk role reads a collection at its own
+  location unless it holds `all_outlets` or a feature that widens that collection:
+
+  | Collection | Widened by (besides `all_outlets`) |
+  |---|---|
+  | bills and `sales` | nothing |
+  | stock, holds, sold-out marks, menus, adjustments | `items_stock`, `stock_ledger`, `inventory`, `prices`, `menu` |
+  | requests, shop asks, kitchen orders, adjustment requests | `approvals` |
+  | tickets | `approvals`, `items_stock` |
+  | product requests | `approvals`, `menu` |
+
+  So a counter role given the stock ledger reads every shelf but still only its own till roll, and a
+  manager-desk role without "Works for every outlet" reads its home outlet's bills and takings.
+- **The till roll needs Bills** (`readsBills`): a counter- or manager-desk role without `billing` reads no
+  bills and empty takings (`sales` keeps a row per day, each empty), whatever else it holds - the Credit
+  screen reads `/receivables`, `/settlements` and the statement, not bills. The back-office desks read
+  bills whole, as before (less the names): the store's movers report counts what the counters sold.
 - **The batch log and buying** (requisitions, orders, goods receipts, vendors, rate contracts) are cut by
   desk and feature, not by the counter cut: the four back-office desks always read them whole; a
   counter-desk role reads buying only with a Purchasing feature, `goods_receipt` or `inventory`, and the
   batch log only with a Kitchen feature or `items_stock`. Reading every outlet's till is no reason to read
   the back office.
-- **Names**: a role holding neither `billing` nor `credit` gets bills with `payer`, `customerName` and
+- **Names**: a role holding none of `billing`, `credit` and `settlements` gets bills with `payer`, `customerName` and
   `customerPhone` stripped, an empty roster and an empty rate card.
 - **The OTP** reaches only a caller at the ticket's `to` location, while the ticket is `Issued`, whose role
   holds `outlet_tickets`, `kitchen_tickets` or `issue_desk` at edit - the doors a collection goes through.

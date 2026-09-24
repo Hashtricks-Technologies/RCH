@@ -36,7 +36,7 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 **What a session sees follows its role's permissions, not its desk.** `user.perms` (`/me`, sign-in, the
 snapshot) says what the role holds; a user record without it holds its desk's seeded role
 (`DESK_DEFAULTS[user.r].perms`), which is exactly what the desk always had. `lib/selectors.ts` has the pure
-`permsOf`, `userCan(u, f, l = "view")`, `userHolds(u, a)` and `userWide(u)` (`readsHospitalWide`), and the
+`permsOf`, `userCan(u, f, l = "view")`, `userHolds(u, a)` and `userWide(u)` (`readsWide(desk, perms, "bills")`), and the
 hooks `useCan(f, l = "edit")`, `useHolds(a)` and `useWide()`. `navFor` places the desk's own layout first
 and exactly as it always was (`nav-parity.test.ts`), then any other screen the role holds under that
 screen's own `section` - joining a group of the same name - and Account last. `dash`, `issues` and

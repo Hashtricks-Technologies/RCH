@@ -31,7 +31,10 @@ export const FEATURES: Readonly<Record<Feature, FeatureDef>> = {
   x_report:           { label: "X reports", section: "Sales", scope: "local", levels: { view: ["counter", "manager"] } },
   z_report:           { label: "Z reports", section: "Sales", scope: "local", levels: both(["counter", "manager"]) },
   shift_reports:      { label: "Shift reports", section: "Sales", scope: "wide", levels: { view: ["counter", "manager"] } },
-  credit:             { label: "Credit & settlements", section: "Sales", scope: "wide", levels: both(ALL) },
+  // Two desks, not one: the rate card (who is given what off and how far they may run up credit) is
+  // a commercial decision; taking a party's money and laying it over their open bills is cashiering.
+  credit:             { label: "Discounts & credit limits", section: "Sales", scope: "wide", levels: both(ALL) },
+  settlements:        { label: "Receivables & settlements", section: "Sales", scope: "wide", levels: both(ALL) },
   // ---- Outlets
   approvals:          { label: "Approvals", section: "Outlets", scope: "wide", levels: both(ALL) },
   items_stock:        { label: "Items & stock", section: "Outlets", scope: "wide", levels: both(ALL) },
@@ -86,8 +89,8 @@ export const ACTIONS: Readonly<Record<Action, ActionDef>> = {
     refusal: "You can see Bills but not void one - ask the administrator for the void permission.",
   },
   void_settlement: {
-    label: "Void a settlement", parent: "credit",
-    refusal: "You can see Credit & settlements but not void a settlement - ask the administrator for the void permission.",
+    label: "Void a settlement", parent: "settlements",
+    refusal: "You can see Receivables & settlements but not void a settlement - ask the administrator for the void permission.",
   },
   all_outlets: {
     label: "Works for every outlet", desks: ["counter", "manager"],
@@ -123,7 +126,7 @@ export const DESK_DEFAULTS: Readonly<Record<Role, { name: string; perms: Permiss
     perms: {
       f: {
         ...view("billing", "x_report", "shift_reports", "stock_ledger"),
-        ...edit("credit", "approvals", "items_stock", "menu", "prices", "availability", "item_photos"),
+        ...edit("credit", "settlements", "approvals", "items_stock", "menu", "prices", "availability", "item_photos"),
       },
       a: ["void_bill", "void_settlement", "all_outlets"],
     },
@@ -190,14 +193,24 @@ export const permissionRefusal = (f: Feature): string =>
 type Admitted = { ok: true; wide: boolean } | { ok: false; status: 404 | 403; message: string };
 const NOTHING: Admitted = { ok: false, status: 404, message: "There is nothing here." };
 
+/** Whether a role on this desk could ever be given this feature at this level, or this action. */
+const grantable = (desk: Role, f: Feature, l: Level): boolean => FEATURES[f].levels[l]?.includes(desk) ?? false;
+const actionGrantable = (desk: Role, a: Action): boolean => {
+  const def = ACTIONS[a];
+  return (def.desks ?? ALL).includes(desk) && (!def.parent || grantable(desk, def.parent, "view"));
+};
+
 /**
  * Whether a caller on this desk holding these permissions may use a route of this access - and if so,
  * whether the request runs hospital-wide (`wide`) or at the caller's own location.
  *
  * - `{ needs }` is any-of, in order: the first need met decides `wide` (a wide feature, an action, or
  *   `all_outlets` held). None met is a 404 - the route does not exist for them - unless one of them
- *   was a feature held at view where edit was needed, or an action whose parent they hold: those are
- *   a 403 with the sentence saying what to ask for, because the screen is in front of them.
+ *   was a feature held at view where edit was needed, or an action whose parent they hold, **and**
+ *   the administrator could give their desk what is missing: those are a 403 with the sentence
+ *   saying what to ask for, because the screen is in front of them and the ask can be granted. A
+ *   level the desk can never hold (the till's edit on a manager desk, say) stays a 404: telling
+ *   someone to ask for what cannot be given is no answer.
  * - `{ desk }` admits by desk alone.
  * - `"public"` and `"any"` admit everybody; `"admin"` is the admin claim's, never a desk's.
  *
@@ -213,19 +226,68 @@ export function admits(access: Access, desk: Role, perms: Permissions): Admitted
     if ("a" in n) {
       if (holds(perms, n.a)) return { ok: true, wide: true };
       const parent = ACTIONS[n.a].parent;
-      if (parent && can(perms, parent)) refusal ??= ACTIONS[n.a].refusal;
+      if (parent && can(perms, parent) && actionGrantable(desk, n.a)) refusal ??= ACTIONS[n.a].refusal;
       continue;
     }
     if (can(perms, n.f, n.l)) return { ok: true, wide: FEATURES[n.f].scope === "wide" || allOutlets };
-    if (can(perms, n.f)) refusal ??= permissionRefusal(n.f);
+    if (can(perms, n.f) && grantable(desk, n.f, n.l)) refusal ??= permissionRefusal(n.f);
   }
   return refusal ? { ok: false, status: 403, message: refusal } : NOTHING;
 }
 
 /**
- * Whether this caller's reads are the hospital's rather than their own counter's: every desk but the
- * counter, and a counter role that has been given every outlet or any hospital-wide feature.
+ * The location-cut collections of a snapshot, grouped by what may widen them. Each is read at the
+ * caller's own location or across the hospital; which one is `readsWide` below.
+ *
+ * - `bills`: the till roll and the per-outlet takings (`sales`) - who bought what, where.
+ * - `stock`: the ledger balances, holds and sold-out marks, each outlet's menu, and the
+ *   adjustment register (a correction to one shelf).
+ * - `requests`, `shopAsks`, `prodOrders`, `adjReq`: the documents a counter raises and the
+ *   approvals desk decides.
+ * - `tickets`: the pick tickets, both ends.
+ * - `productReqs`: a shop's asks for a new product.
  */
-export const readsHospitalWide = (desk: Role, perms: Permissions): boolean =>
-  desk !== "counter" || holds(perms, "all_outlets")
-  || (Object.keys(perms.f) as Feature[]).some((f) => FEATURES[f].scope === "wide");
+export type ReadCollection = "bills" | "stock" | "requests" | "tickets" | "shopAsks" | "prodOrders" | "adjReq" | "productReqs";
+
+/**
+ * Which features widen each collection for a counter or manager desk, besides `all_outlets`, which
+ * widens every one. A feature is here because its own screen reads that collection across the
+ * outlets: Items & stock, the ledger, Inventory, Prices and Menus read every shelf and menu;
+ * Approvals decides every outlet's documents; Items & stock moves stock between outlets, so it reads
+ * the tickets it raises; Menus raises new-product asks. Nothing but every outlet widens the till
+ * roll: a hospital-wide feature is no reason to read other counters' customers.
+ */
+const WIDENED_BY: Readonly<Record<ReadCollection, readonly Feature[]>> = {
+  bills: [],
+  stock: ["items_stock", "stock_ledger", "inventory", "prices", "menu"],
+  requests: ["approvals"],
+  tickets: ["approvals", "items_stock"],
+  shopAsks: ["approvals"],
+  prodOrders: ["approvals"],
+  adjReq: ["approvals"],
+  productReqs: ["approvals", "menu"],
+};
+
+/**
+ * Whether this caller reads a collection across the hospital rather than at their own location.
+ *
+ * The three back-office desks (store, kitchen, purchasing) always do, as they always have: a store
+ * keeper issues to every outlet and a buyer buys for all of them. A counter or manager desk reads
+ * its own location's, unless the role holds every outlet or a feature whose screen reads that
+ * collection across the outlets (`WIDENED_BY`). So a manager-desk role without "Works for every
+ * outlet" is cut to its home outlet exactly as a counter is; the seeded Outlet Manager holds it and
+ * reads everything, and the seeded Counter Operator holds none of it and reads its own counter.
+ */
+export const readsWide = (desk: Role, perms: Permissions, c: ReadCollection): boolean =>
+  (desk !== "counter" && desk !== "manager") || holds(perms, "all_outlets")
+  || WIDENED_BY[c].some((f) => can(perms, f));
+
+/**
+ * Whether this caller may read the till roll at all - the bills and the takings. Bills is the
+ * counter's till and the manager's view of it; a counter or manager desk without it reads neither,
+ * whatever else it holds. The back-office desks keep reading them whole (less the names on them):
+ * the store's movers report counts what the counters sold. Credit and settlements need none of it -
+ * their screens read `/receivables`, `/settlements` and the statement, which the server totals.
+ */
+export const readsBills = (desk: Role, perms: Permissions): boolean =>
+  (desk !== "counter" && desk !== "manager") || can(perms, "billing");

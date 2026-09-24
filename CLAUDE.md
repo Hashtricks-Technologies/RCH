@@ -163,7 +163,9 @@ excepted.
   `access` is a permission (`need`/`act`/`anyOf`) or, for the few doors that are a desk's own (a counter's
   shift), a desk (`desk`). A role holding none of a route's needs gets a **404**, the same as a screen that
   doesn't exist for it; one holding the feature at view where edit is needed (or the feature an action hangs
-  off, but not the action) gets a **403** with `permissionRefusal`'s sentence. Inside a handler or a screen
+  off, but not the action) gets a **403** with `permissionRefusal`'s sentence - but only when the desk could
+  be given what is missing; a level the desk can never hold (Bills at edit on a manager desk) stays a
+  **404**. Inside a handler or a screen
   the same holds: ask `can`/`holds` or `req.actor.wide`, never the desk. A desk check is only for where
   someone sits (`worksAt`, `atOutlet`, the counter's shift at sign-in); `scripts/check-boundaries.sh` fails
   on any equality against `"manager"` in `apps/api/src` or `UI/src` outside a test.
@@ -172,6 +174,12 @@ excepted.
   hospital-wide feature, or its role holds `all_outlets`. A wide caller's writes never scope to a location
   (the seeded Outlet Manager is wide everywhere); a local one is held to its session's location (the
   seeded Counter Operator and Kitchen In-charge). `store` and `buyer` each work one desk.
+- **Reads are cut per collection** (`readsWide` in `@rch/domain`, applied in `apps/api`'s
+  `modules/snapshot/scope.ts`). The store, kitchen and purchasing desks read everything whole. A counter or
+  manager desk reads each collection at its own location unless the role holds `all_outlets` or a feature
+  whose screen reads that collection hospital-wide: shelves and menus widen with Items & stock, the ledger,
+  Inventory, Prices or Menus; the outlets' documents with Approvals. Nothing but `all_outlets` widens the
+  bills and takings, and a counter or manager role without Bills reads none (`readsBills`).
 - **The Z is the super admin's by default.** No seeded role holds `z_report`, so a seeded counter or
   manager gets a **404** on `GET /register/z` and `POST /register/close` until a role is given it. The X,
   the Z list and the close are `admitAdmin` in the manifest: the super admin reaches them for any outlet,
@@ -251,11 +259,13 @@ back where it stood.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
   transaction, so a retry replays the answer instead of producing a second bill.
 - **Who exists and what they are charged are two different desks.** The super admin owns the payer register
-  (`/admin`, `POST`/`PATCH /admin/payers`); a role holding Credit & settlements (`credit`, the seeded Outlet Manager) owns the rate card
-  and the settlements (`/payer-terms`, `/receivables`, `/settlements`). `pnpm --filter @rch/api payers import --csv` stays for a
+  (`/admin`, `POST`/`PATCH /admin/payers`). Two features split the rest: Discounts & credit limits (`credit`)
+  is the rate card (`/payer-terms`), and Receivables & settlements (`settlements`) is who owes what and the
+  payments against it (`/receivables`, `/settlements`, the statement); the seeded Outlet Manager holds both.
+  `pnpm --filter @rch/api payers import --csv` stays for a
   ward list nobody types twice. `GET /payer-terms` and `GET /roster` are `access: "any"` and
-  answer empty to a role holding neither Bills (`billing`) nor `credit`; `GET /receivables` and `GET
-  /settlements` are `access: "any"` and answer empty to a role without `credit` - a credit write announces to
+  answer empty to a role holding none of Bills (`billing`), `credit` and `settlements`; `GET /receivables` and `GET
+  /settlements` are `access: "any"` and answer empty to a role without `settlements` - a credit write announces to
   every open browser, and a route another role is forbidden would fail that tab's whole refetch.
 - **A role holding Prices at edit (the seeded Outlet Manager) prices each counter on its own, from one grid.** Prices (`prices`) is every active sellable
   item (MRP, FG, MTO) against every open outlet; each cell is whether that till sells it (its menu listing)
@@ -349,7 +359,7 @@ The code enforces these and tests pin them. Breaking one is a bug.
   hospital-wide, enforced inside the sale's own transaction under `lockPayerCredit`. `null` is no ceiling at
   all and is not the same as a ceiling of zero. The `staff` row is seeded at `STAFF_CREDIT_LIMIT` (₹3,000), so
   a hospital that never opens the Credit screen behaves as it always did.
-- **A settlement is a numbered document** (`STL-`). The server lays it over that party's open bills oldest
+- **A settlement is a numbered document** (`STL-`), recorded by a role holding `settlements` at edit. The server lays it over that party's open bills oldest
   first and **stores** the allocation, because it is a decision made against the bills open at one instant.
   More than is owed is refused, naming the balance; nothing is ever parked as a credit balance. It is voided
   only on the IST day it was recorded, and only by a role holding `void_settlement` (the seeded Outlet

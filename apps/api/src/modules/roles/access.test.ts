@@ -63,12 +63,12 @@ describe("a hospital-wide grant on the counter desk acts hospital-wide", () => {
 });
 
 describe("view where edit is needed is a 403 with the sentence, not a 404", () => {
-  it("a counter role that sees Credit & settlements may not record one", async () => {
-    const viewer = await hire(await newRole("counter", { f: { ...counter.f, credit: "view" }, a: [] }), "coffee");
+  it("a counter role that sees Receivables & settlements may not record one", async () => {
+    const viewer = await hire(await newRole("counter", { f: { ...counter.f, settlements: "view" }, a: [] }), "coffee");
     const r = await send(viewer, "POST", "/settlements", { kind: "staff", id: "u1", amount: 10, mode: "Cash" });
     expect(r.statusCode, r.body).toBe(403);
-    expect(r.json().error.message).toBe(permissionRefusal("credit"));
-    expect(r.json().error.message).toBe("You can see Credit & settlements but not change them - ask the administrator for edit access.");
+    expect(r.json().error.message).toBe(permissionRefusal("settlements"));
+    expect(r.json().error.message).toBe("You can see Receivables & settlements but not change them - ask the administrator for edit access.");
   });
 
   it("a role that takes bills but does not hold the void is told what to ask for", async () => {

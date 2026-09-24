@@ -454,11 +454,11 @@ export const userCan = (u: Holder, f: Feature, l: Level = "view"): boolean => D.
 /** Whether this session holds the action `a`. */
 export const userHolds = (u: Holder, a: Action): boolean => D.holds(permsOf(u), a);
 /**
- * Whether this session reads hospital-wide - every outlet's bills, requests and tickets - rather
- * than the one counter it signed in to: every desk but the counter, and a counter role given every
- * outlet or any hospital-wide feature. The server scopes the same reads by the same rule.
+ * Whether this session reads every outlet's till roll rather than the one it signed in to
+ * (`readsWide(desk, perms, "bills")` in @rch/domain): the three back-office desks, and a counter or
+ * manager role given every outlet. The server scopes the bills by the same rule.
  */
-export const userWide = (u: Holder): boolean => D.readsHospitalWide(u.r, permsOf(u));
+export const userWide = (u: Holder): boolean => D.readsWide(u.r, permsOf(u), "bills");
 
 /** Whether the signed-in session holds `f` - at edit unless asked about view. False signed out. */
 export const useCan = (f: Feature, l: Level = "edit"): boolean =>

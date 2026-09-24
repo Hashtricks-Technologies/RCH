@@ -145,12 +145,13 @@ export function createReceivablesService(db: Db) {
      * connection rather than four (`lib/db.ts`).
      */
     async receivables(actor: Actor): Promise<Receivable[]> {
-      // Anybody whose role does not hold Credit & settlements reads an empty list, and reads it
-      // without touching the database. The route is "any" so that a settlement's notice does not
+      // Anybody whose role does not hold Receivables & settlements reads an empty list, and reads
+      // it without touching the database. The route is "any" so that a settlement's notice does not
       // 403 every other role mid-refetch (`routes.ts` in @rch/contract says why); this is the cut
-      // that makes that safe. Of the seeded roles only the outlet manager holds `credit`, so it
+      // that makes that safe. `credit` alone - the rate card - is not enough: who owes what is the
+      // settlements desk's. Of the seeded roles only the outlet manager holds `settlements`, so it
       // answers exactly as the manager-only check before it did.
-      if (!can(actor.perms, "credit")) return [];
+      if (!can(actor.perms, "settlements")) return [];
       return withReadTransaction(db, async (tx) => {
         const charged = await repo.chargedByPayer(tx);
         const settled = await repo.settledByPayer(tx);
@@ -213,7 +214,7 @@ export function createReceivablesService(db: Db) {
 
     /** Everybody's recent payments, for the Settlements tab. Cut exactly like `receivables`. */
     async settlements(actor: Actor): Promise<Settlement[]> {
-      if (!can(actor.perms, "credit")) return [];
+      if (!can(actor.perms, "settlements")) return [];
       return withReadTransaction(db, async (tx) => {
         const rows = await repo.recentSettlements(tx, SETTLEMENT_FEED);
         const lines = await repo.linesOf(tx, rows.map((r) => r.id));

@@ -250,7 +250,7 @@ export const ItemResultSchema = z.strictObject({ key: z.string(), item: ItemSche
 
 // ---- item patch ----
 /** The item master is editable (`PATCH /items/:it`). Which of these eleven fields a role may
- *  actually move is `ITEM_FIELD_ROLES` in `@rch/domain` - a sentence, not a 400 - so the schema
+ *  actually move is `ITEM_FIELD_FEATURES` in `@rch/domain` - a sentence, not a 400 - so the schema
  *  takes all eleven from anyone and the service refuses in the operator's own words. No
  *  `.default()` anywhere: `parse({})` must stay empty, or "Nothing to change" is unreachable
  *  and a patch of one field silently resets the other ten. */

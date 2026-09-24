@@ -90,15 +90,77 @@ describe("scope() - read off permissions", () => {
   const counter = DESK_DEFAULTS.counter.perms;
   const plus = (f: Permissions["f"], a: Permissions["a"] = []): Permissions => ({ f: { ...counter.f, ...f }, a: [...counter.a, ...a] });
 
-  it("a counter role given a hospital-wide feature reads every outlet's documents and stock", () => {
+  const own = scope(full, as("counter", "coffee"), owners);
+  it("a counter role given Approvals reads every outlet's documents, and still only its own shelf and till", () => {
     const s = scope(full, as("counter", "coffee", plus({ approvals: "view" })), owners);
     expect(s.req).toEqual(full.req);
-    expect(Object.keys(s.stock)).toEqual(Object.keys(full.stock));
-    expect(s.bills.map((b) => b.no)).toEqual(full.bills.map((b) => b.no));
-    expect(s.sales).toEqual(full.sales);
-    // ...but not the back office's: approvals is no screen about batches or buying.
+    expect(s.adjReq).toEqual(full.adjReq);
+    expect(s.shopAsks).toEqual(full.shopAsks);
+    expect(s.pord).toEqual(full.pord);
+    expect(s.productReqs).toEqual(full.productReqs);
+    expect(s.tkt.map((t) => t.id)).toEqual(full.tkt.map((t) => t.id));
+    expect(s.stock).toEqual(own.stock);
+    expect(s.menu).toEqual(own.menu);
+    expect(s.adjustments).toEqual(own.adjustments);
+    expect(s.bills).toEqual(own.bills);
+    expect(s.sales).toEqual(own.sales);
+    // ...and not the back office's: approvals is no screen about batches or buying.
     expect(s.batch).toEqual([]);
     expect(s.po).toEqual([]);
+  });
+  it("the leak: a counter role given the stock ledger reads every shelf, but still only its own bills", () => {
+    const s = scope(full, as("counter", "coffee", plus({ stock_ledger: "view" })), owners);
+    expect(Object.keys(s.stock)).toEqual(Object.keys(full.stock));
+    expect(s.menu).toEqual(full.menu);
+    expect(s.adjustments).toEqual(full.adjustments);
+    expect(s.bills.length).toBeGreaterThan(0);
+    expect(s.bills.every((b) => b.loc === "coffee")).toBe(true);
+    expect(s.bills).toEqual(own.bills);
+    expect(s.sales).toEqual(own.sales);
+    // Nor the documents: the ledger decides none of them.
+    expect(s.req).toEqual(own.req);
+    expect(s.tkt).toEqual(own.tkt);
+  });
+  it("each shelf feature widens the shelves; Items & stock the tickets too, Menus the new-product asks", () => {
+    for (const f of ["items_stock", "stock_ledger", "inventory", "prices", "menu"] as const) {
+      const s = scope(full, as("counter", "coffee", plus({ [f]: "view" })), owners);
+      expect(s.stock, f).toEqual(full.stock);
+      expect(s.rsv, f).toEqual(full.rsv);
+      expect(s.ovr, f).toEqual(full.ovr);
+      expect(s.menu, f).toEqual(full.menu);
+      expect(s.bills, f).toEqual(own.bills);
+      expect(s.req, f).toEqual(own.req);
+    }
+    expect(scope(full, as("counter", "coffee", plus({ items_stock: "view" })), owners).tkt.map((t) => t.id)).toEqual(full.tkt.map((t) => t.id));
+    expect(scope(full, as("counter", "coffee", plus({ menu: "view" })), owners).productReqs).toEqual(full.productReqs);
+    expect(scope(full, as("counter", "coffee", plus({ prices: "view" })), owners).productReqs).toEqual(own.productReqs);
+  });
+  it("a manager-desk role without every outlet is cut to its home outlet's bills and takings", () => {
+    const perms: Permissions = { ...DESK_DEFAULTS.manager.perms, a: ["void_bill", "void_settlement"] };
+    const s = scope(full, as("manager", "coffee", perms), owners);
+    expect(s.bills.length).toBeGreaterThan(0);
+    expect(s.bills.every((b) => b.loc === "coffee")).toBe(true);
+    expect(s.bills.length).toBeLessThan(full.bills.length);
+    expect(s.sales.every((row) => Object.keys(row).every((k) => k === "coffee"))).toBe(true);
+    // Its Approvals and Items & stock still read every outlet's documents and shelves.
+    expect(s.req).toEqual(full.req);
+    expect(s.stock).toEqual(full.stock);
+    // A manager-desk role holding nothing wide reads its home outlet's shelf as a counter would.
+    const bare = scope(full, as("manager", "rest", { f: { billing: "view" }, a: [] }), owners);
+    expect(Object.keys(bare.stock)).toEqual(["rest"]);
+    expect(bare.req.every((r) => r.from === "rest")).toBe(true);
+  });
+  it("a counter or manager role without Bills reads no till roll; the back office reads it whole", () => {
+    const noTill = scope(full, as("counter", "coffee", { f: { outlet_stock: "edit" }, a: [] }), owners);
+    expect(noTill.bills).toEqual([]);
+    expect(noTill.sales).toEqual(full.sales.map(() => ({})));
+    expect(noTill.dayLabels).toEqual(full.dayLabels);
+    const creditOnly = scope(full, as("manager", "rest", { f: { credit: "edit", settlements: "edit" }, a: ["void_settlement", "all_outlets"] }), owners);
+    expect(creditOnly.bills).toEqual([]);
+    expect(creditOnly.roster).toEqual(full.roster);
+    const store = scope(full, as("store", "store", { f: {}, a: [] }), owners);
+    expect(store.bills.map((b) => b.no)).toEqual(full.bills.map((b) => b.no));
+    expect(store.sales).toEqual(full.sales);
   });
   it("so does one given every outlet", () => {
     const s = scope(full, as("counter", "coffee", plus({}, ["all_outlets"])), owners);
@@ -121,17 +183,21 @@ describe("scope() - read off permissions", () => {
     expect(scopeBatches(full.batch, as("store", "store", bare))).toEqual(full.batch);
     expect(scopeBuying(full.po, as("store", "store", bare))).toEqual(full.po);
   });
-  it("names on bills, the roster and the rate card go with Bills or Credit, not with the desk", () => {
+  it("names on bills, the roster and the rate card go with Bills or either half of Credit, not with the desk", () => {
     const strip = (b: Bill[]) => b.filter((x) => x.payer || x.customerName).length;
     // A counter role without the till and without credit: names stripped.
     const noTill = scope(full, as("counter", "coffee", { f: { outlet_stock: "edit" }, a: [] }), owners);
-    expect(strip(noTill.bills)).toBe(0);
+    expect(strip(scopePayers(full.bills, as("counter", "coffee", { f: { outlet_stock: "edit" }, a: [] })))).toBe(0);
     expect(noTill.roster).toEqual({ staff: [], depts: [], doctors: [] });
     expect(noTill.terms).toEqual(noTerms());
-    // A store role given credit reads them.
-    const store = as("store", "store", { f: { ...DESK_DEFAULTS.store.perms.f, credit: "view" }, a: [] });
-    expect(strip(scopePayers(full.bills, store))).toBeGreaterThan(0);
-    expect(scope(full, store, owners).roster).toEqual(full.roster);
+    // A store role given either half of credit reads them.
+    for (const f of ["credit", "settlements"] as const) {
+      const store = as("store", "store", { f: { ...DESK_DEFAULTS.store.perms.f, [f]: "view" }, a: [] });
+      expect(strip(scopePayers(full.bills, store)), f).toBeGreaterThan(0);
+      expect(scope(full, store, owners).roster, f).toEqual(full.roster);
+      expect(scope(full, store, owners).terms, f).toEqual(full.terms);
+    }
+    expect(strip(scope(full, as("store", "store"), owners).bills)).toBe(0);
     // A manager role holding only Prices does not.
     expect(strip(scopePayers(full.bills, as("manager", "rest", { f: { prices: "edit" }, a: [] })))).toBe(0);
   });
@@ -151,5 +217,6 @@ describe("scope() - read off permissions", () => {
     const part = { stock: full.stock, rsv: full.rsv, ovr: full.ovr };
     expect(Object.keys(scopeStock(part, as("counter", "kiosk")).stock)).toEqual(["kiosk"]);
     expect(scopeStock(part, as("counter", "kiosk", plus({ prices: "view" })))).toEqual(part);
+    expect(Object.keys(scopeStock(part, as("counter", "kiosk", plus({ approvals: "edit" }))).stock)).toEqual(["kiosk"]);
   });
 });

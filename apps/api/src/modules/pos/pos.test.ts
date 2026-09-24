@@ -258,10 +258,11 @@ describe("who may bill", () => {
     expect(r.statusCode, r.body).toBe(403);
     expect(r.json().error.message).toBe("You can only do this for your own counter.");
   });
-  it("refuses a manager, who sees Bills but does not take them, in the one sentence", async () => {
+  it("answers a manager, who sees Bills but whose desk can never take them, with a 404", async () => {
+    // The till's edit is the counter desk's alone, so there is nothing to ask the administrator
+    // for: the door does not exist for a manager, as it never did.
     const r = await pay("u2", { loc: "rest", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
-    expect(r.statusCode, r.body).toBe(403);
-    expect(r.json().error.message).toBe("You can see Bills but not change them - ask the administrator for edit access.");
+    expect(r.statusCode, r.body).toBe(404);
   });
   it("lets the other counter sell at their own shop", async () => {
     const r = await pay("u6", { loc: "kiosk", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });

@@ -12,7 +12,7 @@ import { z } from "zod";
  */
 export const FeatureSchema = z.enum([
   // ---- Sales
-  "billing", "x_report", "z_report", "shift_reports", "credit",
+  "billing", "x_report", "z_report", "shift_reports", "credit", "settlements",
   // ---- Outlets
   "approvals", "items_stock", "menu", "prices", "availability", "item_photos",
   // ---- My counter

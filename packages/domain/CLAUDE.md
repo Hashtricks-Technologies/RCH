@@ -67,7 +67,9 @@ need more context than their names give:
   may be given each level, and whether it reads hospital-wide), `ACTIONS`, `can`/`holds`,
   `DESK_DEFAULTS` (the five seeded roles, which reproduce each desk's access before roles were
   configurable, except that nobody holds `z_report`), `grantRefusal`, `admits` (a route's `Access`
-  against a desk and permissions: `{ ok, wide }` or a 404/403), `readsHospitalWide` and
+  against a desk and permissions: `{ ok, wide }` or a 404/403), `readsWide` (whether a desk and permissions read one
+  collection - bills, stock, requests, tickets, shop asks, kitchen orders, adjustment requests, product
+  requests - hospital-wide or at its own location), `readsBills` (whether they read the till roll at all) and
   `permissionRefusal`. `permissions.test.ts` holds `LEGACY_ACCESS`, the role list every gated
   route carried before roles were configurable, frozen, and pins the seeded roles to it through the
   manifest itself, route by route and desk by desk (the Z excepted).

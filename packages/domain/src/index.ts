@@ -36,4 +36,4 @@ export { REASON_LABEL } from "./adjustments.js";
 export { HSN_CODES, gstForHsn, hsnGroups, type HsnEntry } from "./hsn.js";
 export { defaultSourceFor, sourceOf } from "./routing.js";
 // ---- roles & permissions: the feature catalogue, the seeded roles, and who may use which door.
-export { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsHospitalWide } from "./permissions.js";
+export { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsBills, readsWide, type ReadCollection } from "./permissions.js";

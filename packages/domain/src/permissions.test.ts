@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { act, desk, need, routes, type Access, type Permissions, type Role, type RouteName } from "@rch/contract";
-import { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsHospitalWide } from "./permissions";
+import { act, desk, need, routes, type Access, type Feature, type Permissions, type Role, type RouteName } from "@rch/contract";
+import { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsBills, readsWide, type ReadCollection } from "./permissions";
 
 const DESKS: readonly Role[] = ["counter", "manager", "store", "prod", "buyer"];
 const none: Permissions = { f: {}, a: [] };
+const COLLECTIONS: readonly ReadCollection[] = ["bills", "stock", "requests", "tickets", "shopAsks", "prodOrders", "adjReq", "productReqs"];
 
 /**
  * The role list every permission-gated route carried before roles were configurable, written out by
@@ -120,8 +121,18 @@ describe("the seeded roles reproduce today's access", () => {
     }
   });
 
-  it("reads hospital-wide for every seeded desk but the counter", () => {
-    expect(DESKS.filter((d) => readsHospitalWide(d, DESK_DEFAULTS[d].perms))).toEqual(["manager", "store", "prod", "buyer"]);
+  it("reads every collection hospital-wide for every seeded desk but the counter, which reads none", () => {
+    for (const c of COLLECTIONS) {
+      expect(DESKS.filter((d) => readsWide(d, DESK_DEFAULTS[d].perms, c)), c).toEqual(["manager", "store", "prod", "buyer"]);
+    }
+  });
+
+  it("reads the till roll on every seeded desk", () => {
+    for (const d of DESKS) expect(readsBills(d, DESK_DEFAULTS[d].perms), d).toBe(true);
+  });
+
+  it("answers the seeded manager 404, not 403, on the till it can never be given", () => {
+    expect(admits(routes.pay.access, "manager", DESK_DEFAULTS.manager.perms)).toEqual({ ok: false, status: 404, message: "There is nothing here." });
   });
 });
 
@@ -138,7 +149,7 @@ describe("DESK_DEFAULTS", () => {
     expect(DESK_DEFAULTS.manager.perms).toEqual({
       f: {
         billing: "view", x_report: "view", shift_reports: "view", stock_ledger: "view",
-        credit: "edit", approvals: "edit", items_stock: "edit", menu: "edit", prices: "edit", availability: "edit", item_photos: "edit",
+        credit: "edit", settlements: "edit", approvals: "edit", items_stock: "edit", menu: "edit", prices: "edit", availability: "edit", item_photos: "edit",
       },
       a: ["void_bill", "void_settlement", "all_outlets"],
     });
@@ -168,20 +179,20 @@ describe("DESK_DEFAULTS", () => {
 });
 
 describe("FEATURES and ACTIONS", () => {
-  it("catalogues thirty-four features in seven sections", () => {
-    expect(Object.keys(FEATURES)).toHaveLength(34);
+  it("catalogues thirty-five features in seven sections", () => {
+    expect(Object.keys(FEATURES)).toHaveLength(35);
     expect([...new Set(Object.values(FEATURES).map((f) => f.section))]).toEqual(["Sales", "Outlets", "My counter", "Central store", "Kitchen", "Purchasing", "Items"]);
     expect(FEATURES.billing.levels).toEqual({ view: ["counter", "manager"], edit: ["counter"] });
     expect(FEATURES.availability.levels).toEqual({ edit: ["counter", "manager", "prod"] });
     expect(Object.entries(FEATURES).filter(([, f]) => f.scope === "wide").map(([k]) => k)).toEqual([
-      "shift_reports", "credit", "approvals", "items_stock", "menu", "prices",
+      "shift_reports", "credit", "settlements", "approvals", "items_stock", "menu", "prices",
       "requisitions", "procurement_list", "purchase_orders", "rate_contracts", "vendors", "new_products", "inventory", "stock_ledger",
     ]);
   });
 
   it("hangs each action off the feature it voids, and every outlet off the two desks that sell", () => {
     expect(ACTIONS.void_bill.parent).toBe("billing");
-    expect(ACTIONS.void_settlement.parent).toBe("credit");
+    expect(ACTIONS.void_settlement.parent).toBe("settlements");
     expect(ACTIONS.all_outlets.desks).toEqual(["counter", "manager"]);
   });
 });
@@ -214,8 +225,9 @@ describe("grantRefusal", () => {
   it("refuses an action outside its desks, or held without its parent feature", () => {
     expect(grantRefusal("buyer", { f: {}, a: ["all_outlets"] })).toBe(`The purchasing desk can't be given "Works for every outlet".`);
     expect(grantRefusal("manager", { f: {}, a: ["void_bill"] })).toBe(`"Void a bill" needs at least view access to Bills.`);
-    expect(grantRefusal("store", { f: {}, a: ["void_settlement"] })).toBe(`"Void a settlement" needs at least view access to Credit & settlements.`);
-    expect(grantRefusal("store", { f: { credit: "view" }, a: ["void_settlement"] })).toBeNull();
+    expect(grantRefusal("store", { f: {}, a: ["void_settlement"] })).toBe(`"Void a settlement" needs at least view access to Receivables & settlements.`);
+    expect(grantRefusal("store", { f: { credit: "edit" }, a: ["void_settlement"] })).toBe(`"Void a settlement" needs at least view access to Receivables & settlements.`);
+    expect(grantRefusal("store", { f: { settlements: "view" }, a: ["void_settlement"] })).toBeNull();
   });
 });
 
@@ -249,25 +261,67 @@ describe("admits", () => {
     expect(admits(routes.transfer.access, "counter", both)).toEqual({ ok: true, wide: true });
     expect(admits(routes.transfer.access, "counter", { f: { outlet_tickets: "edit" }, a: ["all_outlets"] })).toEqual({ ok: true, wide: true });
   });
+  it("answers 404, not 403, when the desk could never be given the level or the action", () => {
+    // The till's edit is the counter's alone: a manager holding Bills at view is not told to ask.
+    expect(admits(need("billing", "edit"), "manager", { f: { billing: "view" }, a: [] })).toEqual({ ok: false, status: 404, message: "There is nothing here." });
+    expect(admits(need("billing", "edit"), "counter", { f: { billing: "view" }, a: [] })).toEqual({ ok: false, status: 403, message: permissionRefusal("billing") });
+    // An action outside its desks: every outlet is the counter's and the manager's to be given.
+    expect(admits(act("all_outlets"), "store", none).ok).toBe(false);
+    // The parent held and the action grantable: a 403 on any desk.
+    expect(admits(act("void_settlement"), "store", { f: { settlements: "view" }, a: [] })).toEqual({ ok: false, status: 403, message: ACTIONS.void_settlement.refusal });
+    expect(admits(act("void_settlement"), "store", { f: { credit: "edit" }, a: [] })).toEqual({ ok: false, status: 404, message: "There is nothing here." });
+  });
   it("keeps the first refusal sentence when no need is met", () => {
     const p: Permissions = { f: { approvals: "view", outlet_stock: "view" }, a: [] };
     expect(admits(routes.cancelAdjustmentRequest.access, "counter", p)).toEqual({ ok: false, status: 403, message: permissionRefusal("approvals") });
   });
 });
 
-describe("readsHospitalWide", () => {
-  it("is every desk but the counter, and a counter given every outlet or a hospital-wide feature", () => {
-    expect(readsHospitalWide("store", none)).toBe(true);
-    expect(readsHospitalWide("counter", none)).toBe(false);
-    expect(readsHospitalWide("counter", { f: {}, a: ["all_outlets"] })).toBe(true);
-    expect(readsHospitalWide("counter", { f: { stock_ledger: "view" }, a: [] })).toBe(true);
-    expect(readsHospitalWide("counter", { f: { billing: "edit", item_photos: "edit" }, a: [] })).toBe(false);
+describe("readsWide and readsBills", () => {
+  it("reads every collection hospital-wide on the three back-office desks, whatever they hold", () => {
+    for (const d of ["store", "prod", "buyer"] as const) for (const c of COLLECTIONS) expect(readsWide(d, none, c), `${d} ${c}`).toBe(true);
+  });
+  it("widens every collection of a counter or manager desk with every outlet, and none without", () => {
+    for (const d of ["counter", "manager"] as const) {
+      for (const c of COLLECTIONS) {
+        expect(readsWide(d, none, c), `${d} ${c}`).toBe(false);
+        expect(readsWide(d, { f: {}, a: ["all_outlets"] }, c), `${d} ${c}`).toBe(true);
+      }
+    }
+  });
+  it("cuts a manager-desk role without every outlet to its home outlet's till roll", () => {
+    const noAll: Permissions = { ...DESK_DEFAULTS.manager.perms, a: ["void_bill", "void_settlement"] };
+    expect(readsWide("manager", noAll, "bills")).toBe(false);
+    expect(readsWide("manager", noAll, "stock")).toBe(true);
+    expect(readsWide("manager", noAll, "requests")).toBe(true);
+  });
+  it("never widens the till roll with a hospital-wide feature - the leak a ledger grant used to open", () => {
+    const wideAll: Permissions = { f: Object.fromEntries(Object.entries(FEATURES).filter(([, f]) => f.scope === "wide").map(([k]) => [k, "view"])), a: [] };
+    expect(readsWide("counter", { f: { stock_ledger: "view" }, a: [] }, "bills")).toBe(false);
+    expect(readsWide("counter", wideAll, "bills")).toBe(false);
+  });
+  it("widens each collection with the features whose screens read it across the outlets", () => {
+    const wide = (f: Feature) => COLLECTIONS.filter((c) => readsWide("counter", { f: { [f]: "view" }, a: [] }, c));
+    for (const f of ["stock_ledger", "inventory", "prices"] as const) expect(wide(f), f).toEqual(["stock"]);
+    expect(wide("items_stock")).toEqual(["stock", "tickets"]);
+    expect(wide("menu")).toEqual(["stock", "productReqs"]);
+    expect(wide("approvals")).toEqual(["requests", "tickets", "shopAsks", "prodOrders", "adjReq", "productReqs"]);
+    expect(wide("credit")).toEqual([]);
+    expect(wide("settlements")).toEqual([]);
+    expect(wide("requisitions")).toEqual([]);
+  });
+  it("reads the till roll with Bills on a counter or manager desk, and always on the back office", () => {
+    expect(readsBills("counter", { f: { outlet_stock: "edit" }, a: [] })).toBe(false);
+    expect(readsBills("manager", { f: { credit: "edit", settlements: "edit" }, a: ["all_outlets"] })).toBe(false);
+    expect(readsBills("manager", { f: { billing: "view" }, a: [] })).toBe(true);
+    expect(readsBills("store", none)).toBe(true);
   });
 });
 
 describe("permissionRefusal", () => {
   it("names the feature and says what to ask for", () => {
     expect(permissionRefusal("prices")).toBe("You can see Prices but not change them - ask the administrator for edit access.");
-    expect(permissionRefusal("credit")).toBe("You can see Credit & settlements but not change them - ask the administrator for edit access.");
+    expect(permissionRefusal("credit")).toBe("You can see Discounts & credit limits but not change them - ask the administrator for edit access.");
+    expect(permissionRefusal("settlements")).toBe("You can see Receivables & settlements but not change them - ask the administrator for edit access.");
   });
 });

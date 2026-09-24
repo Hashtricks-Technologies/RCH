@@ -481,8 +481,8 @@ describe("scoping by what the role holds", () => {
     });
   });
 
-  it("strips the payer, the roster and the rate card from a counter role without Bills or Credit", async () => {
-    const named = await given.bill(app.testDb!.db, {
+  it("gives a counter role without Bills no till roll, and without Credit no roster or rate card", async () => {
+    await given.bill(app.testDb!.db, {
       loc: "coffee", total: 120, tender: "Doctor credit",
       payer: { kind: "doctor", id: "DR-118", name: "Dr A. Rao · Cardiology" },
       lines: [{ it: "water", qty: 2, rate: 60 }],
@@ -490,17 +490,21 @@ describe("scoping by what the role holds", () => {
     const { billing: _b, ...rest } = seededPlus("counter", {}).f;
     await as("u1", "counter", { f: rest, a: [] }, async () => {
       const snap = await get("u1");
-      expect(snap.bills.find((b: { no: string }) => b.no === named).payer).toBeUndefined();
+      expect(snap.bills).toEqual([]);
+      expect(snap.sales.every((row: Record<string, number>) => Object.keys(row).length === 0)).toBe(true);
       expect(snap.roster).toEqual({ staff: [], depts: [], doctors: [] });
-      expect((await getAs("u1", "/api/v1/bills")).find((b: { no: string }) => b.no === named).payer).toBeUndefined();
+      expect(await getAs("u1", "/api/v1/bills")).toEqual([]);
       expect(await getAs("u1", "/api/v1/roster")).toEqual({ staff: [], depts: [], doctors: [] });
       expect((await getAs("u1", "/api/v1/payer-terms")).classes).toEqual([]);
     });
-    // And the same counter given Credit, still without the till, reads them again.
-    await as("u1", "counter", { f: { ...rest, credit: "view" }, a: [] }, async () => {
-      expect((await get("u1")).bills.find((b: { no: string }) => b.no === named).payer).toMatchObject({ id: "DR-118" });
-      expect((await getAs("u1", "/api/v1/roster")).doctors.length).toBeGreaterThan(0);
-    });
+    // And the same counter given either half of Credit, still without the till, reads the register
+    // and the rate card again - but no till roll: Credit reads its balances off /receivables.
+    for (const f of ["credit", "settlements"] as const) {
+      await as("u1", "counter", { f: { ...rest, [f]: "view" }, a: [] }, async () => {
+        expect((await get("u1")).bills, f).toEqual([]);
+        expect((await getAs("u1", "/api/v1/roster")).doctors.length, f).toBeGreaterThan(0);
+      });
+    }
   });
 
   it("shows the OTP only to a role that can work a ticket desk at edit", async () => {

@@ -180,12 +180,16 @@ export const routes = {
   // Every other report and every dashboard reads a slice the snapshot already carries whole and
   // stays in the browser.
   stockLedger:  defineRoute({ method: "GET", path: "/reports/stock-ledger",     access: need("stock_ledger", "view"), query: StockLedgerQuerySchema, response: StockLedgerResponseSchema }),
-  creditReport: defineRoute({ method: "GET", path: "/reports/credit/:kind/:id", access: anyOf(need("credit", "view"), need("billing", "edit")),                params: CreditParamsSchema,   response: CreditResponseSchema }),
+  // The payer figure serves the till's payer pick (Bills at edit) and either half of Credit: it is
+  // the ceiling from the rate card against what the settlements have not cleared.
+  creditReport: defineRoute({ method: "GET", path: "/reports/credit/:kind/:id", access: anyOf(need("credit", "view"), need("settlements", "view"), need("billing", "edit")), params: CreditParamsSchema,   response: CreditResponseSchema }),
   // ---- the register. An X changes nothing and may be taken as often as anyone likes, so it is a
   // GET; a Z closes the outlet's session and opens the next, so it is a write and carries an
   // Idempotency-Key like every other write - a retried close must replay its Z, never mint a
-  // second one. Both are open to the counter and the manager: closing the day is the consultant's
-  // own act, and the manager can do it for any outlet.
+  // second one. The X is `x_report`'s, the Z list `z_report` at view and the close `z_report` at
+  // edit - at the caller's own outlet unless their role works every outlet. No seeded role holds
+  // `z_report`: closing the day is the super admin's (`admitAdmin`, naming the outlet) until the
+  // administrator gives a role it.
   xReport:      defineRoute({ method: "GET",  path: "/register/x",          access: need("x_report", "view"), admitAdmin: true, query: RegisterQuerySchema,     response: RegisterReportSchema }),
   closeRegister:defineRoute({ method: "POST", path: "/register/close",      access: need("z_report", "edit"), admitAdmin: true, body: CloseRegisterBodySchema,  response: writeResponse(RegisterReportSchema) }),
   zReports:     defineRoute({ method: "GET",  path: "/register/z",          access: need("z_report", "view"), admitAdmin: true, query: ZReportsQuerySchema,     response: RegisterReportsResponseSchema }),
@@ -203,31 +207,36 @@ export const routes = {
   roster: defineRoute({ method: "GET", path: "/roster", access: "any", response: RosterResponseSchema }),
   // ---- what each party is charged, and what they owe.
   //
-  // `GET /payer-terms` is "any" and scoped empty for the three desks that never take a bill,
-  // exactly like the roster above. That is deliberate rather than tidy: a manager's write
-  // announces "terms" to *every* open browser, and a route the store keeper's tab is forbidden
-  // would fail that tab's whole refetch with a toast about a screen of theirs that never changed.
-  // The four writes are the outlet manager's alone.
+  // Two features, not one. `credit` is the rate card - each category's discount and credit
+  // ceiling and the per-person exceptions over them. `settlements` is the other half: who owes
+  // what, one party's statement, and recording a payment against it; voiding one is the
+  // `void_settlement` action under it. Of the seeded roles only the Outlet Manager holds either.
+  //
+  // `GET /payer-terms` is "any" and scoped empty to a role holding none of Bills, `credit` and
+  // `settlements`, exactly like the roster above. That is deliberate rather than tidy: a rate-card
+  // write announces "terms" to *every* open browser, and a route the store keeper's tab is
+  // forbidden would fail that tab's whole refetch with a toast about a screen of theirs that never
+  // changed.
   payerTerms:      defineRoute({ method: "GET", path: "/payer-terms",             access: "any",       response: TermsResponseSchema }),
   setClassTerms:   defineRoute({ method: "PUT", path: "/payer-terms/class/:cls",  access: need("credit", "edit"), params: ClassParamsSchema, body: SetClassTermsBodySchema, response: writeResponse(ClassTermsSchema) }),
   setPayerTerms:   defineRoute({ method: "PUT", path: "/payer-terms/:kind/:id",   access: need("credit", "edit"), params: PayerParamsSchema, body: SetPayerTermsBodySchema, response: writeResponse(PayerTermsSchema) }),
-  // The two lists behind the manager's Credit screen are "any" and answer `[]` to everybody
-  // else, for the same reason `/roster` and `/payer-terms` are: a settlement announces
+  // The two lists behind the Credit screen's Owed and Payments tabs are "any" and answer `[]` to
+  // a role without `settlements`, for the same reason `/roster` and `/payer-terms` are: a settlement announces
   // "receivables" to every open browser, and a route a store keeper's tab is forbidden would
   // fail that tab's whole refetch over a screen of theirs that never changed. The service
   // short-circuits before it queries anything, so an empty answer costs nothing.
   receivables:     defineRoute({ method: "GET", path: "/receivables",             access: "any",       response: ReceivablesResponseSchema }),
   settlements:     defineRoute({ method: "GET", path: "/settlements",             access: "any",       response: SettlementsResponseSchema }),
   // One party's statement is opened by hand from a drawer and is never in a `changed`, so it can
-  // stay closed to everyone but the manager.
-  statement:       defineRoute({ method: "GET", path: "/receivables/:kind/:id",   access: need("credit", "view"), params: PayerParamsSchema, response: StatementSchema }),
-  recordSettlement: defineRoute({ method: "POST", path: "/settlements",           access: need("credit", "edit"), body: RecordSettlementBodySchema, response: writeResponse(SettlementSchema) }),
+  // stay closed to a role without `settlements`.
+  statement:       defineRoute({ method: "GET", path: "/receivables/:kind/:id",   access: need("settlements", "view"), params: PayerParamsSchema, response: StatementSchema }),
+  recordSettlement: defineRoute({ method: "POST", path: "/settlements",           access: need("settlements", "edit"), body: RecordSettlementBodySchema, response: writeResponse(SettlementSchema) }),
   voidSettlement:  defineRoute({ method: "POST", path: "/settlements/:id/void",   access: act("void_settlement"), params: SettlementIdParamsSchema, body: VoidSettlementBodySchema, response: writeResponse(SettlementSchema) }),
   // ---- item patch ----
-  // The item master stopped being write-once. All four desks that handle goods reach this door;
-  // which of the eight fields each of them may actually move is `ITEM_FIELD_ROLES`
-  // (`@rch/domain`), refused in the service with a sentence naming whose field it is. The counter
-  // is absent for the same reason it is absent from `POST /items`: a till sells the master.
+  // The item master stopped being write-once. A role holding Items & stock or Item master at edit
+  // reaches this door; which of the fields it may actually move is `ITEM_FIELD_FEATURES`
+  // (`@rch/domain`), refused in the service with a sentence naming the feature it needs. No seeded
+  // counter holds either, for the same reason it holds no `POST /items`: a till sells the master.
   patchItem:    defineRoute({ method: "PATCH", path: "/items/:it", access: anyOf(need("items_stock", "edit"), need("item_master", "edit")), params: ItemKeyParamsSchema, body: PatchItemBodySchema, response: writeResponse(ItemResultSchema) }),
   // ---- item photos ----
   // The manager for any item, a counter for what its own outlet lists (the service's rule, a
