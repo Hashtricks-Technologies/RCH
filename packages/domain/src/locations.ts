@@ -1,4 +1,4 @@
-import { KITCHEN, QUARANTINE, STORE, type Location, type ProductReqStatus, type PordStatus, type ReqStatus, type Role, type ShopAskStatus, type TktStatus } from "@rch/contract";
+import { KITCHEN, QUARANTINE, STORE, type Location, type ProductReqStatus, type PordStatus, type QrOrderStatus, type ReqStatus, type Role, type ShopAskStatus, type TktStatus } from "@rch/contract";
 
 /** The master's location registry, keyed by location key - only the fields these rules read, so the
  *  admin page can pass its own list without inventing a par factor. */
@@ -88,6 +88,12 @@ export const HOLDS_OUTLET = {
   prodOrder: { New: true, Accepted: true, "In kitchen": true, Ready: true, Dispatched: false, Declined: false } satisfies Record<PordStatus, boolean>,
   shopAsk: { Asked: true, Sent: false, Declined: false } satisfies Record<ShopAskStatus, boolean>,
   productReq: { Requested: true, Created: false, Declined: false } satisfies Record<ProductReqStatus, boolean>,
+  // A paid QR order is a customer waiting on the outlet: from the capture until it is handed over.
+  // An unpaid or expired one is not - a late capture at a closed outlet is refunded, not filled.
+  qrOrder: {
+    "Awaiting payment": false, Paid: true, Preparing: true, Ready: true, "Out for delivery": true,
+    Collected: false, Delivered: false, Refunded: false, Expired: false, Voided: false,
+  } satisfies Record<QrOrderStatus, boolean>,
 };
 
 /** The statuses a `HOLDS_OUTLET` record marks as holding, in the record's own order. */

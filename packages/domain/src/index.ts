@@ -10,7 +10,7 @@ export { availOf, fq } from "./availability.js";
 export { committed, freeToPromise } from "./promise.js";
 export { bestBeforeAt, bestBeforeText } from "./shelf.js";
 export { planBill, type BillPlan } from "./billing.js";
-export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, ADJUSTMENT_REQUEST_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
+export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, ADJUSTMENT_REQUEST_TRANSITIONS, QR_ORDER_TRANSITIONS, REFUND_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
 export { planApproval, approvedStatus, planPrqApproval, prqStatus, type ApprovalLine, type ApprovalPlan } from "./approval.js";
 export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } from "./credit.js";
 // ---- who is being billed, what comes off their bill, and what settles what they owe.
@@ -37,3 +37,8 @@ export { HSN_CODES, gstForHsn, hsnGroups, type HsnEntry } from "./hsn.js";
 export { defaultSourceFor, sourceOf } from "./routing.js";
 // ---- roles & permissions: the feature catalogue, the seeded roles, and who may use which door.
 export { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsBills, readsWide, type ReadCollection } from "./permissions.js";
+// ---- QR ordering: the path an order walks, when an outlet takes orders, the caps and the words.
+export {
+  hoursRefusal, nextQrStep, paise, pausedRefusal, QR_MAX_LINES, QR_MAX_QTY, QR_MAX_RUPEES, QR_PENDING_PER_IP, QR_PENDING_PER_PHONE,
+  QR_STATUS_WORDS, qrOpenAt, qrStepsFor, type QrOpen,
+} from "./qr.js";

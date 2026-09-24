@@ -56,6 +56,14 @@ need more context than their names give:
   `settlementOf` and every receivables query read it, because a tender that accepted the wrong kind of
   payer is a balance nobody can settle. `partyOf` answers `"customer"` for a bill with no payer: a walk-in
   is a party of its own, not a missing one.
+- `qr.ts` is QR ordering: `qrStepsFor`/`nextQrStep` (a pickup walks Paid → Preparing → Ready →
+  Collected, a delivery Paid → Preparing → Out for delivery → Delivered; the counter's one button is the
+  next step), `qrOpenAt` (the IST weekday's window - opens at `opens`, shut from `closes`, a weekday with
+  no row closed all day), `hoursRefusal`/`pausedRefusal`, the caps (`QR_MAX_LINES` 30 and `QR_MAX_QTY` 20,
+  which `CreateQrOrderBodySchema` repeats; `QR_MAX_RUPEES` 5000; `QR_PENDING_PER_PHONE` 3;
+  `QR_PENDING_PER_IP` 5), `paise` and `QR_STATUS_WORDS`. `party.ts`'s `TILL_TENDERS` is every tender but
+  `Online`, the till's buttons; `Online` is not an account tender. `HOLDS_OUTLET.qrOrder` marks a paid
+  order not yet handed over as holding its outlet.
 - `discount.ts` and `credit.ts` are the two halves of what a party is charged.
   `discountPctFor`/`creditLimitFor` resolve a person's exception over their category's row (`null` means
   inherit); `discountOn` rounds once, so a bill's discount and the sum of its lines cannot disagree by a
@@ -66,7 +74,8 @@ need more context than their names give:
 - `permissions.ts` is roles & permissions: `FEATURES` (the catalogue - label, section, which desks
   may be given each level, and whether it reads hospital-wide), `ACTIONS`, `can`/`holds`,
   `DESK_DEFAULTS` (the five seeded roles, which reproduce each desk's access before roles were
-  configurable, except that nobody holds `z_report`), `grantRefusal`, `admits` (a route's `Access`
+  configurable, except that nobody holds `z_report`; `qr_orders` came after - the counter at edit, the
+  manager at view), `grantRefusal`, `admits` (a route's `Access`
   against a desk and permissions: `{ ok, wide }` or a 404/403), `readsWide` (whether a desk and permissions read one
   collection - bills, stock, requests, tickets, shop asks, kitchen orders, adjustment requests, product
   requests - hospital-wide or at its own location), `readsBills` (whether they read the till roll at all) and
@@ -107,6 +116,10 @@ every consumer of that table. So an edge that only one endpoint should take is g
   `requests/service.ts` shuts that door once a ticket exists.
 - `PO_TRANSITIONS["Partially received"]` includes itself, because a second partial delivery re-enters it.
   `Ordered → Cancelled` is guarded again at `cancel` once anything has been received.
+- `QR_ORDER_TRANSITIONS` lets `Expired` go to `Paid` or `Refunded` (a capture that arrives late is billed
+  or refunded, never lost), and `Preparing` to `Ready` or `Out for delivery` - which one is the code's mode,
+  guarded at the status door with `nextQrStep`. Every paid step may go to `Voided` (the bill's void).
+  `REFUND_TRANSITIONS` puts a `Failed` refund back to `Pending` on a manager's retry.
 - `ADJUSTMENT_REQUEST_TRANSITIONS` has no edge back out of `Approved`: approving one both decides it and
   writes the `ADJ-` document in the same step, so there is no ticket stage to withdraw the way a stock
   request's is - `Cancelled` is reachable only from `Request sent`.

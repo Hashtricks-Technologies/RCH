@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ADJUSTMENT_REQUEST_TRANSITIONS, PO_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, REQUISITION_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
+import type { QrOrderStatus } from "@rch/contract";
+import { ADJUSTMENT_REQUEST_TRANSITIONS, PO_TRANSITIONS, QR_ORDER_TRANSITIONS, REFUND_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, REQUISITION_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
 
 describe("request transitions", () => {
   it("walks the chain the outlet actually walks", () => {
@@ -153,5 +154,50 @@ describe("a counter's adjustment request", () => {
     expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Approved", "Rejected")).toBe(false);
     expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Rejected", "Approved")).toBe(false);
     expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Cancelled", "Approved")).toBe(false);
+  });
+});
+
+describe("QR order transitions", () => {
+  const can = (from: QrOrderStatus, to: QrOrderStatus) => canTransition(QR_ORDER_TRANSITIONS, from, to);
+  it("walks a pickup and a delivery from payment to the customer", () => {
+    for (const [from, to] of [["Awaiting payment", "Paid"], ["Paid", "Preparing"], ["Preparing", "Ready"], ["Ready", "Collected"]] as const) expect(can(from, to), `${from} -> ${to}`).toBe(true);
+    for (const [from, to] of [["Preparing", "Out for delivery"], ["Out for delivery", "Delivered"]] as const) expect(can(from, to), `${from} -> ${to}`).toBe(true);
+  });
+  it("bills or refunds a capture that arrives after the order expired", () => {
+    expect(can("Awaiting payment", "Expired")).toBe(true);
+    expect(can("Expired", "Paid")).toBe(true);
+    expect(can("Expired", "Refunded")).toBe(true);
+    expect(can("Awaiting payment", "Refunded")).toBe(true);
+  });
+  it("voids a paid order at any step, and never one nobody paid for", () => {
+    for (const st of ["Paid", "Preparing", "Ready", "Out for delivery", "Collected", "Delivered"] as const) expect(QR_ORDER_TRANSITIONS[st], st).toContain("Voided");
+    expect(can("Awaiting payment", "Voided")).toBe(false);
+    expect(can("Expired", "Voided")).toBe(false);
+  });
+  it("refuses a skipped step, a step back, and a pickup handed over as a delivery", () => {
+    expect(can("Paid", "Ready")).toBe(false);
+    expect(can("Ready", "Preparing")).toBe(false);
+    expect(can("Ready", "Delivered")).toBe(false);
+    expect(can("Out for delivery", "Collected")).toBe(false);
+    expect(can("Awaiting payment", "Preparing")).toBe(false);
+  });
+  it("leaves Refunded and Voided terminal", () => {
+    expect(QR_ORDER_TRANSITIONS.Refunded).toEqual([]);
+    expect(QR_ORDER_TRANSITIONS.Voided).toEqual([]);
+  });
+});
+
+describe("refund transitions", () => {
+  it("sends, then hears back processed or failed, and a failed one goes back in the queue", () => {
+    expect(canTransition(REFUND_TRANSITIONS, "Pending", "Sent")).toBe(true);
+    expect(canTransition(REFUND_TRANSITIONS, "Pending", "Failed")).toBe(true);
+    expect(canTransition(REFUND_TRANSITIONS, "Sent", "Processed")).toBe(true);
+    expect(canTransition(REFUND_TRANSITIONS, "Sent", "Failed")).toBe(true);
+    expect(canTransition(REFUND_TRANSITIONS, "Failed", "Pending")).toBe(true);
+  });
+  it("never un-processes a refund, or marks one processed that was never sent", () => {
+    expect(REFUND_TRANSITIONS.Processed).toEqual([]);
+    expect(canTransition(REFUND_TRANSITIONS, "Pending", "Processed")).toBe(false);
+    expect(canTransition(REFUND_TRANSITIONS, "Failed", "Sent")).toBe(false);
   });
 });

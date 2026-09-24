@@ -87,6 +87,7 @@ describe("HOLDS_OUTLET", () => {
     expect(holding(HOLDS_OUTLET.prodOrder)).toEqual(["New", "Accepted", "In kitchen", "Ready"]);
     expect(holding(HOLDS_OUTLET.shopAsk)).toEqual(["Asked"]);
     expect(holding(HOLDS_OUTLET.productReq)).toEqual(["Requested"]);
+    expect(holding(HOLDS_OUTLET.qrOrder)).toEqual(["Paid", "Preparing", "Ready", "Out for delivery"]);
   });
 });
 

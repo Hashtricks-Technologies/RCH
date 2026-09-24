@@ -19,7 +19,10 @@ export type IdKind =
   // closed by Close Shift. Numbered so the manager's list and a printed hand-over name the same one.
   | "shift"
   // ---- roles: a named set of permissions the super admin sets up, numbered like a vendor.
-  | "role";
+  | "role"
+  // ---- QR ordering: a customer's order, numbered from the moment it is placed so the phone and
+  // the counter name the same one; and a code the super admin places, numbered like a vendor.
+  | "qr_order" | "qr_code";
 
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
 const ymd = (d: Date) => {
@@ -62,6 +65,9 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
     // ---- shifts. Padded to four for the same reason as `adj`.
     case "shift":       return `SH-${year(at)}-${pad(n, 4)}`;
     case "role":        return `ROLE-${pad(n, 3)}`;
+    // ---- QR ordering. The order padded to four for the same reason as `adj`.
+    case "qr_order":    return `QO-${year(at)}-${pad(n, 4)}`;
+    case "qr_code":     return `QR-${pad(n, 3)}`;
   }
 }
 
@@ -130,4 +136,7 @@ export const SEQUENCE_START: Record<IdKind, number> = {
   shift: 1,
   // ---- roles: the five seeded roles are ROLE-001 to ROLE-005, so the series continues past them.
   role: 6,
+  // ---- QR ordering: no order was ever placed and no code ever printed, so both start at one.
+  qr_order: 1,
+  qr_code: 1,
 };

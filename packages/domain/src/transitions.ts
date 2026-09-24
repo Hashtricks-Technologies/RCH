@@ -1,4 +1,4 @@
-import type { AdjReqStatus, PoStatus, PordStatus, PrqStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
+import type { AdjReqStatus, PoStatus, PordStatus, PrqStatus, QrOrderStatus, RefundStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 
 /**
  * Status transitions are data, shared by both sides. One table, two consumers -
@@ -100,6 +100,41 @@ export const ADJUSTMENT_REQUEST_TRANSITIONS: TransitionTable<AdjReqStatus> = {
   Approved: [],
   Rejected: [],
   Cancelled: [],
+};
+
+/**
+ * A QR order's life. Three rows read oddly and are deliberate:
+ *
+ * `Expired -> Paid` and `Expired -> Refunded`: an unpaid order expires after its window, but the
+ * gateway may still capture a payment the customer started before it did. That late capture is
+ * billed if the outlet can still fill it and refunded if it cannot - never lost.
+ *
+ * `Preparing` goes to either `Ready` or `Out for delivery`. Which one is the code's mode
+ * (`nextQrStep`), guarded at the status door; the table only says both follow.
+ *
+ * `Collected` and `Delivered` go to `Voided`: the manager's same-day void of the bill behind the
+ * order takes the order with it, whatever step the counter had reached.
+ */
+export const QR_ORDER_TRANSITIONS: TransitionTable<QrOrderStatus> = {
+  "Awaiting payment": ["Paid", "Refunded", "Expired"],
+  Expired: ["Paid", "Refunded"],
+  Paid: ["Preparing", "Voided"],
+  Preparing: ["Ready", "Out for delivery", "Voided"],
+  Ready: ["Collected", "Voided"],
+  "Out for delivery": ["Delivered", "Voided"],
+  Collected: ["Voided"],
+  Delivered: ["Voided"],
+  Refunded: [],
+  Voided: [],
+};
+
+/** A refund's journey through the gateway. A refund the gateway refused (or the worker gave up
+ *  on) waits at `Failed` for a manager's retry, which puts it back in the queue. */
+export const REFUND_TRANSITIONS: TransitionTable<RefundStatus> = {
+  Pending: ["Sent", "Failed"],
+  Sent: ["Processed", "Failed"],
+  Failed: ["Pending"],
+  Processed: [],
 };
 
 export const canTransition = <S extends string>(table: TransitionTable<S>, from: S, to: S): boolean =>

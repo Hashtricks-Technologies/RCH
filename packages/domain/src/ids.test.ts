@@ -19,6 +19,15 @@ describe("formatId", () => {
     expect(formatId("shop_ask", 62, at)).toBe("ASK-062");
     expect(formatId("price_list", 6, at)).toBe("PL-006");
   });
+  it("numbers a QR order by the year and a QR code like a vendor, both from one", () => {
+    expect(formatId("qr_order", 1, at)).toBe("QO-2026-0001");
+    expect(formatId("qr_order", 12345, at)).toBe("QO-2026-12345");
+    // The year is the hospital's: 19:00 UTC on 31 December is 00:30 IST on 1 January.
+    expect(formatId("qr_order", 7, new Date("2026-12-31T19:00:00Z"))).toBe("QO-2027-0007");
+    expect(formatId("qr_code", 4, at)).toBe("QR-004");
+    expect(SEQUENCE_START.qr_order).toBe(1);
+    expect(SEQUENCE_START.qr_code).toBe(1);
+  });
   it("continues each seeded series rather than restarting it", () => {
     expect(SEQUENCE_START.req).toBe(913);
     expect(SEQUENCE_START.tkt).toBe(441);
