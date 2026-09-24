@@ -37,6 +37,12 @@ export interface PaymentGateway {
    *  it, and the caller reads the payment back rather than trusting either answer. */
   capture(paymentId: string, amountPaise: number): Promise<GatewayPayment>;
   refund(paymentId: string, r: { amountPaise: number; receipt: string; notes?: Notes }): Promise<GatewayRefund>;
+  /** Every payment made against one of the gateway's orders, whatever became of it - how the
+   *  worker's reconcile pass finds a payment whose verify and webhook both went missing. */
+  paymentsOfOrder(orderId: string): Promise<GatewayPayment[]>;
+  /** One refund as the gateway now reports it - how the worker settles a refund whose
+   *  `refund.processed` / `refund.failed` webhook never arrived. */
+  fetchRefund(paymentId: string, refundId: string): Promise<GatewayRefund>;
   /** Every refund already made against a payment - how a retry finds the one it sent before
    *  (by the `notes.rid` it set) instead of sending a second. */
   refundsOf(paymentId: string): Promise<GatewayRefund[]>;
@@ -116,6 +122,13 @@ const toRefund = (r: Json): GatewayRefund => ({
   receipt: optStr(r, "receipt"), notes: notesOf(r.notes),
 });
 
+/** A collection's `items`, each an object. */
+const itemsOf = (r: Json): Json[] => {
+  const items = r.items;
+  if (!Array.isArray(items)) throw new GatewayError("Unexpected answer from the payment gateway (items)", 502, "bad_response", true);
+  return items as Json[];
+};
+
 /** The real gateway. `fetchImpl` is injectable so the unit tests can stand in for the network. */
 export function createRazorpayGateway(cfg: RazorpayConfig, fetchImpl: Fetch = fetch): PaymentGateway {
   const auth = `Basic ${Buffer.from(`${cfg.keyId}:${cfg.keySecret}`).toString("base64")}`;
@@ -162,11 +175,14 @@ export function createRazorpayGateway(cfg: RazorpayConfig, fetchImpl: Fetch = fe
     async refund(paymentId, r) {
       return toRefund(await call("POST", `/payments/${enc(paymentId)}/refund`, { amount: r.amountPaise, speed: "normal", receipt: r.receipt, notes: r.notes ?? {} }));
     },
+    async paymentsOfOrder(orderId) {
+      return itemsOf(await call("GET", `/orders/${enc(orderId)}/payments`)).map(toPayment);
+    },
+    async fetchRefund(paymentId, refundId) {
+      return toRefund(await call("GET", `/payments/${enc(paymentId)}/refunds/${enc(refundId)}`));
+    },
     async refundsOf(paymentId) {
-      const r = await call("GET", `/payments/${enc(paymentId)}/refunds?count=100`);
-      const items = r.items;
-      if (!Array.isArray(items)) throw new GatewayError("Unexpected answer from the payment gateway (items)", 502, "bad_response", true);
-      return items.map((i) => toRefund(i as Json));
+      return itemsOf(await call("GET", `/payments/${enc(paymentId)}/refunds?count=100`)).map(toRefund);
     },
     verifyCheckout(orderId, paymentId, signature) {
       return signatureMatches(hmacHex(cfg.keySecret, `${orderId}|${paymentId}`), signature);

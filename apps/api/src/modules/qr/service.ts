@@ -303,7 +303,7 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
    *  it is only authorised, then settled if captured. Anything else - failed, still authorised
    *  for the wrong amount - changes nothing. A gateway that cannot be reached is a GatewayError
    *  for the caller: the webhook answers 503 and is delivered again, the worker tries next pass. */
-  async function settlePayment(o: QrOrderRow, p0: GatewayPayment, via: { method: string; path: string } & Partial<RequestMeta>): Promise<Settled | null> {
+  async function settlePayment(o: Pick<QrOrderRow, "id" | "total">, p0: GatewayPayment, via: { method: string; path: string } & Partial<RequestMeta>): Promise<Settled | null> {
     const p = await take(gatewayOrOff(), p0, o.total);
     return p.status === "captured" ? settleCapture(o.id, p, via) : null;
   }
@@ -331,6 +331,7 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
   return {
     settleCapture,
     settlePayment,
+    settleRefund,
 
     // ---- the customer's side
 

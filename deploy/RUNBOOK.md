@@ -3121,7 +3121,10 @@ had their money back. The bill drawer shows a red refund pill on that bill. To r
 3. If it fails again, refund it by hand in the dashboard (below), and write down the bill number and
    the Razorpay refund id in the handover - the refund row stays Failed in RCH.
 
-A `refund.failed` webhook for a refund already Sent moves it to Failed the same way.
+A `refund.failed` webhook for a refund already Sent moves it to Failed the same way. A refund
+Sent more than half an hour ago with no webhook since is asked about directly by the worker's
+reconcile pass (every couple of minutes, backing off as the refund ages), which records it
+Processed or Failed exactly as the webhook would have.
 
 **Refunding a bill from an earlier day.** A void is only allowed on the IST day of the bill, while
 its register session is open, so RCH cannot refund a QR bill once its day has closed. Do it in
@@ -3147,10 +3150,13 @@ recon** (or the settlement's own breakup) against each Z:
 - A refund done **by hand** for an earlier day (§19.5) is in Razorpay and in no Z.
 - What is left over is the fee and its GST, which Razorpay shows per payment.
 
-A captured payment with no bill and no refund is a settlement that did not happen - most likely
-both the browser's verify and the webhook failed. Check **Webhooks → Deliveries** for failed
-deliveries and redeliver them (the API drops any event id it has already seen, so a redelivery is
-safe), then look for the order on the counter's QR orders screen.
+A captured payment with no bill and no refund should not last: the worker's reconcile pass asks
+Razorpay about every unpaid or lapsed order with a Razorpay order from the last 48 hours (once it is
+two minutes old, then less often as it ages), captures a payment that is only authorised, and bills
+or refunds a captured one exactly as the webhook would have. One still unsettled after that is a
+settlement that did not happen. Check **Webhooks → Deliveries** for failed deliveries and redeliver
+them (the API drops any event id it has already seen, so a redelivery is safe), then look for the
+order on the counter's QR orders screen.
 
 ### 19.7 Going live
 

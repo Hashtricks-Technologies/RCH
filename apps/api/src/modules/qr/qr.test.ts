@@ -614,3 +614,80 @@ describe("the worker", () => {
     expect(row.status).toBe("Processed");
   });
 });
+
+// Last in the file: a reconcile pass looks at every order the file placed, not only its own.
+describe("the worker's reconcile pass", () => {
+  const later = (ms: number) => new Date(Date.now() + ms);
+
+  it("bills a payment whose tab closed and whose webhook was lost, and captures one only authorised", async () => {
+    const a = await placed([{ it: "juice", qty: 1 }]);
+    fake.pay(a.checkout.orderId);
+    const b = await placed([{ it: "juice", qty: 1 }]);
+    const authorised = fake.pay(b.checkout.orderId, { status: "authorized" });
+    // Too young to ask about: the phone's own verify may still be on its way.
+    expect((await app.qrWorker.tick(undefined, { reconcile: true })).reconciled).toBe(0);
+    expect((await orderRow(a.order.id)).status).toBe("Awaiting payment");
+
+    const m = await mark();
+    const t = await app.qrWorker.tick(later(3 * 60_000), { reconcile: true });
+    expect(t.reconciled).toBeGreaterThanOrEqual(2);
+    for (const c of [a, b]) {
+      expect((await orderRow(c.order.id)).status).toBe("Paid");
+      expect(await billsOf(c.order.id)).toHaveLength(1);
+    }
+    expect(fake.payments.get(authorised.paymentId)!.status).toBe("captured");
+    expect((await eventsSince(m)).filter((e) => e.action === "qrOrderPaid" && [a.order.id, b.order.id].includes(e.target))).toHaveLength(2);
+    // Asked about again only after its backoff, and settled once however often it is asked.
+    const asked = fake.calls.filter((c) => c.method === "paymentsOfOrder" && c.args[0] === a.checkout.orderId).length;
+    await app.qrWorker.tick(later(4 * 60_000), { reconcile: true });
+    expect(fake.calls.filter((c) => c.method === "paymentsOfOrder" && c.args[0] === a.checkout.orderId).length).toBe(asked);
+    expect(await billsOf(a.order.id)).toHaveLength(1);
+  });
+
+  it("bills an order that lapsed before its lost payment was found, and leaves one the gateway cannot answer for later", async () => {
+    const gw = await fake.createOrder({ amountPaise: 7500, receipt: "lapsed" });
+    const id = await given.qrOrder(app.db, { loc: "coffee", code: coffee.id, lines: [{ it: "capp", qty: 1, rate: 75 }], rzpOrderId: gw.id, expiresAt: new Date(Date.now() - 60_000) });
+    await app.db.update(s.qrOrders).set({ createdAt: new Date(Date.now() - 40 * 60_000) }).where(eq(s.qrOrders.id, id));
+    await app.qrWorker.tick();
+    expect((await orderRow(id)).status).toBe("Expired");
+    fake.pay(gw.id);
+    const real = fake.paymentsOfOrder;
+    fake.paymentsOfOrder = async (o) => { if (o === gw.id) throw new GatewayError("The payment gateway could not be reached", 0, "network", true); return real(o); };
+    try {
+      await app.qrWorker.tick(later(10 * 60_000), { reconcile: true });
+    } finally { fake.paymentsOfOrder = real; }
+    expect((await orderRow(id)).status).toBe("Expired");
+    await app.qrWorker.tick(later(60 * 60_000), { reconcile: true });
+    expect((await orderRow(id)).status).toBe("Paid");
+    expect(await billsOf(id)).toHaveLength(1);
+  });
+
+  it("moves a Sent refund whose webhook never came to Processed, or Failed, by asking the gateway", async () => {
+    const mk = async () => {
+      const c = await placed([{ it: "capp", qty: 1 }]);
+      const pay = fake.pay(c.checkout.orderId, { amountPaise: 7400 });
+      await webhook(captured(pay.paymentId));
+      const [r] = await refundsOf(c.order.id);
+      return r;
+    };
+    const ok = await mk();
+    const bad = await mk();
+    await app.qrWorker.tick(undefined, { reconcile: false });
+    const gOk = fake.refunds.find((x) => x.notes.rid === ok.id)!;
+    const gBad = fake.refunds.find((x) => x.notes.rid === bad.id)!;
+    for (const r of [ok, bad]) expect((await refundsOf(r.qrOrderId))[0].status).toBe("Sent");
+    fake.settleRefund(gOk.id, "processed");
+    fake.settleRefund(gBad.id, "failed");
+    // Not yet half an hour since it was sent: nobody asks.
+    await app.qrWorker.tick(later(60_000), { reconcile: true });
+    expect((await refundsOf(ok.qrOrderId))[0].status).toBe("Sent");
+
+    const m = await mark();
+    const t = await app.qrWorker.tick(later(31 * 60_000), { reconcile: true });
+    expect(t.polled).toBeGreaterThanOrEqual(2);
+    expect((await refundsOf(ok.qrOrderId))[0]).toMatchObject({ status: "Processed" });
+    expect((await refundsOf(bad.qrOrderId))[0]).toMatchObject({ status: "Failed" });
+    const actions = (await eventsSince(m)).filter((e) => [ok.id, bad.id].includes(e.target)).map((e) => e.action).sort();
+    expect(actions).toEqual(["qrRefundFailed", "qrRefundProcessed"]);
+  });
+});

@@ -64,6 +64,16 @@ describe("the Razorpay gateway", () => {
     // An empty `notes` comes as `[]`, and an answer with no status is one not yet settled.
     expect(all[1]).toEqual({ id: "rfnd_2", paymentId: "pay_1", amountPaise: 5_000, status: "pending", receipt: null, notes: {} });
   });
+  it("lists an order's payments and fetches one refund", async () => {
+    const { impl, seen } = stub({ body: { entity: "collection", count: 1, items: [payment] } }, { body: refund });
+    const g = createRazorpayGateway(cfg, impl);
+    expect(await g.paymentsOfOrder("order_1")).toEqual([{ id: "pay_1", orderId: "order_1", amountPaise: 12_000, currency: "INR", status: "captured", method: "upi", error: null }]);
+    expect((await g.fetchRefund("pay_1", "rfnd_1")).status).toBe("processed");
+    expect(seen.map((s) => `${s.method} ${s.url}`)).toEqual([
+      "GET https://api.razorpay.com/v1/orders/order_1/payments",
+      "GET https://api.razorpay.com/v1/payments/pay_1/refunds/rfnd_1",
+    ]);
+  });
   it("escapes an id in the path", async () => {
     const { impl, seen } = stub({ body: payment });
     await createRazorpayGateway(cfg, impl).fetchPayment("pay/../orders");

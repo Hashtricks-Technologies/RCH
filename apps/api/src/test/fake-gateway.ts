@@ -17,7 +17,7 @@ export const FAKE_KEY_ID = "rzp_test_fake";
 const FAKE_KEY_SECRET = "fake-key-secret";
 const FAKE_WEBHOOK_SECRET = "fake-webhook-secret";
 
-type Method = "createOrder" | "fetchPayment" | "capture" | "refund" | "refundsOf";
+type Method = "createOrder" | "fetchPayment" | "capture" | "refund" | "refundsOf" | "paymentsOfOrder" | "fetchRefund";
 export type FakeGateway = PaymentGateway & {
   calls: Array<{ method: Method; args: unknown[] }>;
   orders: Map<string, GatewayOrder & { notes: Notes }>;
@@ -84,6 +84,17 @@ export function createFakeGateway(): FakeGateway {
       const refund: GatewayRefund = { id: next("rfnd"), paymentId, amountPaise: r.amountPaise, status: fake.refundStatus, receipt: r.receipt, notes: r.notes ?? {} };
       fake.refunds.push(refund);
       return { ...refund };
+    },
+    async paymentsOfOrder(orderId) {
+      record("paymentsOfOrder", [orderId]);
+      if (!fake.orders.has(orderId)) throw new GatewayError("The id provided does not exist", 400, "BAD_REQUEST_ERROR", false);
+      return [...fake.payments.values()].filter((p) => p.orderId === orderId).map((p) => ({ ...p }));
+    },
+    async fetchRefund(paymentId, refundId) {
+      record("fetchRefund", [paymentId, refundId]);
+      const r = fake.refunds.find((x) => x.id === refundId && x.paymentId === paymentId);
+      if (!r) throw new GatewayError("The id provided does not exist", 400, "BAD_REQUEST_ERROR", false);
+      return { ...r };
     },
     async refundsOf(paymentId) {
       record("refundsOf", [paymentId]);

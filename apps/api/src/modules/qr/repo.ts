@@ -1,7 +1,7 @@
 // Qr: SQL only. No rules, no transaction of its own - service.ts and worker.ts pass `tx` in. The
 // order's lock and its status move are `lib/qr-orders.ts` (the bill void moves an order too), and
 // every write of `payment_refunds` is `lib/refunds.ts`; this file only reads refunds.
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { OrderHours, OrderHoursDay, QrOrderStatus } from "@rch/contract";
 import { documentHistory, items, locations, paymentRefunds, qrCodes, qrOrderLines, qrOrders, qrOutletState, outletOrderHours, rzpWebhookEvents, users } from "../../db/schema/index.js";
 import type { Reader, Tx } from "../../lib/db.js";
@@ -190,7 +190,24 @@ export const qrRepo = {
       .for("update", { skipLocked: true });
   },
 
+  /** The reconcile pass's candidates: orders a payment may have reached without the phone's
+   *  verify or the webhook ever arriving - unpaid (or lapsed unpaid), with a gateway order, placed
+   *  in `[from, to]`. Newest first; the worker's own backoff decides which it asks about. */
+  async toReconcile(db: Reader, from: Date, to: Date): Promise<Pick<QrOrderRow, "id" | "rzpOrderId" | "total" | "createdAt">[]> {
+    return db.select({ id: qrOrders.id, rzpOrderId: qrOrders.rzpOrderId, total: qrOrders.total, createdAt: qrOrders.createdAt }).from(qrOrders)
+      .where(and(inArray(qrOrders.status, ["Awaiting payment", "Expired"]), isNotNull(qrOrders.rzpOrderId), gte(qrOrders.createdAt, from), lte(qrOrders.createdAt, to)))
+      .orderBy(desc(qrOrders.createdAt), desc(qrOrders.id));
+  },
+
   // ---- refunds, read
+
+  /** Refunds the gateway accepted at or before `before` and has not been heard from since. */
+  async sentRefunds(db: Reader, before: Date): Promise<Pick<RefundRow, "id" | "paymentId" | "rzpRefundId" | "updatedAt">[]> {
+    return db.select({ id: paymentRefunds.id, paymentId: paymentRefunds.paymentId, rzpRefundId: paymentRefunds.rzpRefundId, updatedAt: paymentRefunds.updatedAt })
+      .from(paymentRefunds)
+      .where(and(eq(paymentRefunds.status, "Sent"), isNotNull(paymentRefunds.rzpRefundId), lte(paymentRefunds.updatedAt, before)))
+      .orderBy(asc(paymentRefunds.updatedAt), asc(paymentRefunds.id));
+  },
 
   async refundForUpdate(tx: Tx, id: string): Promise<RefundRow | undefined> {
     const [r] = await tx.select().from(paymentRefunds).where(eq(paymentRefunds.id, id)).for("update");

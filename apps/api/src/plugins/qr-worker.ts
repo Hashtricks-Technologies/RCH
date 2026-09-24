@@ -1,14 +1,16 @@
 import fp from "fastify-plugin";
 import type { Config } from "../config.js";
-import { createQrWorker, type TickResult } from "../modules/qr/worker.js";
+import { createQrService } from "../modules/qr/service.js";
+import { createQrWorker, type TickOptions, type TickResult } from "../modules/qr/worker.js";
 
 declare module "fastify" {
   interface FastifyInstance {
     qrWorker: {
-      /** One pass: expire unpaid orders, send due refunds. Passes never overlap within a process -
-       *  a call while one runs waits for it and answers with its result. Across pods the row
-       *  locks' `skip locked` keeps them apart. */
-      tick(now?: Date): Promise<TickResult>;
+      /** One pass: expire unpaid orders, reconcile with the gateway (every couple of minutes, or
+       *  as `opts` says), send due refunds. Passes never overlap within a process - a call while
+       *  one runs waits for it and answers with its result. Across pods the row locks' `skip
+       *  locked` keeps them apart. */
+      tick(now?: Date, opts?: TickOptions): Promise<TickResult>;
       /** Run a pass soon, after a commit that queued a refund. Nothing when the worker is off. */
       nudge(): void;
     };
@@ -22,12 +24,18 @@ declare module "fastify" {
  * shutdown never cuts a refund's record off between the gateway's answer and its commit.
  */
 export default fp<{ config: Config }>(async (app, { config }) => {
-  const worker = createQrWorker(app.db, () => app.payments, app.log);
+  // The worker settles what it reconciles through the same service the routes use. Its nudge is
+  // a no-op: a refund the reconcile queues is sent later in the same pass.
+  const settler = createQrService({
+    db: app.db, gateway: () => app.payments,
+    config: { maxRupees: config.qr.maxRupees, ttlMin: config.qr.ttlMin }, nudge: () => undefined,
+  });
+  const worker = createQrWorker(app.db, () => app.payments, app.log, settler);
   const every = config.qr.workerIntervalMs;
   let running: Promise<TickResult> | null = null;
   let closed = false;
-  const tick = (now?: Date): Promise<TickResult> => {
-    running ??= worker.tick(now).finally(() => { running = null; });
+  const tick = (now?: Date, opts?: TickOptions): Promise<TickResult> => {
+    running ??= worker.tick(now, opts).finally(() => { running = null; });
     return running;
   };
   const background = () => {
