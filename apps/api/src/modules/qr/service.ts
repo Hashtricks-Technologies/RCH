@@ -45,7 +45,14 @@ export const CODE_GONE = "This QR code is no longer in use - please order at the
 export const NOT_SET_UP = "Online ordering is not set up yet - order at the counter.";
 /** An order id with the wrong secret reads exactly like one that does not exist. */
 const ORDER_GONE = "There is no such order.";
-const GATEWAY_DOWN = "We could not reach the payment service - please try again in a moment.";
+/** The gateway could not be reached, or answered a 5xx or a 429: the same order may go through
+ *  in a moment. */
+const GATEWAY_DOWN = "We could not reach the payment service - try again in a moment.";
+/** The gateway refused to open a checkout at all (a 4xx - keys revoked, an account suspended): no
+ *  retry will help, and the order is lapsed at once so it counts toward no cap. */
+const GATEWAY_REFUSED = "Online payment is not available right now - please order at the counter.";
+/** The least the gateway takes for one payment. */
+const MIN_ORDER_RUPEES = 1;
 const VERIFY_LATER = "We could not confirm your payment yet - this page will update as soon as it goes through.";
 
 /** The window the per-address cap counts unpaid orders over. */
@@ -159,8 +166,13 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
       try {
         made = await gw.createOrder({ amountPaise: paise(o.total), receipt: o.id, notes: { qr_order: o.id, loc: o.loc } });
       } catch (e) {
-        if (e instanceof GatewayError) throw new NotReadyError(GATEWAY_DOWN, e);
-        throw e;
+        if (!(e instanceof GatewayError)) throw e;
+        if (e.retryable) throw new NotReadyError(GATEWAY_DOWN, e);
+        await withTransaction(db, async (tx) => {
+          const cur = await qrOrderForUpdate(tx, o.id);
+          if (cur?.status === "Awaiting payment") await moveQrOrder(tx, cur, "Expired", SYSTEM_QR.name, { note: "the payment service refused to open its checkout" });
+        });
+        throw new RuleError(GATEWAY_REFUSED);
       }
       rzp = await withTransaction(db, (tx) => qrRepo.setRzpOrder(tx, o.id, made.id)) ?? made.id;
     }
@@ -412,6 +424,8 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
           const plan = planBill(s.master, s.prices, code.loc, cart, terms.pct);
           const total = money2(plan.tot);
           assertRule(total > 0, "There is nothing to pay for on this order.");
+          assertRule(total >= MIN_ORDER_RUPEES,
+            `An online payment has to be at least ${inr(MIN_ORDER_RUPEES)} - this order is ${inr(total)}. Add an item, or order at the counter.`);
           assertRule(total <= config.maxRupees,
             `One QR order can come to at most ${inr(config.maxRupees)} - this one is ${inr(total)}. Take a few items off, or order at the counter.`);
 

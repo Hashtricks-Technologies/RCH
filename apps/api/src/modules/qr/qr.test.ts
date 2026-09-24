@@ -223,6 +223,18 @@ describe("POST /public/qr/:token/orders - placing an order", () => {
     expect(split.json().error.message).toBe("One order can carry at most 20 of Masala tea.");
   });
 
+  it("refuses an order under the gateway's ₹1 minimum", async () => {
+    await app.db.update(s.priceListItems).set({ price: 0.5 }).where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "water")));
+    try {
+      const r = await place(coffee.token, [{ it: "water", qty: 1 }]);
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe("An online payment has to be at least ₹1.00 - this order is ₹0.50. Add an item, or order at the counter.");
+      expect((await place(coffee.token, [{ it: "water", qty: 2 }])).statusCode).toBe(200);
+    } finally {
+      await app.db.update(s.priceListItems).set({ price: 20 }).where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "water")));
+    }
+  });
+
   it("refuses what the till would refuse - an item not on this outlet's menu", async () => {
     const r = await place(coffee.token, [{ it: "sand", qty: 1 }]);
     expect(r.statusCode).toBe(422);
@@ -257,9 +269,26 @@ describe("POST /public/qr/:token/orders - placing an order", () => {
     fake.failNext("createOrder");
     const down = await place(coffee.token, [{ it: "capp", qty: 1 }], { nonce, phone });
     expect(down.statusCode).toBe(503);
+    expect(down.json().error.message).toBe("We could not reach the payment service - try again in a moment.");
     const retry = await place(coffee.token, [{ it: "capp", qty: 1 }], { nonce, phone });
     expect(retry.statusCode, retry.body).toBe(200);
     expect(fake.orders.get(retry.json().result.checkout.orderId)).toBeTruthy();
+  });
+
+  it("says online payment is unavailable when the gateway refuses the checkout, and lapses that order so it counts toward no cap", async () => {
+    const ip = nextIp();
+    const phone = nextPhone();
+    for (let i = 0; i < 6; i++) {
+      fake.failNext("createOrder", new GatewayError("Authentication failed", 401, "BAD_REQUEST_ERROR", false));
+      const r = await place(coffee.token, [{ it: "capp", qty: 1 }], { ip, phone });
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe("Online payment is not available right now - please order at the counter.");
+    }
+    const lapsed = await app.db.select().from(s.qrOrders).where(eq(s.qrOrders.ip, ip));
+    expect(lapsed).toHaveLength(6);
+    expect(lapsed.every((o) => o.status === "Expired" && o.rzpOrderId === null)).toBe(true);
+    // Six refusals later, the same phone and address still place an order.
+    expect((await place(coffee.token, [{ it: "capp", qty: 1 }], { ip, phone })).statusCode).toBe(200);
   });
 });
 
