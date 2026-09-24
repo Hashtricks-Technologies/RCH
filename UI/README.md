@@ -159,7 +159,8 @@ src/
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
                                            drawer, api, session, events, writes, refusals, theme, po-board,
                                            login-picker, admin-accounts, admin-outlets, admin-payers,
-                                           admin-audit, audit-lib, admin-qr, qr-poster
+                                           admin-audit, audit-lib, admin-qr, qr-poster,
+                                           qr-orders
 ```
 
 **The public QR ordering page** (`/order/<token>`) is what a customer's phone opens from a code at
@@ -198,6 +199,18 @@ nothing.
 item stays on until someone switches it off. The toggle is a manual override on top.
 
 ## Recent capabilities
+
+**QR orders at the counter.** A QR Orders screen sits beside the till: the orders customers placed
+and paid for online from a code at this outlet, in three lanes - New (paid, edged until started),
+Preparing, and Ready / Out for delivery - with today's finished ones folded away under Done. Each
+card carries the order number, the time, the code and whether it is a pickup or a delivery to a
+spot, the customer's name and a tap-to-call phone, the lines, the total paid online, its bill
+number (which opens the bill) and one button for the next step: Start preparing, Mark ready or Out
+for delivery, then Collected or Delivered. A switch in the head pauses QR ordering at this counter,
+and a line under it says whether ordering is open and until when. The bell counts the paid orders
+nobody has started. The manager reads the queue without the buttons. On Bills a QR bill wears a
+"QR" badge; its drawer names the order and, once voided, the refund's state - and a failed refund
+offers Retry refund to whoever may void a bill.
 
 **Close Shift.** A counter operator's shift opens with their sign-in at a counter. **Close shift** - in
 the sidebar's foot, and on the counter's Dashboard and Register - opens a dialog over the live report:

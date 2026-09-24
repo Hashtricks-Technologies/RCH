@@ -88,7 +88,7 @@ Every change must pass all of it. Four things trip people up:
 
 - **Lint is zero-warning.** Every package's `lint` is `oxlint --max-warnings 0`, so a warning fails the job
   just like an error does.
-- **Coverage floors are part of `test`.** The floors are UI lines 83 / branches 67, `apps/api` 95 / 82,
+- **Coverage floors are part of `test`.** The floors are UI lines 84 / branches 68, `apps/api` 95 / 82,
   `apps/audit` 97 / 89, `packages/domain` 99 / 94, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
   lower one to turn a run green. The `--coverage` flag lives on each `test` script, which is why a single-file
   run isn't judged against the floor.
@@ -196,6 +196,12 @@ excepted.
   session. The chosen location is stored on the refresh-token row, so a silent refresh
   does not move somebody back to their home counter. Changing an account's postings revokes its
   sessions, because a live token may assert a counter the new list has just removed.
+- **A counter works its QR orders on its own screen.** QR Orders (`qr-orders`, feature `qr_orders`: the
+  seeded counter at edit, the manager at view) sits in the counter's Sell group beside the till and in
+  the manager's Outlets group beside Bills. A customer's paid order arrives already billed; the counter
+  moves it along its code's path (`nextQrStep` in `@rch/domain`) one press at a time, and pauses QR
+  ordering at its outlet from the same screen. Retrying a failed refund is `void_bill`'s, from the bill
+  drawer.
 - **A counter operator's shift starts at sign-in.** `POST /auth/login` opens a `shifts` row (`SH-<year>-<nnnn>`)
   for a `counter` account at the session's counter, keeps the one already open there, and closes one left
   open at another counter automatically (its figures stored, marked `auto`). A refresh opens nothing. Close

@@ -7,7 +7,7 @@ human reader. This file covers what is specific to `@rch/ui`.
 
 ```bash
 pnpm --filter @rch/ui dev         # vite on :5173, proxying /api/v1/admin/audit → http://localhost:3100 and the rest of /api → http://localhost:3000
-pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 83 / branches 67
+pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 84 / branches 68
 pnpm --filter @rch/ui exec vitest run src/__tests__/writes.test.ts   # one file, no coverage gate
 pnpm --filter @rch/ui typecheck   # tsc --noEmit -p tsconfig.app.json
 pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
@@ -215,6 +215,19 @@ try {
   `updateQrCode(id, body)` (label, mode, `active`), `regenerateQrCode` and `setOrderHours(loc, days)` are
   the ordinary `Promise<boolean>` writes. Each puts the row the server handed back in place through
   `wire.ts` (`applyAdminQrCode`, `applyOrderHours`) before its `refetch`.
+- **QR orders (`store/qrOrders.ts`)** are kept, like the shifts: `qrOrders` (the wire's `QrOrder`,
+  instants as sent - the screen prints them with `fromWireTime` and sorts on `paidAt ?? at`),
+  `qrPaused` and `qrHours` all come from the one `GET /qr-orders`, and `qrOrdersFailed` marks a
+  failed load for the screen's outage line. The shell loads it as it mounts for whoever holds
+  `qr_orders`, and `roles/counter/QrOrders.tsx` again as it opens. `setQrOrderStatus(id, to)`,
+  `setQrPause(loc, paused)` and `retryQrRefund(id)` are the ordinary `Promise<boolean>` writes.
+  The screen's lanes are New (`Paid`, `.qr-new`), Preparing and Ready / Out for delivery, oldest
+  first, with today's Collected / Delivered / Refunded / Voided folded under Done; each card's one
+  button is `nextQrStep(mode, status)`, drawn at `qr_orders` edit only. The pause `Switch` and the
+  hours line (`qrOpenAt`) belong to `user.loc` when it is an outlet. The bell's `qr-orders` row
+  counts `Paid` orders at `user.loc` for an edit holder. A bill with `src === "qr"` wears a "QR"
+  pill on both Bills lists; the `cbill` drawer names `qo`, pills `refund` (`RefundPill`, exported
+  from `QrOrders.tsx`) and offers Retry refund on a `Failed` one to `useHolds("void_bill")`.
 - **The Credit screen's two lists (`store/receivables.ts`) are read, not kept.** `loadReceivables` answers
   `false` rather than throwing and sets `receivablesFailed`, so the screen shows an outage line instead of
   "nobody owes anything" - the distinction `AdminAudit.tsx` draws. `readStatement` answers `null` the way
@@ -345,7 +358,7 @@ try {
   its `changed`; only the audit service's notice does.
   - **A collection only some roles may read is still broadcast to every open session** - the server's
     `pg_notify` isn't per-role. So `NARROW.priceLists`, `receivables` and `shifts` read for an operator
-    holding Prices, Receivables & settlements or Shift reports alone and do nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
+    holding Prices, Receivables & settlements, Shift reports or QR orders (`qrOrders`) alone and do nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
     whole `Promise.all` and toast "the screen could not be refreshed" over a page of theirs that never
     changed. `accounts` is never announced on the stream - only the admin's own reply names it.
   - **`roles`** re-reads `GET /me` for an operator: a changed name is simply taken, and a changed desk or
@@ -530,6 +543,11 @@ a background refresh and must not blank the screen.
   the hours editor's validation and its one `PUT`, and `refetch`'s `qrCodes` reader for admin and
   operator. **`qr-poster.test.ts`** mocks `jspdf` and `qrcode` and pins the poster's text, image and name.
   `AdminDashboard` reads the codes as it mounts, so any case that mounts it stubs `GET /admin/qr-codes` too.
+- **`qr-orders.test.tsx`** drives the QR orders slice on the wire (load and outage, a step, the pause,
+  a retry, refusals and the offline fallbacks), `refetch`'s `qrOrders` guard (a manager reads, a store
+  keeper and the super admin do not), the queue (lanes sorted on the instant, another counter's order
+  left out, Done folded, one next step per mode, the bill link, the pause switch and the hours line,
+  view only for the manager), the bell row, and the QR badge, refund pill and Retry gating on the bills.
 - **`pdf.test.tsx`** mocks `jspdf` and `jspdf-autotable`, recording what is drawn and saved, and pins
   the receipt and GRN models, the file names, the Include OTP box and the GRN buttons.
 - **`view-mode.test.tsx`** is table-driven over every gated screen and drawer: each desk's seeded role with
