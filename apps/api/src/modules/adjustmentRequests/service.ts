@@ -19,7 +19,7 @@ import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
-import { requireLocOf } from "../../plugins/rbac.js";
+import { requireLocOf, type Actor } from "../../plugins/rbac.js";
 import { adjustmentRequestsRepo } from "./repo.js";
 
 export type CreateAdjustmentRequestBody = z.infer<typeof CreateAdjustmentRequestBodySchema>;
@@ -66,13 +66,14 @@ export function createAdjustmentRequestsService(db: Db) {
     },
 
     /** The counter's own withdrawal while the manager has not decided yet, or the manager
-     *  withdrawing a request they have not yet acted on themselves. A manager is hospital-wide;
-     *  a counter scopes to its own outlet, exactly as `cancelRequest` does. */
-    async cancel(claims: AccessClaims, id: string): Promise<WriteResponse<AdjustmentRequest>> {
+     *  withdrawing a request they have not yet acted on themselves. A caller who holds Approvals
+     *  (or every outlet) is hospital-wide; a counter scopes to its own outlet, exactly as
+     *  `cancelRequest` does. */
+    async cancel(claims: Actor, id: string): Promise<WriteResponse<AdjustmentRequest>> {
       return withTransaction(db, async (tx) => {
         const r = await adjustmentRequestsRepo.head(tx, id);
         if (!r) throw new NotFoundError(`There is no adjustment request ${id}.`);
-        if (claims.role !== "manager") requireLocOf(claims, r.loc, "your own counter");
+        if (!claims.wide) requireLocOf(claims, r.loc, "your own counter");
         assertTransition(ADJUSTMENT_REQUEST_TRANSITIONS, r.status, "Cancelled", id);
         await adjustmentRequestsRepo.setStatus(tx, id, { status: "Cancelled" });
         const who = await adjustmentRequestsRepo.userName(tx, claims.sub);

@@ -9,7 +9,7 @@ import { createAdjustmentRequestsService } from "./service.js";
 export default fp(async (app) => {
   const svc = createAdjustmentRequestsService(app.db);
   mount(app, routes.createAdjustmentRequest, async (req) => svc.create(req.user, req.body));
-  mount(app, routes.cancelAdjustmentRequest, async (req) => svc.cancel(req.user, req.params.id));
+  mount(app, routes.cancelAdjustmentRequest, async (req) => svc.cancel(req.actor, req.params.id));
   mount(app, routes.approveAdjustmentRequest, async (req) => svc.approve(req.user, req.params.id));
   mount(app, routes.rejectAdjustmentRequest, async (req) => svc.reject(req.user, req.params.id, req.body));
 }, { name: "module:adjustmentRequests", dependencies: ["auth", "rbac", "idempotency", "db"] });

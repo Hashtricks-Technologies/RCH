@@ -10,7 +10,7 @@ import { emitChanged } from "../../lib/events.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { assertRule } from "../../lib/rules.js";
-import type { AccessClaims } from "../../plugins/auth.js";
+import type { Actor } from "../../plugins/rbac.js";
 import { availabilityRepo } from "./repo.js";
 
 export type ToggleAvailBody = z.infer<typeof ToggleAvailBodySchema>;
@@ -28,7 +28,7 @@ export function createAvailabilityService(db: Db) {
      * Kitchen. An existing override is removed (switched back on); otherwise one is recorded
      * (switched off).
      */
-    async toggle(claims: AccessClaims, body: ToggleAvailBody): Promise<WriteResponse<ToggleResult>> {
+    async toggle(actor: Actor, body: ToggleAvailBody): Promise<WriteResponse<ToggleResult>> {
       return withTransaction(db, async (tx) => {
         const loc = await lockLocation(tx, body.loc);
         const master = await loadMaster(tx);
@@ -37,8 +37,8 @@ export function createAvailabilityService(db: Db) {
         // item (dropped from loadMaster's active-only items) 404s cleanly instead of crashing on
         // `item.n` below.
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
-        // A manager reaches every outlet, so the request's location has to be checked here -
-        // it is the one role whose own `loc` does not decide. A counter and the kitchen were
+        // A role given every outlet reaches any of them, so the request's location has to be
+        // checked here - its own `loc` does not decide. Everyone else was
         // already held to their own location by `requireLoc` in routes.ts, which 403s before
         // this service is called, so there is no second check for them to fail. The kitchen's
         // own `${loc.name} is not a kitchen` branch used to sit here and could never run for that
@@ -46,7 +46,7 @@ export function createAvailabilityService(db: Db) {
         // the kitchen in the first place - is now `worksAt` (@rch/domain), called from
         // `checkPairing` in `lib/users-admin.ts` and enforced where the account is created
         // rather than on every toggle it makes afterwards.
-        if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.name} is not an outlet`);
+        if (actor.wide) assertRule(loc.type === "Outlet", `${loc.name} is not an outlet`);
         if (loc.type === "Outlet") assertOpen(loc);
         // A kitchen has no menu - what it can switch off is what it can make, so "listed"
         // there means the item is a finished good. Everywhere else it is the location's menu.
@@ -78,7 +78,7 @@ export function createAvailabilityService(db: Db) {
             message: `${item.n} switched on at ${loc.name}`,
           };
         }
-        await availabilityRepo.insert(tx, body.loc, body.it, REASON, claims.sub);
+        await availabilityRepo.insert(tx, body.loc, body.it, REASON, actor.sub);
         await emitChanged(tx, changed);
         return {
           result: { loc: body.loc, it: body.it, off: true, reason: REASON },

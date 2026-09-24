@@ -14,6 +14,7 @@ import { allocateId } from "../../lib/ids.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { assertRule } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
+import type { Actor } from "../../plugins/rbac.js";
 import { productReqsRepo } from "./repo.js";
 
 export type CreateProductRequestBody = z.infer<typeof CreateProductRequestBodySchema>;
@@ -22,21 +23,21 @@ export type AnswerProductRequestBody = z.infer<typeof AnswerProductRequestBodySc
 export function createProductReqsService(db: Db) {
   return {
     /** A shop's ask, sent to the central store - it does nothing to the master by itself. */
-    async create(claims: AccessClaims, body: CreateProductRequestBody): Promise<WriteResponse<ProductRequest>> {
+    async create(actor: Actor, body: CreateProductRequestBody): Promise<WriteResponse<ProductRequest>> {
       return withTransaction(db, async (tx) => {
         const name = body.name.trim();
         assertRule(name.length > 0, "Name the product you want added");
-        // A counter's own location was already checked against its token in routes.ts. A manager
-        // may ask for any of the outlets, but the central store and the kitchen are not shops and
-        // have no menu to add a product to - the same sentence `availability` gives a manager
-        // reaching past the outlets.
+        // A local caller's own location was already checked against its token in routes.ts. A
+        // hospital-wide one may ask for any of the outlets, but the central store and the kitchen
+        // are not shops and have no menu to add a product to - the same sentence `availability`
+        // gives a caller reaching past the outlets.
         const outlet = await lockLocation(tx, body.forLoc);
-        if (claims.role === "manager") assertRule(outlet.type === "Outlet", `${outlet.name} is not an outlet`);
+        if (actor.wide) assertRule(outlet.type === "Outlet", `${outlet.name} is not an outlet`);
         assertOpen(outlet);
 
         const at = new Date();
         const id = await allocateId(tx, "product_req", at);
-        await productReqsRepo.insert(tx, { id, name, why: body.why.trim(), forLoc: body.forLoc, byUser: claims.sub, at, status: "Requested" });
+        await productReqsRepo.insert(tx, { id, name, why: body.why.trim(), forLoc: body.forLoc, byUser: actor.sub, at, status: "Requested" });
 
         const changed = ["productReqs"] as const;
         await emitChanged(tx, changed);

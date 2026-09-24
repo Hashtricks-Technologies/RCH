@@ -209,8 +209,8 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
   and refreshes. `apps/api/CLAUDE.md` (*Roles and permissions*) has the details.
 - **Staff pick themselves at sign-in.** `GET /auth/directory` is public and lists active, non-admin accounts
   as number and name only. The super admin signs in through a typed id instead.
-- **`counter` sets a product photo only for items on its own outlet's menu** (403 otherwise); `manager` sets
-  any item's.
+- **A role with Product photos sets a photo only for items on its own outlet's menu** (403 otherwise), unless
+  it works for every outlet (`all_outlets`, the seeded Outlet Manager), which sets any item's.
 
 ### The movement rule
 
@@ -386,7 +386,7 @@ The code enforces these and tests pin them. Breaking one is a bug.
   packing, `MR-3xxx` MRP, `FG-4xxx` finished, `MT-5xxx` made-to-order), one past the highest code with
   that prefix, retired items included, under a per-series advisory lock. The new-product form previews
   it read-only; the server decides.
-- **An item has at most one display name**, the manager's alone (`dn` in `ITEM_FIELD_ROLES`), set in
+- **An item has at most one display name**, the manager's alone (`dn` in `ITEM_FIELD_FEATURES` needs `items_stock` at edit), set in
   the item drawer; a blank clears it. It replaces the real name **only on the counter's own screens**
   (`counterNameOf` in `UI/src/lib/selectors.ts`); every other desk, every document, the printed bill
   slip and every PDF print the real name. A counter search matches either name.

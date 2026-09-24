@@ -14,10 +14,11 @@ export default fp(async (app) => {
   // Scoped by the ticket's own `from`, in the service: the store cancels what the store issued
   // and the kitchen what the kitchen dispatched.
   mount(app, routes.cancelTicket, async (req) => svc.cancel(req.user, req.params.id, req.body));
-  // A transfer names its own source, so the counter's scope is checkable here; a manager may
-  // move stock between any two outlets, as they may switch any outlet's products off.
+  // A transfer names its own source, so the scope is checkable here: a role that moves stock
+  // hospital-wide (Items & stock, or every outlet) may move it between any two outlets, as it may
+  // switch any outlet's products off; one on its own counter's pick tickets moves only its own.
   mount(app, routes.transfer, async (req) => {
-    if (req.user.role === "counter") requireLoc(req, req.body.from, "your own counter");
+    if (!req.actor.wide) requireLoc(req, req.body.from, "your own counter");
     return svc.transfer(req.user, req.body);
   });
 }, { name: "module:tickets", dependencies: ["auth", "rbac", "idempotency", "db"] });

@@ -9,9 +9,9 @@ import { createAvailabilityService } from "./service.js";
 export default fp(async (app) => {
   const svc = createAvailabilityService(app.db);
   mount(app, routes.toggleAvail, async (req) => {
-    // A counter and a kitchen each own one location's switch; a manager reaches every outlet.
-    if (req.user.role === "counter") requireLoc(req, req.body.loc, "your own counter");
-    if (req.user.role === "prod") requireLoc(req, req.body.loc, "your own kitchen");
-    return svc.toggle(req.user, req.body);
+    // A counter and a kitchen each own one location's switch; a role given every outlet (the
+    // seeded Outlet Manager) reaches any of them.
+    if (!req.actor.wide) requireLoc(req, req.body.loc, req.user.role === "prod" ? "your own kitchen" : "your own counter");
+    return svc.toggle(req.actor, req.body);
   });
 }, { name: "module:availability", dependencies: ["auth", "rbac", "idempotency", "db"] });

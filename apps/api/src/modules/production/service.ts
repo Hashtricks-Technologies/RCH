@@ -51,8 +51,8 @@ export function createProductionService(db: Db) {
     async raise(claims: AccessClaims, body: CreateProdOrderBody): Promise<WriteResponse<ProdOrder>> {
       return withTransaction(db, async (tx) => {
         const master = await loadMaster(tx);
-        // A counter's `from` was pinned to its token in routes.ts; the manager's is the body's,
-        // and a manager supervises all three shops, so there is nothing for the server to guess.
+        // A local caller's `from` was pinned to its token in routes.ts; a hospital-wide caller's
+        // is the body's, and it supervises every shop, so there is nothing for the server to guess.
         const from = body.from;
         assertRule(from, "Choose which outlet this order is for");
         // The kitchen cannot order from itself and the central store carries, it does not sell.

@@ -267,7 +267,12 @@ role; `truncateAll` in the test harness keeps `roles` too.
   hospital-wide feature, or the role holds `all_outlets`; for `"any"` and `{ desk }` it is `all_outlets`. A
   super admin's actor is `{ perms: { f: {}, a: [] }, wide:
   true }`. Read permissions in a service with `can(req.actor.perms, f, l)` / `holds(req.actor.perms, a)`
-  from `@rch/domain`, passed down from `routes.ts` like `req.user`; never re-read the role.
+  from `@rch/domain`, passed down from `routes.ts` like `req.user`; never re-read the role. **A location
+  check is `if (!req.actor.wide) requireLoc(...)`**, never a test of the desk: that is how a counter role
+  given Approvals approves and withdraws any outlet's request, and a manager-desk role without
+  `all_outlets` is held to its own outlet's X. Only desk *mechanics* still read `req.user.role`: which
+  shelf `createItem` books to and which shelves `createAdjustment` may touch, the shift a counter's
+  sign-in opens, the till `pay` rings on (always the session's), and the word in a location refusal.
 - **`modules/roles/`** serves `/admin/roles`. Each write locks the role `FOR UPDATE`, calls `auditBefore`,
   applies the rules (a name clash - `roles_name_uq` decides; `grantRefusal`; no desk change once
   `ever_assigned`; no deactivation while any active account holds it, naming them; no delete once

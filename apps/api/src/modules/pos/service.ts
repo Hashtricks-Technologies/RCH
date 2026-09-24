@@ -290,9 +290,10 @@ export function createPosService(db: Db) {
         const shut = bill.sessionId ? await holdSession(tx, bill.sessionId) : undefined;
         assertRule(!shut?.closedAt, `${no} was closed off on ${shut?.zNo} and can no longer be voided.`);
 
-        // No `requireLocOf` here, on purpose: a manager is hospital-wide (their `loc` is a desk,
-        // not a scope), and the route is already closed to every other role. The counter that
-        // took the bill is exactly the party that must not be able to unsell its own takings.
+        // No `requireLocOf` here, on purpose: the void-a-bill action is hospital-wide (the seeded
+        // Outlet Manager's `loc` is a desk, not a scope), and the route is already closed to
+        // every role without it. The seeded counter that took the bill does not hold it - it is
+        // exactly the party that must not be able to unsell its own takings.
         //
         // And no `allocateId`: a void mints no document. It is a stamp on the bill that exists
         // and a reversal of the moves that exist, so there is no number for it to draw.

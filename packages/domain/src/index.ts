@@ -25,7 +25,7 @@ export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate, mayReply, m
 export { ledgerRow, type LedgerRow } from "./reports.js";
 // ---- item patch ----
 export {
-  ITEM_FIELD_FEATURES, ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField,
+  ITEM_FIELD_FEATURES, mayEditItemField, unauthorisedItemFields, type ItemField,
   counterName, itemCodePrefix, nextItemCode,
   // ---- item photos ----
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO, checkPhoto, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,

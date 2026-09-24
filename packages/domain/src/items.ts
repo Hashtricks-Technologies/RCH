@@ -1,5 +1,5 @@
-import type { Feature, ItemType, Permissions, Role } from "@rch/contract";
-import { can, DESK_DEFAULTS } from "./permissions.js";
+import type { Feature, ItemType, Permissions } from "@rch/contract";
+import { can } from "./permissions.js";
 
 /**
  * Who may change what on the item master.
@@ -30,24 +30,10 @@ import { can, DESK_DEFAULTS } from "./permissions.js";
  */
 export type ItemField = "n" | "dn" | "mrp" | "cost" | "gst" | "hsn" | "rl" | "grp" | "sl" | "active" | "src";
 
-export const ITEM_FIELD_ROLES: Readonly<Record<ItemField, readonly Role[]>> = {
-  mrp: ["manager"],
-  cost: ["manager"],
-  gst: ["manager"],
-  dn: ["manager"],
-  n: ["store", "buyer", "prod"],
-  hsn: ["store", "buyer", "prod"],
-  rl: ["store", "buyer", "prod"],
-  grp: ["store", "buyer", "prod"],
-  sl: ["store", "buyer", "prod"],
-  src: ["store", "buyer", "prod"],
-  active: ["manager", "store", "buyer", "prod"],
-};
-
 /**
- * The same split in permissions: the commercial half needs `items_stock` at edit, the operational
- * half `item_master` at edit, and `active` either. The seeded roles hold exactly what
- * `ITEM_FIELD_ROLES` gave their desk, so the two tables agree until a role is configured otherwise.
+ * The split in permissions: the commercial half needs `items_stock` at edit (the seeded Outlet
+ * Manager's), the operational half `item_master` at edit (the seeded Store Keeper's, Procurement
+ * Officer's and Kitchen In-charge's), and `active` either.
  */
 export const ITEM_FIELD_FEATURES: Readonly<Record<ItemField, readonly Feature[]>> = {
   mrp: ["items_stock"],
@@ -63,12 +49,9 @@ export const ITEM_FIELD_FEATURES: Readonly<Record<ItemField, readonly Feature[]>
   active: ["items_stock", "item_master"],
 };
 
-/** A desk reads as its seeded role's permissions, for the callers that still pass a desk. */
-const permsOf = (who: Role | Permissions): Permissions => (typeof who === "string" ? DESK_DEFAULTS[who].perms : who);
-
 /** Whether this caller owns this field. The drawer disables the boxes this answers `false` for. */
-export const mayEditItemField = (who: Role | Permissions, f: ItemField): boolean =>
-  ITEM_FIELD_FEATURES[f].some((feature) => can(permsOf(who), feature, "edit"));
+export const mayEditItemField = (perms: Permissions, f: ItemField): boolean =>
+  ITEM_FIELD_FEATURES[f].some((feature) => can(perms, feature, "edit"));
 
 /**
  * The fields in a patch this caller does not own, in the order the caller named them.
@@ -77,8 +60,8 @@ export const mayEditItemField = (who: Role | Permissions, f: ItemField): boolean
  * sentences - one naming the manager, one naming the three operational desks - rather than a
  * per-field list, because an operator who reached for the wrong box needs to know whose it is.
  */
-export const unauthorisedItemFields = (who: Role | Permissions, fields: readonly ItemField[]): ItemField[] =>
-  fields.filter((f) => !mayEditItemField(who, f));
+export const unauthorisedItemFields = (perms: Permissions, fields: readonly ItemField[]): ItemField[] =>
+  fields.filter((f) => !mayEditItemField(perms, f));
 
 /**
  * What a counter's own screens call an item: its display name where the manager gave it one, its
@@ -124,7 +107,7 @@ export function nextItemCode(type: ItemType, existing: readonly string[]): strin
  * present what is sold - the manager for any item, a counter for what its own outlet lists
  * (the server's rule, not this table's).
  */
-export const mayEditItemImage = (who: Role | Permissions): boolean => can(permsOf(who), "item_photos", "edit");
+export const mayEditItemImage = (perms: Permissions): boolean => can(perms, "item_photos", "edit");
 
 /** The largest photo the server keeps. The browser shrinks to well under it (~80-200 KB). */
 export const IMAGE_MAX_BYTES = 700_000;

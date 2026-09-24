@@ -9,10 +9,11 @@ export default fp(async (app) => {
   const svc = createProductReqsService(app.db);
   mount(app, routes.createProductRequest, async (req) => {
     // A till asks for its own outlet and no other: the token decides, not the body, the same
-    // way `pos` decides which counter a bill belongs to. A manager reaches every outlet, so
-    // there the body decides and the service checks it names an outlet at all.
-    if (req.user.role === "counter") requireLoc(req, req.body.forLoc, "your own counter");
-    return svc.create(req.user, req.body);
+    // way `pos` decides which counter a bill belongs to. A role that works hospital-wide (Menus,
+    // or every outlet) reaches every outlet, so there the body decides and the service checks it
+    // names an outlet at all.
+    if (!req.actor.wide) requireLoc(req, req.body.forLoc, "your own counter");
+    return svc.create(req.actor, req.body);
   });
   mount(app, routes.answerProductRequest, async (req) => svc.answer(req.user, req.params.id, req.body));
 }, { name: "module:productreqs", dependencies: ["auth", "rbac", "idempotency", "db"] });

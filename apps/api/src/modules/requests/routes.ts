@@ -8,11 +8,11 @@ export default fp(async (app) => {
   const svc = createRequestsService(app.db);
   // The raiser's location is the token's, never the body's - there is nothing to scope here.
   mount(app, routes.createRequest, async (req) => svc.create(req.user, req.body));
-  // A manager is hospital-wide - one manager supervises every outlet - so approve/reject take
-  // no location; only cancel scopes, on the raiser's own outlet (requireLocOf, and only for
-  // counter/prod - a manager withdrawing their own approval is hospital-wide too). Either way
-  // the 403 lives in the service, which is the only place that has read the document's location.
-  mount(app, routes.cancelRequest, async (req) => svc.cancel(req.user, req.params.id));
+  // Approvals are hospital-wide - one manager supervises every outlet - so approve/reject take
+  // no location; only cancel scopes, on the raiser's own outlet (requireLocOf, and only for a
+  // local caller - one holding Approvals withdraws hospital-wide too). Either way the 403 lives
+  // in the service, which is the only place that has read the document's location.
+  mount(app, routes.cancelRequest, async (req) => svc.cancel(req.actor, req.params.id));
   mount(app, routes.approveRequest, async (req) => svc.approve(req.user, req.params.id, req.body));
   mount(app, routes.rejectRequest, async (req) => svc.reject(req.user, req.params.id, req.body));
   mount(app, routes.redirectRequest, async (req) => svc.redirect(req.user, req.params.id, req.body));

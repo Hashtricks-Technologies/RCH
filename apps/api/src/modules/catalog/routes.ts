@@ -13,12 +13,13 @@ export default fp(async (app) => {
   mount(app, routes.createItem, async (req) => svc.createItem(req.user, req.body));
   // ---- item patch ----
   // And the way back: an existing line edited or retired. Which fields the caller's own role may
-  // move is the service's rule, from `ITEM_FIELD_ROLES` - the manifest opens the door to all
-  // four desks, and each of them reads a sentence when it reaches for the other's box.
-  mount(app, routes.patchItem, async (req) => svc.patchItem(req.user, req.params.it, req.body));
+  // move is the service's rule, from `ITEM_FIELD_FEATURES` - the manifest opens the door to
+  // either half (Items & stock, Item master), and each reads a sentence when it reaches for the
+  // other's box.
+  mount(app, routes.patchItem, async (req) => svc.patchItem(req.actor, req.params.it, req.body));
   // ---- item photos ----
-  mount(app, routes.setItemImage, async (req) => svc.setItemImage(req.user, req.params.it, req.body.data));
-  mount(app, routes.removeItemImage, async (req) => svc.removeItemImage(req.user, req.params.it));
+  mount(app, routes.setItemImage, async (req) => svc.setItemImage(req.actor, req.params.it, req.body.data));
+  mount(app, routes.removeItemImage, async (req) => svc.removeItemImage(req.actor, req.params.it));
   // The photo itself. Outside the manifest the way `/events` is (`ITEM_IMAGE_PATH`): an `<img>`
   // sends no bearer token, and the answer is bytes, not JSON. It serves only the hash the item
   // points at now, so a replaced photo is gone the moment the write commits, and the hash in the

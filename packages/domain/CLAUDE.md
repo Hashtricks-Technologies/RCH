@@ -69,9 +69,10 @@ need more context than their names give:
   `permissionRefusal`. `permissions.test.ts` holds `LEGACY_ACCESS`, the role list every gated
   route carried before roles were configurable, frozen, and pins the seeded roles to it through the
   manifest itself, route by route and desk by desk (the Z excepted).
-- `items.ts`'s `ITEM_FIELD_FEATURES` is `ITEM_FIELD_ROLES` in permissions: `mayEditItemField`,
-  `unauthorisedItemFields` and `mayEditItemImage` take either a desk (read as its seeded role) or a
-  role's permissions.
+- `items.ts`'s `ITEM_FIELD_FEATURES` is who may change which field on the item master: the commercial
+  half needs `items_stock` at edit, the operational half `item_master` at edit, `active` either.
+  `mayEditItemField`, `unauthorisedItemFields` and `mayEditItemImage` take a role's permissions -
+  never a desk; a caller with only a desk reads `DESK_DEFAULTS[desk].perms`.
 - `items.ts`'s photo section is the one place the 700 KB limit, the three accepted types and every photo
   refusal sentence are written. `mayEditItemImage` is `item_photos` at edit (the seeded manager and counter) - not an `ItemField`,
   because a photo has a door of its own (`PUT /items/:it/image`), not one of the patch's nine boxes.

@@ -23,7 +23,7 @@ import { reservedAt } from "../../lib/reservations.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
 import { allocateTicket, writeTicket } from "../../lib/tickets.js";
 import type { AccessClaims } from "../../plugins/auth.js";
-import { requireLocOf } from "../../plugins/rbac.js";
+import { requireLocOf, type Actor } from "../../plugins/rbac.js";
 import { requestsRepo } from "./repo.js";
 
 export type CreateRequestBody = z.infer<typeof CreateRequestBodySchema>;
@@ -86,15 +86,15 @@ export function createRequestsService(db: Db) {
 
     /**
      * The counter's own withdrawal while the manager has not decided yet, or the manager
-     * withdrawing their own approval before the store ever issues a ticket. A manager is
-     * hospital-wide - one manager supervises every outlet - so only counter/prod scope to
-     * the raiser's own location; the manager does not.
+     * withdrawing their own approval before the store ever issues a ticket. A caller who holds
+     * Approvals (or every outlet) is hospital-wide - one manager supervises every outlet - so
+     * only a local caller (a counter, the kitchen) scopes to the raiser's own location.
      */
-    async cancel(claims: AccessClaims, id: string): Promise<WriteResponse<StockRequest>> {
+    async cancel(claims: Actor, id: string): Promise<WriteResponse<StockRequest>> {
       return withTransaction(db, async (tx) => {
         const r = await requestsRepo.head(tx, id);
         if (!r) throw new NotFoundError(`There is no request ${id}.`);
-        if (claims.role !== "manager") requireLocOf(claims, r.fromLoc, "your own counter");
+        if (!claims.wide) requireLocOf(claims, r.fromLoc, "your own counter");
         // The guard is at the door: widening REQUEST_TRANSITIONS to reach "Cancelled" from an
         // approved status must not re-open cancel for a request already holding a live ticket -
         // a ticket already reserved stock a cancellation here would silently un-promise. Scoped

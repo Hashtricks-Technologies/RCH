@@ -20,6 +20,7 @@ import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadItems, loadLocations } from "../../lib/master.js";
 import { toWireItem } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
+import type { Actor } from "../../plugins/rbac.js";
 import { catalogRepo, type ItemPatch } from "./repo.js";
 
 export type CreateItemBody = z.infer<typeof CreateItemBodySchema>;
@@ -28,8 +29,8 @@ export type PatchItemBody = z.infer<typeof PatchItemBodySchema>;
 type Write<T> = { result: T; changed: Changed[]; message: string };
 
 // ---- item patch ----
-/** The two halves of the master, in the words of the desk that owns each (`ITEM_FIELD_ROLES`,
- *  `@rch/domain`). An operator who reached for the wrong box is told **whose** box it is, which
+/** The two halves of the master, in the words of the desk that owns each (`ITEM_FIELD_FEATURES`,
+ *  `@rch/domain`: Items & stock for the one, Item master for the other). An operator who reached for the wrong box is told **whose** box it is, which
  *  is what they actually need - a per-field list would only repeat what the greyed-out input on
  *  their own screen already showed them. */
 const COMMERCIAL_REFUSAL = "Only the outlet manager changes an item's price, cost or GST - ask them to make that change";
@@ -46,10 +47,11 @@ const HASH = /^[0-9a-f]{64}$/;
 
 /** The photo rules, asked once before any byte is stored (so a refusal leaves nothing behind) and
  *  again under the item's own lock (so a retirement or a delisting that lands in between still
- *  wins). A counter's scope is its outlet's menu; the manager is hospital-wide. */
-function assertPhotoRules(claims: AccessClaims, t: { name: string; active: boolean; listed: boolean }, outlet: string, setting: boolean): void {
+ *  wins). A caller's scope is its own outlet's menu, unless its role works for every outlet (the
+ *  seeded Outlet Manager), which is hospital-wide. */
+function assertPhotoRules(actor: Actor, t: { name: string; active: boolean; listed: boolean }, outlet: string, setting: boolean): void {
   if (setting) assertRule(t.active, imageRetiredMessage(t.name));
-  if (claims.role === "counter" && !t.listed) throw new ForbiddenError(imageOffMenuMessage(t.name, outlet));
+  if (!actor.wide && !t.listed) throw new ForbiddenError(imageOffMenuMessage(t.name, outlet));
 }
 
 export function createCatalogService(db: Db, images: ImageStore) {
@@ -125,7 +127,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
      *
      * `POST /items` used to be the only write the master had: a mis-typed MRP, a wrong HSN or a
      * product the hospital stopped carrying stayed on every screen forever. This is the way
-     * back, and it is one endpoint with two permissions - `ITEM_FIELD_ROLES` (`@rch/domain`) is
+     * back, and it is one endpoint with two permissions - `ITEM_FIELD_FEATURES` (`@rch/domain`) is
      * the whole of that split, and the drawer disables the same boxes this refuses.
      *
      * The order below is the order the operator would check it in themselves, and the order the
@@ -139,7 +141,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
      * race a price change has always had - the sale's own cover check under its own locks is
      * what decides it.
      */
-    async patchItem(claims: AccessClaims, it: string, body: PatchItemBody): Promise<Write<{ key: string; item: Item }>> {
+    async patchItem(actor: Actor, it: string, body: PatchItemBody): Promise<Write<{ key: string; item: Item }>> {
       return withTransaction(db, async (tx) => {
         const row = await catalogRepo.head(tx, it);
         // The same sentence `savePrice` gives, word for word: one missing item, one wording.
@@ -151,7 +153,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
         const keys = Object.keys(body) as ItemField[];
         assertRule(keys.length > 0, `Nothing to change on ${row.name}`);
 
-        const notYours = unauthorisedItemFields(claims.role, keys);
+        const notYours = unauthorisedItemFields(actor.perms, keys);
         assertRule(
           notYours.length === 0,
           notYours.some((f) => COMMERCIAL.includes(f)) ? COMMERCIAL_REFUSAL
@@ -227,7 +229,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
         // as the ordinary "Updated" rather than as nothing at all.
         const crossed = body.active !== undefined && body.active !== row.active;
         const word = !crossed ? "Updated" : body.active === false ? "Retired" : "Restored";
-        await appendHistory(tx, "item", it, word, claims.sub, at);
+        await appendHistory(tx, "item", it, word, actor.sub, at);
         const changed = ["items"] as const;
         await emitChanged(tx, changed);
         return {
@@ -251,7 +253,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
      * then refuses leaves at most a few KB nobody points at. Only once the row points at the new
      * hash is the old object deleted - best effort, since the bucket keeps old versions anyway.
      */
-    async setItemImage(claims: AccessClaims, it: string, data: string): Promise<Write<{ key: string; item: Item }>> {
+    async setItemImage(claims: Actor, it: string, data: string): Promise<Write<{ key: string; item: Item }>> {
       const bytes = new Uint8Array(Buffer.from(data, "base64"));
       const check = checkPhoto(bytes);
       if (!check.ok) throw new RuleError(check.refusal);
@@ -286,7 +288,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
 
     /** Take an item's photo off. Allowed on a retired item - a photo is the one thing about a
      *  retired line anybody would still want to tidy away. */
-    async removeItemImage(claims: AccessClaims, it: string): Promise<Write<{ key: string; item: Item }>> {
+    async removeItemImage(claims: Actor, it: string): Promise<Write<{ key: string; item: Item }>> {
       const outlet = (await loadLocations(db))[claims.loc]?.n ?? claims.loc;
       let previous: string | null = null;
       const out = await withTransaction(db, async (tx) => {

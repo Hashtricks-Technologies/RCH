@@ -17,12 +17,13 @@ export default fp(async (app) => {
   mount(app, routes.setOrderStatus, async (req) => svc.setStatus(req.user, req.params.id, req.body.st));
   mount(app, routes.makeBatch, async (req) => svc.makeBatch(req.user, req.body));
   // ---- prod-order raise ---- the one route here that IS location-scoped, and the only one
-  // open to a role other than `prod`. A counter raises for its own outlet and nowhere else, so
-  // `from` comes off the token - a body naming another shop is refused rather than quietly
-  // rewritten, because an operator who typed it meant it. A manager supervises all three, so
-  // theirs is the body's and the service is what checks it is an outlet at all.
+  // open outside the kitchen. A counter raises for its own outlet and nowhere else, so `from`
+  // comes off the token - a body naming another shop is refused rather than quietly rewritten,
+  // because an operator who typed it meant it. A role that decides for every outlet (Approvals,
+  // or every outlet - the seeded Outlet Manager) takes the body's, and the service is what
+  // checks it is an outlet at all.
   mount(app, routes.createProdOrder, async (req) => {
-    if (req.user.role !== "counter") return svc.raise(req.user, req.body);
+    if (req.actor.wide) return svc.raise(req.user, req.body);
     if (req.body.from) requireLoc(req, req.body.from, "your own counter");
     return svc.raise(req.user, { ...req.body, from: req.user.loc });
   });
