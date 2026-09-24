@@ -275,10 +275,26 @@ button{cursor:pointer}
  .qo-sheet{animation:qo-fade .2s ease-out}
 }
 
-/* ---- paper: the receipt alone, in black on white */
+/* ---- paper: the receipt alone, in black on white. A phone in dark mode prints too, so the light
+   tokens are declared again here - every one the dark block changes - or the receipt would go to
+   paper as pale grey ink meant for a dark screen. */
 @media print{
+ .qo{
+  color-scheme:light;
+  --ground:#FFFFFF;--surface:#FFFFFF;--surface-2:#FEF3E6;--surface-3:#F5F5F5;
+  --line:#E8E8E8;--line-2:#F1EDE8;--line-strong:#DDD6CE;
+  --ink:#1A1A1A;--ink-2:#4A4A4A;--ink-3:#6B6B6B;--ink-4:#B3ABA2;
+  --accent-soft:#FEF3E6;--accent-line:#F5C98A;
+  --qo-amber-ink:#A35700;--qo-glow:rgba(224,123,0,.24);
+  --good:#1E7A46;--good-soft:#E7F4EC;--good-line:#A9D8BC;
+  --warn:#A35700;--warn-soft:#FFF6E0;--warn-line:#F5D08A;
+  --crit:#B42318;--crit-soft:#FDECEA;--crit-line:#F4B9B2;
+  --scrim:rgba(38,24,6,.48);
+  --qo-sk:#FBEBD7;--qo-sk-hi:#FFF8EF;
+  --sh1:none;--sh2:none;--sh3:none;
+ }
  body,.qo{background:#fff;color:#000}
- .qo-head,.qo-bar,.qo-steps,.qo-banner,.qo-note,.no-print{display:none!important}
+ .qo-head,.qo-bar,.qo-steps,.qo-banner,.qo-note,.qo-recover,.no-print{display:none!important}
  .qo-ticket{background:none;color:#000;padding:0 0 8px;border-bottom:1px solid #000;border-radius:0;box-shadow:none}
  .qo-ticket::after,.qo-tear{display:none}
  .qo-card{border:0;padding:0;box-shadow:none}

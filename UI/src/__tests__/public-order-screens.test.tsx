@@ -1,6 +1,8 @@
+/// <reference types="node" />
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import { readFileSync } from "node:fs";
 import type { PublicQrOrder } from "@rch/contract";
 import { money, pausedRefusal, customerPhoneRefusal, QR_STATUS_WORDS } from "@rch/domain";
 import OrderApp from "../pages/public/OrderApp";
@@ -364,5 +366,28 @@ describe("the status page", () => {
     await settle();
     expect(window.location.pathname).toBe(`/order/${TOKEN}`);
     expect(u.q("h1")?.textContent).toBe("Coffee Shop");
+  });
+});
+
+describe("the printed receipt", () => {
+  // Read from disk: the test run replaces a stylesheet import, `?raw` included, with nothing.
+  const publicCss = readFileSync(`${process.cwd()}/src/pages/public/public.css`, "utf8");
+  /** The custom properties one `.qo{…}` rule declares, from the first rule after `at`. */
+  const tokensAfter = (css: string, at: string) => {
+    const from = css.indexOf(at);
+    const open = css.indexOf(".qo{", from);
+    const body = css.slice(open, css.indexOf("}", open));
+    return new Map([...body.matchAll(/(--[\w-]+):([^;]+)/g)].map((m) => [m[1], m[2].trim()]));
+  };
+  it("declares every token the dark theme changes again, in light, for paper", () => {
+    const light = tokensAfter(publicCss, "@import");
+    const dark = tokensAfter(publicCss, "@media(prefers-color-scheme:dark)");
+    const print = tokensAfter(publicCss, "@media print");
+    expect(dark.size).toBeGreaterThan(10);
+    for (const name of dark.keys()) {
+      expect(print.has(name), name).toBe(true);
+      if (!name.startsWith("--sh") && name !== "--ground" && name !== "--surface") expect(print.get(name), name).toBe(light.get(name));
+    }
+    expect(publicCss.slice(publicCss.indexOf("@media print"))).toContain("color-scheme:light");
   });
 });
