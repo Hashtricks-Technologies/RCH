@@ -459,13 +459,41 @@ describe(`POST ${RAZORPAY_WEBHOOK_PATH} - the gateway's webhook`, () => {
     expect(await billsOf(c.order.id)).toHaveLength(1);
   });
 
+  it("captures and bills a payment.authorized on its own, and one captured meanwhile is still billed once", async () => {
+    const c = await placed();
+    const pay = fake.pay(c.checkout.orderId, { status: "authorized" });
+    const authorized = (id: string) => {
+      const e = captured(id);
+      return { event: "payment.authorized", payload: { payment: { entity: { ...e.payload.payment.entity, status: "authorized" } } } };
+    };
+    const r = await webhook(authorized(pay.paymentId), { eventId: `evt_${randomUUID()}` });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(fake.payments.get(pay.paymentId)!.status).toBe("captured");
+    expect((await orderRow(c.order.id)).status).toBe("Paid");
+    expect(await billsOf(c.order.id)).toHaveLength(1);
+    // Redelivered after the capture: the gateway refuses a second capture, the payment is read
+    // back, and the same payment settles nothing twice.
+    expect((await webhook(authorized(pay.paymentId))).statusCode).toBe(200);
+    expect(await billsOf(c.order.id)).toHaveLength(1);
+    expect(await refundsOf(c.order.id)).toHaveLength(0);
+
+    // The gateway cannot be reached for the capture: 503, and the redelivery settles it.
+    const d = await placed();
+    const payD = fake.pay(d.checkout.orderId, { status: "authorized" });
+    fake.failNext("capture");
+    expect((await webhook(authorized(payD.paymentId))).statusCode).toBe(503);
+    expect((await orderRow(d.order.id)).status).toBe("Awaiting payment");
+    expect((await webhook(authorized(payD.paymentId))).statusCode).toBe(200);
+    expect((await orderRow(d.order.id)).status).toBe("Paid");
+  });
+
   it("drops a delivery it has already handled, and acknowledges an event it does not use", async () => {
     const c = await placed();
     const pay = fake.pay(c.checkout.orderId);
     const eventId = `evt_${randomUUID()}`;
     expect((await webhook(captured(pay.paymentId), { eventId })).json()).toEqual({ ok: true });
     expect((await webhook(captured(pay.paymentId), { eventId })).json()).toEqual({ ok: true, duplicate: true });
-    const other = await webhook({ event: "payment.authorized", payload: {} }, { eventId: `evt_${randomUUID()}` });
+    const other = await webhook({ event: "payment.failed", payload: {} }, { eventId: `evt_${randomUUID()}` });
     expect(other.statusCode).toBe(200);
     const stranger = await webhook({ event: "payment.captured", payload: { payment: { entity: { id: "pay_x", order_id: "order_unknown", amount: 100, currency: "INR", status: "captured" } } } });
     expect(stranger.statusCode).toBe(200);

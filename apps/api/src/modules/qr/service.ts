@@ -280,6 +280,34 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
     return out;
   }
 
+  /**
+   * Take an authorised payment - with no transaction open - when it is for exactly the order's
+   * amount, and answer the payment as it then stands. A capture the gateway refuses because the
+   * payment was captured meanwhile (its own automatic capture, the verify, a webhook) is not a
+   * failure: the payment is read back and that is the answer (one still authorised after a failed
+   * capture throws the gateway's error, to be tried again). A payment for any other amount is
+   * left authorised, and the gateway releases it to the customer on its own.
+   */
+  async function take(gw: PaymentGateway, p: GatewayPayment, orderTotal: number): Promise<GatewayPayment> {
+    if (p.status !== "authorized" || p.amountPaise !== paise(orderTotal)) return p;
+    try { return await gw.capture(p.id, p.amountPaise); } catch (e) {
+      if (!(e instanceof GatewayError)) throw e;
+      const now = await gw.fetchPayment(p.id);
+      // Still only authorised: the capture itself failed, and it is the caller's to try again.
+      if (now.status === "authorized") throw e;
+      return now;
+    }
+  }
+
+  /** A payment the gateway reported without the phone (a webhook, the reconcile pass): taken if
+   *  it is only authorised, then settled if captured. Anything else - failed, still authorised
+   *  for the wrong amount - changes nothing. A gateway that cannot be reached is a GatewayError
+   *  for the caller: the webhook answers 503 and is delivered again, the worker tries next pass. */
+  async function settlePayment(o: QrOrderRow, p0: GatewayPayment, via: { method: string; path: string } & Partial<RequestMeta>): Promise<Settled | null> {
+    const p = await take(gatewayOrOff(), p0, o.total);
+    return p.status === "captured" ? settleCapture(o.id, p, via) : null;
+  }
+
   /** What the gateway's webhook says a refund came to. A refund it names that we never sent (or
    *  already finished) changes nothing. */
   async function settleRefund(rzpRefundId: string, rid: string | undefined, outcome: "processed" | "failed", via: { method: string; path: string }): Promise<boolean> {
@@ -302,6 +330,7 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
 
   return {
     settleCapture,
+    settlePayment,
 
     // ---- the customer's side
 
@@ -428,15 +457,8 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
       try {
         p = await gw.fetchPayment(body.razorpay_payment_id);
         if (p.orderId !== o.rzpOrderId) throw new ValidationError(`This payment is not for order ${o.id}.`);
-        if (p.status === "authorized") {
-          if (p.amountPaise !== paise(o.total)) throw new RuleError("The payment does not match this order - it will be released back to you.");
-          try { p = await gw.capture(p.id, p.amountPaise); } catch (e) {
-            // Captured by somebody else in the meantime (the gateway's own auto-capture, a webhook
-            // path): the payment as it now stands is the answer, not the refusal.
-            if (!(e instanceof GatewayError)) throw e;
-            p = await gw.fetchPayment(p.id);
-          }
-        }
+        if (p.status === "authorized" && p.amountPaise !== paise(o.total)) throw new RuleError("The payment does not match this order - it will be released back to you.");
+        p = await take(gw, p, o.total);
       } catch (e) {
         if (e instanceof GatewayError) throw new NotReadyError(VERIFY_LATER, e);
         throw e;
@@ -473,11 +495,21 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
       try { body = JSON.parse(raw.toString("utf8")) as WebhookBody; } catch { throw new ValidationError("The webhook body is not JSON."); }
       if (eventId && await qrRepo.webhookSeen(db, eventId)) return { ok: true, duplicate: true };
       const event = typeof body?.event === "string" ? body.event : "";
-      if (event === "payment.captured" || event === "order.paid") {
+      if (event === "payment.captured" || event === "order.paid" || event === "payment.authorized") {
+        // `payment.authorized` matters when the account does not capture on its own and the phone
+        // never came back to verify: the capture happens here, with no transaction open.
         const p = paymentOf(body.payload?.payment?.entity);
         const order = p?.orderId ? await qrRepo.orderByRzpOrder(db, p.orderId) : undefined;
-        // A Z closing the register this instant answers 503, and the gateway delivers again.
-        if (p && order && p.status === "captured") await notYet(settleCapture(order.id, p, via), "The register is being closed - deliver this again.");
+        // A gateway that cannot be reached, or a Z closing the register this instant, answers 503,
+        // and the gateway delivers again.
+        if (p && order && (p.status === "captured" || p.status === "authorized")) {
+          try {
+            await notYet(settlePayment(order, p, via), "The register is being closed - deliver this again.");
+          } catch (e) {
+            if (e instanceof GatewayError) throw new NotReadyError("The payment gateway could not be asked about this payment - deliver this again.", e);
+            throw e;
+          }
+        }
       } else if (event === "refund.processed" || event === "refund.failed") {
         const r = body.payload?.refund?.entity;
         if (r && typeof r.id === "string") {

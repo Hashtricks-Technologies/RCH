@@ -3023,10 +3023,17 @@ keeps the strict one.
      already reaches the API with it, and the K8s ingress sends `/api` to the API the same way.
    - **Secret:** a long random string of your own (`openssl rand -hex 32`). This is
      `RAZORPAY_WEBHOOK_SECRET`. It is not the key secret.
-   - **Active events:** `payment.captured`, `order.paid`, `refund.processed`, `refund.failed`.
-     Nothing else - the API acknowledges an event it does not use and does nothing with it.
-4. Put the three values on the box, then redeploy (§19.3).
-5. Prove it end to end: print a code's poster (§19.4), scan it, order one item, pay with Razorpay's
+   - **Active events:** `payment.authorized`, `payment.captured`, `order.paid`, `refund.processed`,
+     `refund.failed`. Nothing else - the API acknowledges an event it does not use and does nothing
+     with it.
+4. **Account & Settings → Payment capture → Automatic**, with the shortest capture window offered.
+   The payment is then taken by Razorpay itself the moment it is authorised, whatever happens to the
+   customer's phone. RCH captures an authorised payment too (on the phone's verify, on a
+   `payment.authorized` webhook, and on the worker's reconcile pass, §19.5) - those are the
+   backstop, not the plan. A payment left authorised and never captured is released back to the
+   customer by Razorpay after a few days, and no bill is made.
+5. Put the three values on the box, then redeploy (§19.3).
+6. Prove it end to end: print a code's poster (§19.4), scan it, order one item, pay with Razorpay's
    test UPI id `success@razorpay` or a test card, and check the order reaches the counter's QR
    orders screen as **Paid**, the bill carries **Online**, and **Admin → Audit log** shows the paid
    order. In the dashboard, **Webhooks → the webhook → Deliveries** should show 2xx for each event.
