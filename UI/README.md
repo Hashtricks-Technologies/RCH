@@ -167,9 +167,14 @@ src/
 an outlet: the outlet's menu at the till's prices, a cart, name and phone (and a bed or seat on a
 "deliver" code), and Pay through Razorpay. After paying it moves to `/order/<token>/o/<id>#k=<secret>`,
 which shows the order number large, the status as it moves (asked every 5 s while on screen, every
-15 s after ten minutes, never while the tab is hidden, and not at all once the order is done), and a
-printable GST receipt. The secret stays in the URL's fragment, which no server sees, and the phone
-remembers the last order in `localStorage` so a reload still works. It never calls `restore()` and
+15 s after ten minutes, never while the tab is hidden; every 15 s while a refund is on its way; once a
+minute for two hours after hand-over, so a same-day void still reaches the phone), and a printable GST
+receipt that prints dark on white from a phone in dark mode. The secret stays in the URL's fragment,
+which no server sees, and the phone remembers the last order in `localStorage` so a reload still works -
+and so the menu can offer it back ("Your order QO-… - see its status") until it is dismissed, replaced
+by a new order, or finished and a day old. The menu is read again every minute and on returning to the
+tab; the phone's Back closes the checkout sheet; and Pay never stays locked if the payment page fails to
+open, is declined, or never answers. It never calls `restore()` and
 never opens the event stream - a customer has no session - and it has its own store
 (`store/publicOrder.ts`), so none of the staff app's code or styles reach the phone.
 
@@ -383,7 +388,8 @@ spot, Active or Off, when each was created and last regenerated (IST). A new cod
 "Table 4", and a mode; the server numbers it and draws its token. Each row edits its label and mode in
 place, is switched off and back on (never deleted - an order names the code it came from), is regenerated
 behind a second press (every poster already printed for it stops working), downloads its A5 poster, and
-copies its ordering link. Below the table, the outlet's ordering hours: one window per weekday in IST,
+copies its ordering link. Opened on an address that is not https, or on localhost or a bare IP, the tab
+warns that posters printed there will point to that address. Below the table, the outlet's ordering hours: one window per weekday in IST,
 Monday to Sunday, each switched on with its opening and closing time or left closed, saved as one week.
 
 **Roles, on `/admin`.** The admin-flagged account's Roles tab lists every role - its name, the desk

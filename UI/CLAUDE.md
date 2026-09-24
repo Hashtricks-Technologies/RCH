@@ -131,7 +131,7 @@ manager's Product On / Off screen (`roles/manager/Availability.tsx`, key `avail`
 from - a ticket, a statement, an audit entry - and is the store's single `drawer` slot. `ui/Modal.tsx` is a
 dialog box in the middle of the screen for one short form with two answers (the grid's save confirmation in
 `roles/manager/CounterPrices.tsx`, and the hidden `NewListDialog` in `roles/manager/Prices.tsx`); it is owned by the screen that raised it, not by the store.
-Both get the keyboard half of `aria-modal="true"` from `ui/focus.ts`'s `useFocusTrap(ref, at, titleId)` -
+Both get the keyboard half of `aria-modal="true"` from `ui/focus.ts`'s `useFocusTrap(ref, at, titleId, active = true)` -
 focus in on open, wrapped at both ends, and handed back on unmount - so neither implements it again.
 
 **Drawers are a bare registry** in `src/drawers.ts`:
@@ -219,7 +219,7 @@ try {
   instants as sent - the screen prints them with `fromWireTime` and sorts on `paidAt ?? at`),
   `qrPaused` and `qrHours` all come from the one `GET /qr-orders`, and `qrOrdersFailed` marks a
   failed load for the screen's outage line. The shell loads it as it mounts for whoever holds
-  `qr_orders`, and `roles/counter/QrOrders.tsx` again as it opens. `setQrOrderStatus(id, to)`,
+  `qr_orders`, and `roles/counter/QrOrders.tsx` again as it opens (its hours line re-reads the clock once a minute). `setQrOrderStatus(id, to)`,
   `setQrPause(loc, paused)` and `retryQrRefund(id)` are the ordinary `Promise<boolean>` writes.
   The screen's lanes are New (`Paid`, `.qr-new`), Preparing and Ready / Out for delivery, oldest
   first, with today's Collected / Delivered / Refunded / Voided folded under Done; each card's one
@@ -306,16 +306,39 @@ try {
   Pay only (`loadRazorpay`). The checkout's handler forwards its three fields to `verifyQrPayment` with
   the order's `secret`, and the page moves to the status screen whether or not that verify answered -
   the webhook settles a payment the browser could not confirm.
+- **Pay never stays locked.** A Razorpay constructor or `open()` that throws unlocks it with
+  `CHECKOUT_FAILED`. A `payment.failed` is kept as a note (`paymentFailedNote`) while Razorpay's sheet
+  stays open for a retry, and is what `ondismiss` says when it closes. A backstop timer
+  (`CHECKOUT_BACKSTOP_MS`, the checkout's own 900 s timeout plus 30 s) clears `paying` if the gateway
+  never calls back.
+- **The checkout sheet** pushes a history entry on the same address as it opens, so a phone's Back closes
+  it rather than leaving the menu; closing it any other way takes the entry back off (a Back queued a tick
+  later, cancelled by a StrictMode remount), a Back while paying puts it back, and `go()` replaces it when
+  the page moves on from under the sheet (`isSheetEntry`). `OrderApp` scrolls to the top only on a
+  `popstate` that changes the path. The body does not scroll while the sheet is open, and its focus trap
+  is off (`active` false) while paying, because Razorpay's frame lives outside it.
+- **The menu is read again** every `MENU_REFRESH_MS` (60 s) while visible and at once on coming back to
+  the tab, never while placing or paying; `loadMenu` reconciles the cart as always. The closed banner
+  prints the server's `why` as sent and adds today's hours only when the clock is outside them. An
+  unavailable item's pill reads Unavailable beside the server's own reason.
 - **The secret lives in the fragment** (`/order/<token>/o/<id>#k=<secret>`, `statusUrl`); only the API
-  read carries it, as `?k=`. `{ orderId, secret, token }` is remembered in `localStorage` (every access
-  in try/catch) so the status page still opens without the fragment on this phone.
-- **The status poll** (`poll(id, secret)`, returning its stop) asks every 5 s while the tab is visible,
-  every 15 s once ten minutes have passed, nothing while hidden (it asks at once on `visibilitychange`),
-  and stops at `Collected`, `Delivered`, `Refunded`, `Expired`, `Voided` or an unknown order.
+  read carries it, as `?k=`. One `Remembered` entry, `{ orderId, secret, token, at, status, dismissed? }`,
+  is kept in `localStorage` (every access in try/catch) so the status page still opens without the
+  fragment on this phone; each status read is noted into it, and a new order replaces it.
+- **A lost order is offered back.** The menu reads `rememberedFor(token)` as it mounts and shows "Your
+  order <id> - see its status", linking to `statusUrl`. Dismissing it (`dismissRemembered`) sticks; the
+  entry is forgotten once the order is finished (or still awaiting payment) and a day old.
+- **The status poll** (`poll(id, secret)`, returning its stop; each wait is `pollDelay`) asks every 5 s
+  while the tab is visible, every 15 s once ten minutes have passed, nothing while hidden (it asks at once
+  on `visibilitychange`, unless there is nothing left to hear). A refund `Pending` or `Sent` keeps it
+  asking every 15 s whatever the status; after `Collected` or `Delivered` it asks once a minute for two
+  hours, so a same-day void reaches the phone. It stops at `Refunded`, `Expired` or `Voided` with no refund
+  in flight, and at an unknown order.
 - **Every price on it is a preview.** The server quotes each line again on placing and on capture;
   the receipt prints what it answered. A refusal is shown verbatim in the sheet, and what was typed stays.
 - Styles are `pages/public/public.css` (`.qo-` prefixed), imported by `OrderApp` only: phone first, a
-  560 px column from 640 px, 44 px targets, and a print block that leaves the receipt. It uses no
+  560 px column from 640 px, 44 px targets, and a print block that leaves the receipt - and declares
+  again, in light, every token the dark block changes, so a dark-mode phone prints dark ink on white. It uses no
   `kit.tsx` component, because the kit reads the staff registries.
   - **Its palette is its own and scoped to `.qo`.** It imports `tokens.css`, then re-declares the shared
     token names (`--ground`, `--ink`, `--accent`, …) under `.qo` - amber `#E07B00` on warm cream, dark
@@ -331,7 +354,8 @@ try {
     sheet's foot.
 - Tests: `public-order.test.ts` (the store on the wire, the caps, nonce reuse, the stubbed Razorpay,
   verify, the poll under fake timers, storage that throws, the addresses) and
-  `public-order-screens.test.tsx` (the menu, the sheet, every status), sharing `publicFixture.ts`.
+  `public-order-screens.test.tsx` (the menu, the recovery banner, the refresh, the sheet's Back, scroll lock
+  and focus, every status, and the print tokens read from `public.css` on disk), sharing `publicFixture.ts`.
 
 ## src/api
 
@@ -479,7 +503,9 @@ a background refresh and must not blank the screen.
     portrait page (the hospital, the outlet, the code at error correction M, the label, "Scan to order and
     pay online", the mode's line, the link) as `QR-<outlet>-<label>.pdf`, importing jsPDF and `qrcode` at the
     press. `qrcode` is CommonJS and the production chunk exports only a default, so `loadQr` takes
-    `default ?? namespace`. `qrOrderUrl(token)` is `${origin}/order/<token>` - print from the live domain.
+    `default ?? namespace`. `qrOrderUrl(token)` is `${origin}` + `menuPath(token)` (the token URL-encoded as the page's own address) - print
+    from the live domain: `posterOriginWarning()` is the sentence the QR codes tab shows in an Alert when the page is
+    open on an address that is not https, or is localhost or a bare IP. The download still works.
   - `GrnPdfButtons({ po, named? })` (`ui/GrnPdf.tsx`) draws nothing until the order has a GRN. A delivery is
     the GRN rows sharing one instant and delivery note (`grnInstalments`); with more than one it offers each
     and the whole order. "To date" and "pending" are read as of each delivery, so an old GRN still says what
