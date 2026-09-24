@@ -58,7 +58,7 @@ export type BillLineRow = typeof billLines.$inferSelect;
 /** The operator travels as a name and a colour, never an id: a bill is read on a screen, and
  *  the till that wrote it only ever shows as the badge beside the number. Lines arrive already
  *  in `line_no` order - the caller owns the query. */
-export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: string; colour: string }): Bill => strip({
+export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: string; colour: string }, refund?: Bill["refund"]): Bill => strip({
   no: b.no, loc: b.loc as Bill["loc"], opr: operator.name, oprCol: operator.colour,
   tot: b.total, tax: b.tax, t: iso(b.at), pay: b.tender as Bill["pay"],
   lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate })),
@@ -75,9 +75,17 @@ export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: s
   customerName: b.customerName ?? undefined,
   customerPhone: b.customerPhone ?? undefined,
   // ---- QR ordering. Dropped by `strip` on a till's bill, so it stays byte for byte what it was.
-  // The refund behind a voided QR bill is joined in by the reader that has it (Phase 2's).
+  // `refund` is the money going back behind a voided QR bill, joined in by the caller that read
+  // it (`readBills`, the void itself) - null on a QR bill with none, absent on a till's.
   src: b.source === "qr" ? "qr" : undefined,
   qo: b.qrOrderId ?? undefined,
+  refund: b.source === "qr" ? refund ?? null : undefined,
+});
+
+/** A refund as the bill drawer prints it beside a voided QR bill: its pill, the rupees, and the
+ *  gateway's last answer where a send failed. */
+export const billRefundOf = (r: { id: string; status: NonNullable<Bill["refund"]>["status"]; amount: number; lastError: string | null }): NonNullable<Bill["refund"]> => ({
+  id: r.id, status: r.status, amount: r.amount, ...(r.lastError ? { lastError: r.lastError } : {}),
 });
 
 /** What the operator calls each kind of payer. A thin view on `PARTY_LABEL` (`@rch/domain`),

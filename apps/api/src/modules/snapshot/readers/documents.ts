@@ -5,7 +5,7 @@ import type { Reader } from "../../../lib/db.js";
 import { readRateChanges } from "../../../lib/contract-rates.js";
 import { readHistories } from "../../../lib/history.js";
 import { iso } from "../../../lib/time.js";
-import { toWireBill } from "../../../lib/wire.js";
+import { billRefundOf, toWireBill } from "../../../lib/wire.js";
 
 const strip = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 const groupBy = <T, K extends string>(rows: T[], key: (r: T) => K): Map<K, T[]> => { const m = new Map<K, T[]>(); for (const r of rows) { const k = key(r); (m.get(k) ?? m.set(k, []).get(k)!).push(r); } return m; };
@@ -119,8 +119,18 @@ export async function readBills(db: Reader, sinceDays: number, pre?: UserNames):
   if (heads.length === 0) return [];
   const lines = await db.select().from(s.billLines).where(inArray(s.billLines.billNo, heads.map((h) => h.no))).orderBy(asc(s.billLines.lineNo));
   const by = groupBy(lines, (l) => l.billNo);
+  // The refund behind each voided QR bill - the newest per bill. Only asked when the window has a
+  // QR bill at all, so a hospital that never switched QR ordering on pays nothing for it.
+  const qr = heads.filter((h) => h.source === "qr").map((h) => h.no);
+  const refunds = new Map<string, NonNullable<Bill["refund"]>>();
+  if (qr.length > 0) {
+    for (const r of await db.select().from(s.paymentRefunds).where(inArray(s.paymentRefunds.billNo, qr))
+      .orderBy(asc(s.paymentRefunds.createdAt), asc(s.paymentRefunds.id))) {
+      if (r.billNo) refunds.set(r.billNo, billRefundOf(r));
+    }
+  }
   // One mapping for a bill however it reaches the wire: POST /bills answers with the same shape.
-  return heads.map((b) => toWireBill(b, by.get(b.no) ?? [], { name: names.get(b.operatorId)?.name ?? b.operatorId, colour: names.get(b.operatorId)?.colour ?? "#64748B" }));
+  return heads.map((b) => toWireBill(b, by.get(b.no) ?? [], { name: names.get(b.operatorId)?.name ?? b.operatorId, colour: names.get(b.operatorId)?.colour ?? "#64748B" }, refunds.get(b.no)));
 }
 
 export async function readVendors(db: Reader): Promise<Vendor[]> {

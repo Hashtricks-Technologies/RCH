@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import type { QrRefund, RefundReason, RefundStatus } from "@rch/contract";
 import { REFUND_TRANSITIONS } from "@rch/domain";
 import { paymentRefunds } from "../db/schema/index.js";
@@ -69,13 +69,41 @@ export async function moveRefund(tx: Tx, id: string, to: RefundStatus, patch: { 
 export const REFUND_BACKOFF_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000];
 export const REFUND_MAX_ATTEMPTS = REFUND_BACKOFF_MS.length + 1;
 
+const backoffAfter = (attempts: number): number => REFUND_BACKOFF_MS[Math.min(attempts, REFUND_BACKOFF_MS.length) - 1];
+
 /**
- * A send that did not go through: count the attempt and put the refund back in the queue after
- * its backoff - or, on the last attempt or a refusal the gateway will repeat (`final`), fail it.
+ * The worker's claim: the Pending refunds due by `now`, oldest first, taken `for update skip
+ * locked` so two pods (or two ticks) never send the same one. Each claimed refund has its attempt
+ * counted and its next attempt put off by that attempt's backoff before the caller's transaction
+ * commits - so the send happens with no lock held, and a worker that dies mid-send leaves a refund
+ * that simply comes due again later, one attempt spent, rather than one stuck or sent twice.
  */
-export async function deferRefund(tx: Tx, id: string, e: { error: string; final?: boolean; at?: Date }): Promise<RefundRow> {
+export async function claimDueRefunds(tx: Tx, now: Date, limit: number): Promise<RefundRow[]> {
+  const due = await tx.select().from(paymentRefunds)
+    .where(and(eq(paymentRefunds.status, "Pending"), lte(paymentRefunds.nextAttemptAt, now)))
+    .orderBy(asc(paymentRefunds.nextAttemptAt), asc(paymentRefunds.id)).limit(limit)
+    .for("update", { skipLocked: true });
+  const out: RefundRow[] = [];
+  for (const r of due) {
+    const attempts = r.attempts + 1;
+    const [claimed] = await tx.update(paymentRefunds)
+      .set({ attempts, nextAttemptAt: new Date(now.getTime() + backoffAfter(attempts)), updatedAt: now })
+      .where(eq(paymentRefunds.id, r.id)).returning();
+    out.push(claimed);
+  }
+  return out;
+}
+
+/**
+ * A send that did not go through: keep the gateway's answer, and - on the last attempt or a
+ * refusal the gateway will repeat (`final`) - fail it. `counted` is the worker's case: its claim
+ * already counted this attempt and set when the next one is due, so only the answer and the
+ * verdict are left to write. Without it (a send decided some other way) the attempt is counted
+ * here and the refund put back in the queue after its backoff.
+ */
+export async function deferRefund(tx: Tx, id: string, e: { error: string; final?: boolean; at?: Date; counted?: boolean }): Promise<RefundRow> {
   const row = await refundForUpdate(tx, id);
-  const attempts = row.attempts + 1;
+  const attempts = e.counted ? row.attempts : row.attempts + 1;
   const at = e.at ?? new Date();
   if (e.final || attempts >= REFUND_MAX_ATTEMPTS) {
     assertTransition(REFUND_TRANSITIONS, row.status, "Failed", `Refund ${id}`);
@@ -84,7 +112,8 @@ export async function deferRefund(tx: Tx, id: string, e: { error: string; final?
     return failed;
   }
   const [later] = await tx.update(paymentRefunds).set({
-    attempts, lastError: e.error, updatedAt: at, nextAttemptAt: new Date(at.getTime() + REFUND_BACKOFF_MS[attempts - 1]),
+    attempts, lastError: e.error, updatedAt: at,
+    ...(e.counted ? {} : { nextAttemptAt: new Date(at.getTime() + backoffAfter(attempts)) }),
   }).where(eq(paymentRefunds.id, id)).returning();
   return later;
 }

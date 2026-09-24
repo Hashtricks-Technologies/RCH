@@ -159,7 +159,9 @@ export const BillSchema = z.object({
   // `src` is "qr" on a bill a QR order's capture raised, `qo` the order it came from, and
   // `refund` the money going back to the customer once such a bill is voided.
   src: BillSourceSchema.optional(), qo: z.string().optional(),
-  refund: z.strictObject({ id: z.string(), status: RefundStatusSchema }).nullable().optional(),
+  // `amount` and `lastError` (the gateway's last answer on a failed send) are what the bill drawer
+  // prints beside the refund's pill; optional so a reader that has only the id and status still fits.
+  refund: z.strictObject({ id: z.string(), status: RefundStatusSchema, amount: Money.optional(), lastError: z.string().optional() }).nullable().optional(),
 });
 export const DraftLineSchema = z.object({ it: z.string(), qty: Qty });
 export const AvailabilitySchema = z.object({ ok: z.boolean(), mode: z.enum(["Manual", "Stock"]), why: z.string().optional(), left: z.string().optional() });
