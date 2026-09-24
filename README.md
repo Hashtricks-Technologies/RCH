@@ -269,8 +269,8 @@ Run one package with `pnpm --filter @rch/ui test` (or `@rch/api`, `@rch/audit`, 
 and UI suites both pin `TZ=UTC`, so timezone-sensitive assertions prove the same thing on every
 machine.
 
-Each package's `test` script carries a **coverage floor** - UI lines 83 / branches 67, `apps/api`
-95 / 82, `apps/audit` 97 / 89, `packages/domain` 99 / 94, `packages/contract` lines 96 - set a
+Each package's `test` script carries a **coverage floor** - UI lines 84 / branches 68, `apps/api`
+95 / 82, `apps/audit` 97 / 89, `packages/domain` 99 / 94, `packages/contract` lines 97 - set a
 point or two under what that suite measures today, so deleting a test or shipping an untested screen fails rather than
 drifting. Running one file (`npx vitest run src/__tests__/writes.test.ts` from inside the package)
 is deliberately not judged against it. **Lint is a zero-warning gate** in the same spirit: every

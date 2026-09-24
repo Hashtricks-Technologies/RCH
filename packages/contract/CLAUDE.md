@@ -12,7 +12,7 @@ There is no build step. `package.json` exports the TypeScript source directly: `
 `src/index.ts`, and `@rch/contract/fixtures` to `src/fixtures/index.ts`.
 
 ```bash
-pnpm --filter @rch/contract test        # routes.test.ts, audit.test.ts, schemas/*.test.ts, fixtures.test.ts (floor: lines 96)
+pnpm --filter @rch/contract test        # routes.test.ts, audit.test.ts, schemas/*.test.ts, fixtures.test.ts (floor: lines 97)
 pnpm --filter @rch/contract typecheck
 pnpm --filter @rch/contract lint
 ```

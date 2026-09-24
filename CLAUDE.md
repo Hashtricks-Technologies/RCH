@@ -89,7 +89,7 @@ Every change must pass all of it. Four things trip people up:
 - **Lint is zero-warning.** Every package's `lint` is `oxlint --max-warnings 0`, so a warning fails the job
   just like an error does.
 - **Coverage floors are part of `test`.** The floors are UI lines 84 / branches 68, `apps/api` 95 / 82,
-  `apps/audit` 97 / 89, `packages/domain` 99 / 94, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
+  `apps/audit` 97 / 89, `packages/domain` 99 / 94, and `packages/contract` lines 97. Raise a floor when the real figure rises. Never
   lower one to turn a run green. The `--coverage` flag lives on each `test` script, which is why a single-file
   run isn't judged against the floor.
 - **`test` is uncached in `turbo.json`.** Turbo hashes source files, not the database, so a cache hit could
