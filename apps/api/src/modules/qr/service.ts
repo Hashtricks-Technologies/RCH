@@ -581,9 +581,10 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
     async setPause(userId: string, loc: string, paused: boolean): Promise<WriteResponse<QrPauseResult>> {
       return withTransaction(db, async (tx) => {
         const row = await lockOutlet(tx, loc);
-        assertRule(row.active, `Refused - ${row.name} is closed`);
+        // Read and recorded before any rule, so a refused switch carries its before too.
         const was = await qrRepo.pausedForUpdate(tx, loc);
         auditBefore({ paused: was });
+        assertRule(row.active, `Refused - ${row.name} is closed`);
         assertRule(was !== paused, `QR ordering at ${row.name} is already ${paused ? "paused" : "on"}`);
         await qrRepo.setPaused(tx, loc, paused, userId, new Date());
         await emitChanged(tx, ["qrOrders"]);

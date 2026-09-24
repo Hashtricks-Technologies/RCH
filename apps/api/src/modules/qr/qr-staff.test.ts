@@ -143,6 +143,20 @@ describe("PUT /outlets/:loc/qr-pause - the counter's switch", () => {
     expect((await as("u1", "PUT", "/outlets/coffee/qr-pause", { paused: false })).json().message).toBe("QR ordering at Coffee Shop is back on");
   });
 
+  it("refuses a closed outlet's switch, with the before on the refusal's audit event", async () => {
+    await app.db.update(s.locations).set({ active: false }).where(eq(s.locations.key, "coffee"));
+    try {
+      const m = await mark();
+      const r = await as("u1", "PUT", "/outlets/coffee/qr-pause", { paused: true });
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe("Refused - Coffee Shop is closed");
+      await app.auditSettled();
+      expect((await eventsSince(m)).find((e) => e.action === "setQrPause")).toMatchObject({ outcome: "refused", before: { paused: false } });
+    } finally {
+      await app.db.update(s.locations).set({ active: true }).where(eq(s.locations.key, "coffee"));
+    }
+  });
+
   it("refuses another outlet's switch", async () => {
     expect((await as("u6", "PUT", "/outlets/coffee/qr-pause", { paused: true })).statusCode).toBe(403);
   });
