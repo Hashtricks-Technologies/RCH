@@ -64,6 +64,17 @@ check '.services.audit.depends_on["audit-migrate"].condition == "service_complet
 check '.services.api.depends_on.migrate.condition == "service_completed_successfully"' "api must wait for migrate"
 check '.services.caddy.depends_on | has("audit") and has("api") and has("ui")' "caddy must depend on ui, api and audit"
 check '.services["audit-migrate"].command == ["dist/cli/migrate.mjs"]' "audit-migrate must run dist/cli/migrate.mjs"
+# QR ordering's Razorpay keys are optional: the render above sets none of them and must still pass,
+# the API must carry all three (empty) so .env alone switches online ordering on, and neither audit
+# container may see a payment secret. The worker interval defaults to a running worker, never 0.
+for k in RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET; do
+  check ".services.api.environment | has(\"$k\")" "api must carry $k"
+  for s in audit audit-migrate; do
+    check ".services[\"$s\"].environment | has(\"$k\") | not" "$s must not carry $k"
+  done
+done
+check '.services.api.environment.RAZORPAY_KEY_SECRET == ""' "an unset RAZORPAY_KEY_SECRET must render empty, not fail"
+check '.services.api.environment.QR_WORKER_INTERVAL_MS == "30000"' "an unset QR_WORKER_INTERVAL_MS must default to 30000"
 
 # The Caddyfile, adapted by the same Caddy image the box runs: it must parse, and the routes must be
 # tried in the order the site depends on - the audit reads before the API's `/api/*`, and both

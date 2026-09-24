@@ -33,6 +33,9 @@ api:
     IMAGE_STORE: s3
     AWS_REGION: ap-south-1
     IMAGE_BUCKET: ""      # FILL per environment
+    # QR ordering's tunables (RUNBOOK §19) are left to config.ts's defaults - QR_ORDER_MAX_RUPEES
+    # 5000, QR_ORDER_TTL_MIN 30, QR_WORKER_INTERVAL_MS 30000. Set one here only to change it; an
+    # interval of 0 stops the worker that expires unpaid orders and sends refunds.
     # V8 sizes its old space from the machine's memory, not the cgroup's, so without a ceiling
     # the kernel OOM-kills the pod before Node ever decides a collection is due. 70% of
     # api.resources.limits.memory above (512Mi → 358), leaving the rest for the heap's own
@@ -98,12 +101,15 @@ secrets:
   # the passwords are chosen here and nowhere else.
   # SEED_PASSWORD is the password the six seeded accounts start on; apps/api/src/config.ts has no
   # default for it, so the api container will not start until it is set.
-  values: { DATABASE_URL: "", MIGRATE_DATABASE_URL: "", AUDIT_DATABASE_URL: "", JWT_PRIVATE_KEY: "", JWT_PUBLIC_KEY: "", JWT_PREVIOUS_PUBLIC_KEY: "", SEED_PASSWORD: "" }
+  # RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are optional (RUNBOOK §19):
+  # left empty they are kept out of the Secret, and placing a QR order answers 503 until all
+  # three are set. Every other key here but JWT_PREVIOUS_PUBLIC_KEY fails the render when empty.
+  values: { DATABASE_URL: "", MIGRATE_DATABASE_URL: "", AUDIT_DATABASE_URL: "", JWT_PRIVATE_KEY: "", JWT_PUBLIC_KEY: "", JWT_PREVIOUS_PUBLIC_KEY: "", SEED_PASSWORD: "", RAZORPAY_KEY_ID: "", RAZORPAY_KEY_SECRET: "", RAZORPAY_WEBHOOK_SECRET: "" }
   externalSecret:
     enabled: false        # true: sync from AWS Secrets Manager via External Secrets Operator (prod)
     storeName: aws-secrets-manager
     storeKind: ClusterSecretStore
-    remoteKey: rch/prod   # JSON secret with the seven keys above
+    remoteKey: rch/prod   # JSON secret with the seven required keys above, plus the three optional RAZORPAY_* ones
 serviceAccount:
   create: true
   annotations: {}         # eks.amazonaws.com/role-arn for IRSA when the pod itself reads AWS

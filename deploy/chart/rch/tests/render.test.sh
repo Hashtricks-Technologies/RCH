@@ -372,6 +372,26 @@ for key in DATABASE_URL MIGRATE_DATABASE_URL AUDIT_DATABASE_URL JWT_PRIVATE_KEY 
 done
 # ...and the one that may be empty still renders.
 helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set,secrets.values.JWT_PREVIOUS_PUBLIC_KEY=" >/dev/null
+# QR ordering's three Razorpay keys are optional (RUNBOOK §19). Left empty the render passes and
+# keeps them out of the Secret, so their optional secretKeyRefs leave the variable unset rather
+# than an empty string; set, each is in the Secret. The api and its migrate initContainer read
+# them; neither audit container ever does.
+rzp_secret=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set" --show-only templates/secret.yaml)
+refute grep -q 'RAZORPAY_' <<<"$rzp_secret"
+rzp_secret=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set,secrets.values.RAZORPAY_KEY_ID=k,secrets.values.RAZORPAY_KEY_SECRET=s,secrets.values.RAZORPAY_WEBHOOK_SECRET=w" --show-only templates/secret.yaml)
+for k in RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET; do
+  grep -q "^  $k: " <<<"$rzp_secret" || { echo "FAIL: a filled $k must reach the Secret"; exit 1; }
+  grep -q "key: $k, optional: true" <<<"$api_secrets" \
+    || { echo "FAIL: the api container must read $k, optionally"; exit 1; }
+  grep -q "key: $k, optional: true" <<<"$init_secrets" \
+    || { echo "FAIL: the api migrate initContainer must read $k, optionally"; exit 1; }
+done
+refute bash -c 'sed -n "/# Source: rch\/templates\/audit-deployment.yaml/,/^---/p" <<<"$1" | grep -q RAZORPAY_' _ "$out"
+# ...and those four are the only optional keys anywhere: a fifth would be a secret a pod may start
+# without, and every other one is required.
+[ "$(grep -o 'key: [A-Z_]*, optional: true' <<<"$out" | sort -u | sed 's/key: //; s/, optional: true//' | tr '\n' ' ')" \
+  = "JWT_PREVIOUS_PUBLIC_KEY RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET " ] \
+  || { echo "FAIL: the optional secret keys must be exactly JWT_PREVIOUS_PUBLIC_KEY and the three RAZORPAY_* keys"; exit 1; }
 
 # ng-prod is production's alone: staging sets no nodeSelector, so its pods keep landing on the
 # spot node they share with dev, and `with` must render nothing rather than an empty map.

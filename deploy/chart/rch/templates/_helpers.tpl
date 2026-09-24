@@ -20,7 +20,8 @@ read from a ConfigMap, so the pod's checksum/config annotation hashes what the c
 
   rch.apiEnv          the api container                  DATABASE_URL (rch_app), JWT_PRIVATE_KEY,
                                                          JWT_PUBLIC_KEY, JWT_PREVIOUS_PUBLIC_KEY,
-                                                         SEED_PASSWORD
+                                                         SEED_PASSWORD, RAZORPAY_KEY_ID,
+                                                         RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
   rch.apiCliEnv       the api pod's migrate initContainer MIGRATE_DATABASE_URL (rch) + everything
                       and the purge CronJob              rch.apiEnv names
   rch.auditEnv        the audit container                AUDIT_DATABASE_URL (rch_audit),
@@ -41,12 +42,14 @@ produced the Secret is invisible to them. Both secret.yaml and externalsecret.ya
 release resources (no helm.sh/hook annotations) - see those templates for why turning them into
 hooks was tried and reverted.
 
-JWT_PREVIOUS_PUBLIC_KEY is the ONE optional: true key, because it is only populated during a
-key-rotation window; outside of that window the key legitimately does not exist in the Secret.
-Every other key is required, and a pod that cannot find one must fail to start rather than come
-up half-configured - so the `if eq` below names exactly one key. Go's `eq` is variadic (`eq $k "a"
-"b"` is true for either), so adding a second name there silently makes that key optional too;
-render.test.sh asserts SEED_PASSWORD never renders `optional`.
+The optional: true keys are exactly the ones listed in rch.optionalSecretKeys, below.
+JWT_PREVIOUS_PUBLIC_KEY is only populated during a key-rotation window; outside of that window the
+key legitimately does not exist in the Secret. The three RAZORPAY_* keys switch on QR ordering's
+online payment (RUNBOOK §19): a Secret without them is an environment that takes no QR orders, and
+the API answers 503 to placing one rather than refusing to start. Every other key is required, and
+a pod that cannot find one must fail to start rather than come up half-configured - so a key is
+made optional only by naming it in that list, never by widening a comparison. render.test.sh
+asserts SEED_PASSWORD never renders `optional`, and that the list is exactly these four.
 
 SEED_PASSWORD has no default in apps/api/src/config.ts, so the api container will not start
 without it - it is a secret key rather than an api.env entry because it is the password the six
@@ -55,6 +58,7 @@ ever ran the seed. The seed itself is a CLI run by hand inside the container (RU
 part of a rollout; what the env entry buys is that the password is in the Secret rather than in a
 shell history.
 */ -}}
+{{- define "rch.optionalSecretKeys" -}}JWT_PREVIOUS_PUBLIC_KEY RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET{{- end -}}
 {{- define "rch.env" -}}
 - name: NODE_ENV
   value: production
@@ -64,17 +68,18 @@ shell history.
 - name: {{ $k }}
   value: {{ $v | quote }}
 {{- end }}
+{{- $optional := splitList " " (include "rch.optionalSecretKeys" .root) }}
 {{- range $k := .keys }}
 - name: {{ $k }}
   valueFrom:
-    secretKeyRef: { name: {{ include "rch.secretName" $.root }}, key: {{ $k }}{{ if eq $k "JWT_PREVIOUS_PUBLIC_KEY" }}, optional: true{{ end }} }
+    secretKeyRef: { name: {{ include "rch.secretName" $.root }}, key: {{ $k }}{{ if has $k $optional }}, optional: true{{ end }} }
 {{- end }}
 {{- end -}}
 {{- define "rch.apiEnv" -}}
-{{ include "rch.env" (dict "root" . "port" 3000 "env" .Values.api.env "keys" (list "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD")) }}
+{{ include "rch.env" (dict "root" . "port" 3000 "env" .Values.api.env "keys" (list "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD" "RAZORPAY_KEY_ID" "RAZORPAY_KEY_SECRET" "RAZORPAY_WEBHOOK_SECRET")) }}
 {{- end -}}
 {{- define "rch.apiCliEnv" -}}
-{{ include "rch.env" (dict "root" . "port" 3000 "env" .Values.api.env "keys" (list "MIGRATE_DATABASE_URL" "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD")) }}
+{{ include "rch.env" (dict "root" . "port" 3000 "env" .Values.api.env "keys" (list "MIGRATE_DATABASE_URL" "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD" "RAZORPAY_KEY_ID" "RAZORPAY_KEY_SECRET" "RAZORPAY_WEBHOOK_SECRET")) }}
 {{- end -}}
 {{- define "rch.auditEnv" -}}
 {{ include "rch.env" (dict "root" . "port" 3100 "env" .Values.audit.env "keys" (list "AUDIT_DATABASE_URL" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY")) }}

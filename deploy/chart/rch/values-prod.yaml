@@ -100,7 +100,7 @@ secrets:
     enabled: true
     storeName: aws-secrets-manager
     storeKind: ClusterSecretStore
-    remoteKey: rch/prod                           # a JSON secret with the seven keys (both role URLs, MIGRATE_DATABASE_URL and SEED_PASSWORD included)
+    remoteKey: rch/prod                           # a JSON secret with the seven keys (both role URLs, MIGRATE_DATABASE_URL and SEED_PASSWORD included), plus the three optional RAZORPAY_* keys for QR ordering
 serviceAccount:
   create: true
   annotations: {}                                 # FILL if the pod itself reads Secrets Manager (IRSA)
