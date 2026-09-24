@@ -62,9 +62,11 @@ export default fp(async (app) => {
   // signed by the gateway rather than by a token, and the signature is over the raw bytes - so it
   // lives in a scope of its own whose JSON parser hands the handler the untouched buffer, and no
   // other route's body parsing changes. 401 on a signature that does not match, 400 on a body
-  // that is not JSON, 503 while the gateway is not configured, 200 for everything else - an event
-  // the API does not act on included - and a 5xx otherwise only when the database fails, which is
-  // the one case the gateway should redeliver.
+  // that is not JSON, 415 (Fastify's own) on a content type other than application/json, 503
+  // while the gateway is not configured or while a payment cannot be settled yet (the gateway did
+  // not answer a capture, a Z is closing the register), 200 for everything else - an event the
+  // API does not act on included - and a 5xx otherwise only when the database fails. Every 5xx is
+  // a case the gateway should redeliver.
   await app.register(async (scope) => {
     scope.removeAllContentTypeParsers();
     scope.addContentTypeParser("application/json", { parseAs: "buffer" }, (_req, body, done) => { done(null, body); });

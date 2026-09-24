@@ -3050,8 +3050,12 @@ keeps the strict one.
    order. In the dashboard, **Webhooks → the webhook → Deliveries** should show 2xx for each event.
    The API answers a delivery **200** (an event it does not use and a repeated delivery included),
    **401** when the signature does not match - a wrong `RAZORPAY_WEBHOOK_SECRET`, most likely -
-   **400** for a body that is not JSON, and **503** while the three keys are not set. It answers a
-   5xx otherwise only when its database fails, which is the one case Razorpay should redeliver.
+   **400** for a signed body that is not JSON, **415** for a delivery whose `Content-Type` is not
+   `application/json` (Razorpay always sends JSON; a 415 is something else knocking), and **503**
+   while the three keys are not set. It also answers **503** when it could not settle a payment
+   yet - the payment gateway did not answer its capture, or a Z was closing that outlet's register
+   at that instant - and otherwise a 5xx only when its database fails: each is a case Razorpay
+   should, and does, redeliver.
 
 **Locally**, the same test keys go in `.env`. Razorpay cannot reach `localhost`, so no webhook
 arrives; the browser's own verify call settles the payment on its own, which is enough to work on
@@ -3130,7 +3134,7 @@ had their money back. The bill drawer shows a red refund pill on that bill. To r
 
 1. Read the reason on the pill (Razorpay's last answer, stored on the refund), and fix what it names - top up the
    balance in the dashboard, or put back the keys that made the payment.
-2. The manager (anyone holding *Void a bill*) opens the bill and presses **Retry** beside the pill
+2. The manager (anyone holding *Void a bill*) opens the bill and presses **Retry refund** beside the pill
    (`POST /qr-refunds/:id/retry`). That puts it back to Pending with a fresh set of attempts; the
    next worker pass sends it.
 3. If it fails again, refund it by hand in the dashboard (below), and write down the bill number and
@@ -3155,8 +3159,8 @@ session, less voided ones. Sessions run Z-to-Z, not midnight to midnight, so mat
 opening and closing times, not on a calendar day.
 
 Razorpay settles to the bank about two working days after capture, as one amount net of its fee and
-the GST on the fee, less refunds processed in the window. Reconcile from **Reports → Settlement
-recon** (or the settlement's own breakup) against each Z:
+the GST on the fee, less refunds processed in the window. Reconcile from the settlement reports in
+the Razorpay dashboard (each settlement's breakup of payments, refunds and fees) against each Z:
 
 - Every captured payment in the window should be a QR bill in some Z's Online total - except those
   refunded as **unfulfillable** or **duplicate**, which never became bills and appear in Razorpay as

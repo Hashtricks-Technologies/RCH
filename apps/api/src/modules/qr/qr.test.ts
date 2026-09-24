@@ -508,6 +508,8 @@ describe(`POST ${RAZORPAY_WEBHOOK_PATH} - the gateway's webhook`, () => {
     expect(unsigned.statusCode).toBe(401);
     const junk = await webhook(null, { raw: "{not json" });
     expect(junk.statusCode).toBe(400);
+    const text = await app.inject({ method: "POST", url: API_PREFIX + RAZORPAY_WEBHOOK_PATH, payload: "{}", headers: { "content-type": "text/plain", "x-razorpay-signature": fake.signWebhook("{}") } });
+    expect(text.statusCode).toBe(415);
   });
 
   it("settles a payment on its own - no verify from the browser at all", async () => {
