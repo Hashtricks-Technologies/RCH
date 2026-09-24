@@ -221,6 +221,23 @@ if [ -n "$manager_hits" ]; then
   echo "$manager_hits" >&2
 fi
 
+# ---------------------------------------------------------------------------
+# 8) A refund has one writer. payment_refunds - money promised back to a QR customer - is
+#    inserted, updated and deleted only by apps/api/src/lib/refunds.ts, which queues each one
+#    under its order's lock and moves it only along REFUND_TRANSITIONS. Test files and
+#    apps/api/src/test/ are exempt.
+# ---------------------------------------------------------------------------
+echo "== payment refunds: written only by lib/refunds.ts =="
+
+refund_orm='(insert|update|delete)[[:space:]]*\([[:space:]]*'"$qualifier"'paymentRefunds[[:space:]]*\)'
+# shellcheck disable=SC2016  # `$` anchors, it does not expand
+refund_sql='((insert|merge)[[:space:]]+into|update|delete[[:space:]]+from)[[:space:]]+["`]?([A-Za-z_][A-Za-z0-9_]*["`]?[[:space:]]*\.[[:space:]]*["`]?)?payment_refunds([^A-Za-z0-9_]|$)'
+refund_hits="$(grep -rn -i -E "$refund_orm|$refund_sql" apps/api/src --include="*.ts" | grep -v -E "$api_exempt_re|^apps/api/src/lib/refunds\.ts:" || true)"
+if [ -n "$refund_hits" ]; then
+  fail_with "payment_refunds is written outside apps/api/src/lib/refunds.ts:"
+  echo "$refund_hits" >&2
+fi
+
 if [ "$fail" != "0" ]; then
   echo "" >&2
   echo "One or more reuse-rule boundaries were violated." >&2

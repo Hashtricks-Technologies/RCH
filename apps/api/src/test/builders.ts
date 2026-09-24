@@ -1,8 +1,9 @@
 // Test builders live here. A suite that hand-builds a
 // document instead of asking for one here is rejected in review - the defaults belong in one
 // place, so a case says only what it is about.
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import type { AdjReqStatus, AdjustReason, LocKey, PayerKind, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
+import type { AdjReqStatus, AdjustReason, LocKey, PayerKind, QrMode, QrOrderStatus, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
 import { REASON_LABEL, round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
@@ -15,7 +16,7 @@ import type { TicketRefType } from "../lib/tickets.js";
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
-const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0, adj: 0, adjreq: 0, settlement: 0 };
+const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0, adj: 0, adjreq: 0, settlement: 0, qrcode: 0, qrorder: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
 
@@ -322,4 +323,47 @@ export const given = {
     });
     return id;
   },
+
+  // ---- QR ordering
+
+  /** A printed code. Band `QR-9001`+, above the sequence's start of 1; the token is random, so
+   *  two codes never share one. */
+  async qrCode(db: Db, p: { id?: string; loc: LocKey; label?: string; mode?: QrMode; active?: boolean; token?: string }): Promise<{ id: string; token: string }> {
+    const id = p.id ?? `QR-${9000 + ++counters.qrcode}`;
+    const token = p.token ?? randomBytes(24).toString("base64url");
+    await db.insert(s.qrCodes).values({ id, loc: p.loc, label: p.label ?? `Table ${counters.qrcode}`, mode: p.mode ?? "pickup", token, active: p.active ?? true });
+    return { id, token };
+  },
+
+  /** A QR order as placed - the lines' rates are what the case says they were quoted at, and the
+   *  total is their sum (no tax split, no discount) unless given. It makes its own code when the
+   *  case names none. The secret is `BUILDER_QR_SECRET`, stored as its sha256 hex. Band
+   *  `QO-2026-9001`+. Writes the order only: no bill, no refund, no gateway order unless named. */
+  async qrOrder(db: Db, p: {
+    id?: string; loc: LocKey; code?: string; mode?: QrMode; spot?: string; st?: QrOrderStatus;
+    lines: { it: string; qty: number; rate: number }[]; total?: number; tax?: number;
+    name?: string; phone?: string; ip?: string; rzpOrderId?: string | null; rzpPaymentId?: string | null; billNo?: string | null;
+    expiresAt?: Date; at?: Date;
+  }): Promise<string> {
+    const id = p.id ?? nextId("QO-2026-", 9000, "qrorder");
+    const code = p.code ?? (await given.qrCode(db, { loc: p.loc, mode: p.mode })).id;
+    const at = p.at ?? new Date();
+    await db.transaction(async (tx) => {
+      const [c] = await tx.select().from(s.qrCodes).where(eq(s.qrCodes.id, code));
+      await tx.insert(s.qrOrders).values({
+        id, loc: p.loc, qrCodeId: code, label: c?.label ?? "", mode: p.mode ?? c?.mode ?? "pickup", spot: p.spot ?? "",
+        status: p.st ?? "Awaiting payment", customerName: p.name ?? "Asha", customerPhone: p.phone ?? "9876543210",
+        total: p.total ?? round3(p.lines.reduce((a, l) => a + l.qty * l.rate, 0)), tax: p.tax ?? 0,
+        secretHash: createHash("sha256").update(BUILDER_QR_SECRET).digest("hex"), nonce: randomUUID(), ip: p.ip ?? "10.0.0.1",
+        rzpOrderId: p.rzpOrderId ?? null, rzpPaymentId: p.rzpPaymentId ?? null, billNo: p.billNo ?? null,
+        expiresAt: p.expiresAt ?? new Date(at.getTime() + 30 * 60_000), createdAt: at,
+      });
+      await tx.insert(s.qrOrderLines).values(p.lines.map((l, lineNo) => ({ orderId: id, lineNo, itemKey: l.it, qty: l.qty, rate: l.rate })));
+      await appendHistory(tx, "qr_order", id, p.st ?? "Awaiting payment", "QR Orders", at);
+    });
+    return id;
+  },
 };
+
+/** The secret every builder-made QR order was placed with. */
+export const BUILDER_QR_SECRET = "builder-qr-secret-0123456789abcdefghijklmnop";
