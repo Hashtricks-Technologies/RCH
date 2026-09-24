@@ -4,7 +4,7 @@ import { customerPhoneRefusal, QR_MAX_LINES, QR_MAX_QTY } from "@rch/domain";
 import { setAccessToken } from "../api/session";
 import { isOrderPath, menuPath, parseOrderPath, secretFromHash, statusUrl } from "../lib/orderPath";
 import {
-  CHECKOUT_FAILED, CHECKOUT_JS, NETWORK_MENU, NETWORK_PLACE, PAYMENT_DISMISSED, POLL_FAST_MS, POLL_SLOW_MS, VERIFY_PENDING,
+  CHECKOUT_FAILED, CHECKOUT_JS, NETWORK_MENU, NETWORK_PLACE, PAYMENT_DISMISSED, POLL_FAST_MS, POLL_SETTLED_FOR_MS, POLL_SETTLED_MS, POLL_SLOW_MS, VERIFY_PENDING, pollDelay,
   CHECKOUT_BACKSTOP_MS, cartCount, cartTotal, checkCustomer, loadRazorpay, paymentFailedNote, recall, remember, resetPublicOrder, usePublicOrder,
   type RazorpayFailure, type RazorpaySuccess,
 } from "../store/publicOrder";
@@ -436,13 +436,65 @@ describe("the status poll", () => {
     expect(calls()[0].url).toContain(`?k=${SECRET}`);
     await vi.advanceTimersByTimeAsync(POLL_FAST_MS);
     expect(hit(STATUS)).toHaveLength(2);
+    status = "Expired";
+    await vi.advanceTimersByTimeAsync(POLL_FAST_MS);
+    expect(hit(STATUS)).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(POLL_SETTLED_MS * 4);
+    expect(hit(STATUS)).toHaveLength(3);
+    stop();
+  });
+  it("keeps asking once a minute for two hours after hand-over, so a same-day void reaches the phone", async () => {
+    vi.useFakeTimers();
+    let status: PublicQrOrder["status"] = "Paid";
+    serve({ [STATUS]: () => json(orderOf({ status })) });
+    const stop = st().poll("QO-2026-0042", SECRET);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hit(STATUS)).toHaveLength(1);
+    expect(calls()[0].url).toContain(`?k=${SECRET}`);
+    await vi.advanceTimersByTimeAsync(POLL_FAST_MS);
+    expect(hit(STATUS)).toHaveLength(2);
     status = "Collected";
     await vi.advanceTimersByTimeAsync(POLL_FAST_MS);
     expect(hit(STATUS)).toHaveLength(3);
     expect(st().order?.status).toBe("Collected");
-    await vi.advanceTimersByTimeAsync(POLL_SLOW_MS * 4);
+    await vi.advanceTimersByTimeAsync(POLL_SLOW_MS);
     expect(hit(STATUS)).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(POLL_SETTLED_MS - POLL_SLOW_MS);
+    expect(hit(STATUS)).toHaveLength(4);
+    // Two hours of once a minute, then silence.
+    await vi.advanceTimersByTimeAsync(POLL_SETTLED_FOR_MS);
+    const n = hit(STATUS).length;
+    expect(n).toBeGreaterThanOrEqual(4 + 119);
+    expect(n).toBeLessThanOrEqual(4 + 121);
+    await vi.advanceTimersByTimeAsync(POLL_SETTLED_MS * 5);
+    expect(hit(STATUS)).toHaveLength(n);
     stop();
+  });
+  it("keeps asking every 15 s while a refund is on its way, whatever the status, and stops when it lands", async () => {
+    vi.useFakeTimers();
+    let refund: PublicQrOrder["refund"] = { status: "Pending", amount: 40 };
+    serve({ [STATUS]: () => json(orderOf({ status: "Voided", refund })) });
+    const stop = st().poll("QO-2026-0042", SECRET);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(POLL_SLOW_MS);
+    expect(hit(STATUS)).toHaveLength(2);
+    refund = { status: "Sent", amount: 40 };
+    await vi.advanceTimersByTimeAsync(POLL_SLOW_MS);
+    expect(hit(STATUS)).toHaveLength(3);
+    refund = { status: "Processed", amount: 40 };
+    await vi.advanceTimersByTimeAsync(POLL_SLOW_MS);
+    expect(hit(STATUS)).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(POLL_SLOW_MS * 10);
+    expect(hit(STATUS)).toHaveLength(4);
+    stop();
+  });
+  it("picks each wait from the order alone", () => {
+    expect(pollDelay(null, 0, null)).toBe(POLL_FAST_MS);
+    expect(pollDelay(orderOf({ status: "Preparing" }), 11 * 60_000, null)).toBe(POLL_SLOW_MS);
+    expect(pollDelay(orderOf({ status: "Refunded", refund: { status: "Pending", amount: 40 } }), 0, null)).toBe(POLL_SLOW_MS);
+    expect(pollDelay(orderOf({ status: "Refunded", refund: { status: "Failed", amount: 40 } }), 0, null)).toBeNull();
+    expect(pollDelay(orderOf({ status: "Delivered" }), 0, null)).toBe(POLL_SETTLED_MS);
+    expect(pollDelay(orderOf({ status: "Delivered" }), 0, POLL_SETTLED_FOR_MS)).toBeNull();
   });
   it("slows to 15 s after ten minutes", async () => {
     vi.useFakeTimers();
@@ -473,6 +525,18 @@ describe("the status poll", () => {
     stop();
     await vi.advanceTimersByTimeAsync(POLL_FAST_MS * 3);
     expect(hit(STATUS)).toHaveLength(3);
+  });
+  it("asks nothing on coming back once the order has nothing left to say", async () => {
+    vi.useFakeTimers();
+    serve({ [STATUS]: () => json(orderOf({ status: "Expired" })) });
+    const stop = st().poll("QO-2026-0042", SECRET);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hit(STATUS)).toHaveLength(1);
+    visibility("hidden");
+    visibility("visible");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hit(STATUS)).toHaveLength(1);
+    stop();
   });
   it("stops on an unknown order, and keeps the last status through an outage", async () => {
     vi.useFakeTimers();

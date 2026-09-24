@@ -13,13 +13,30 @@ import { statusUrl } from "../lib/orderPath";
  * and again when payment is captured, and what it answers is what the receipt prints.
  */
 
-/** Where a paid order ends up; nothing moves it on from here, so the page stops asking. */
+/** Where a paid order ends up; nothing moves it on from here but a void. */
 const QR_TERMINAL: ReadonlySet<QrOrderStatus> = new Set<QrOrderStatus>(["Collected", "Delivered", "Refunded", "Expired", "Voided"]);
+/** Handed over - but a manager may still void the bill the same day, and the phone should hear of it. */
+const QR_HANDED_OVER: ReadonlySet<QrOrderStatus> = new Set<QrOrderStatus>(["Collected", "Delivered"]);
 
 /** Poll the status every 5 s while the tab is visible; every 15 s once the order is 10 minutes old. */
 export const POLL_FAST_MS = 5_000;
 export const POLL_SLOW_MS = 15_000;
 const POLL_SLOW_AFTER_MS = 10 * 60_000;
+/** After hand-over: once a minute, for two hours, so a same-day void (and its refund) reaches the phone. */
+export const POLL_SETTLED_MS = 60_000;
+export const POLL_SETTLED_FOR_MS = 2 * 60 * 60_000;
+
+/**
+ * How long until the status page asks again, or null to stop. `sinceStart` is how long the page
+ * has been polling, `sinceHandedOver` how long ago it first saw the order collected or delivered.
+ * A refund still on its way keeps the page asking whatever the status, so the customer sees it land.
+ */
+export function pollDelay(order: PublicQrOrder | null, sinceStart: number, sinceHandedOver: number | null): number | null {
+  if (order?.refund && (order.refund.status === "Pending" || order.refund.status === "Sent")) return POLL_SLOW_MS;
+  if (order && QR_HANDED_OVER.has(order.status)) return (sinceHandedOver ?? 0) < POLL_SETTLED_FOR_MS ? POLL_SETTLED_MS : null;
+  if (order && QR_TERMINAL.has(order.status)) return null;
+  return sinceStart >= POLL_SLOW_AFTER_MS ? POLL_SLOW_MS : POLL_FAST_MS;
+}
 
 export const CHECKOUT_JS = "https://checkout.razorpay.com/v1/checkout.js";
 const STORAGE_KEY = "rch-qr-order";
@@ -339,17 +356,25 @@ export const usePublicOrder = create<PublicOrderState>()((set, get) => {
 
     poll(id, secret) {
       const started = Date.now();
+      let handedOver: number | null = null;
       let timer: ReturnType<typeof setTimeout> | undefined;
       let busy = false;
       let stopped = false;
       const hidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
-      const done = () => {
+      /** The wait before the next read, or null once there is nothing left to hear. */
+      const next = (): number | null => {
         const s = get();
-        return s.orderState === "missing" || (s.order?.id === id && QR_TERMINAL.has(s.order.status));
+        if (s.orderState === "missing") return null;
+        const order = s.order?.id === id ? s.order : null;
+        if (order && QR_HANDED_OVER.has(order.status)) handedOver ??= Date.now();
+        else handedOver = null;
+        return pollDelay(order, Date.now() - started, handedOver === null ? null : Date.now() - handedOver);
       };
       const schedule = () => {
-        if (stopped || done() || hidden()) return;
-        timer = setTimeout(() => { void tick(); }, Date.now() - started >= POLL_SLOW_AFTER_MS ? POLL_SLOW_MS : POLL_FAST_MS);
+        if (stopped || hidden()) return;
+        const wait = next();
+        if (wait === null) return;
+        timer = setTimeout(() => { void tick(); }, wait);
       };
       const tick = async () => {
         timer = undefined;
@@ -358,8 +383,9 @@ export const usePublicOrder = create<PublicOrderState>()((set, get) => {
         try { await get().loadOrder(id, secret); } finally { busy = false; }
         schedule();
       };
-      // A hidden tab asks nothing; coming back asks at once and picks the rhythm up again.
-      const onVisible = () => { if (!hidden() && !timer && !busy && !stopped) void tick(); };
+      // A hidden tab asks nothing; coming back asks at once and picks the rhythm up again - unless
+      // the order has nothing left to say.
+      const onVisible = () => { if (!hidden() && !timer && !busy && !stopped && next() !== null) void tick(); };
       document.addEventListener("visibilitychange", onVisible);
       void tick();
       return () => {

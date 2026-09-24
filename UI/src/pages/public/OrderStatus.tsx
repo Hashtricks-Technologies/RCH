@@ -95,7 +95,8 @@ function Receipt({ order }: { order: PublicQrOrder }) {
 /**
  * One order's status and e-receipt. The key comes from the fragment (`#k=`), or failing that from
  * this phone's own record of the order it placed, and the page asks again every few seconds while
- * it is on screen (`poll` in the store) until the order reaches the end of its path.
+ * it is on screen (`poll` in the store) until the order reaches the end of its path - still once a
+ * minute for two hours after hand-over, and every 15 s while a refund is on its way (`pollDelay`).
  */
 export default function OrderStatus({ token, id, hash }: { token: string; id: string; hash: string }) {
   const secret = useMemo(() => secretFromHash(hash) ?? recall(id), [hash, id]);
