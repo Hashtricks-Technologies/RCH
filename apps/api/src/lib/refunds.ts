@@ -34,7 +34,7 @@ export async function queueRefund(tx: Tx, r: {
 }
 
 /** A refund, locked - the first thing every move below takes. */
-export async function refundForUpdate(tx: Tx, id: string): Promise<RefundRow> {
+async function refundForUpdate(tx: Tx, id: string): Promise<RefundRow> {
   const [row] = await tx.select().from(paymentRefunds).where(eq(paymentRefunds.id, id)).for("update");
   if (!row) throw new NotFoundError(`There is no refund ${id}.`);
   return row;

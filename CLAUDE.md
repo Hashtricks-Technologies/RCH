@@ -292,6 +292,12 @@ back where it stood.
   /price-lists`, `PUT /outlets/:loc/price-list`, `PUT /prices/:list/:it`) are hidden, not deleted:
   `PRICE_LISTS_ENABLED` in `UI/src/registry.tsx` is `false`, and turning it on puts that screen
   back under the same sidebar entry. A newly opened outlet is on no list until the grid first prices it.
+- **QR ordering's server foundations** (Phase 1A; the routes come later): `lib/sale.ts`'s `postSale` is the one
+  sale body, called by the till and by a QR capture, so `allocateId("bill")` keeps its single call site;
+  `lib/payments.ts` is the only code that talks to the payment gateway (`app.payments`, null without the
+  Razorpay keys); `lib/refunds.ts` is the only writer of `payment_refunds` (`scripts/check-boundaries.sh`);
+  and the `sys-qr` "QR Orders" account (`users.system`) raises QR bills and system audit events, can never
+  sign in, and is left off every staff list.
 - `lib/images.ts` is the only code that touches photo bytes (S3 in production, a folder in dev/test).
   `items.image` holds the sha256; `GET /items/:it/image/:hash` is public, outside the manifest like `/events`,
   and serves only the current hash.

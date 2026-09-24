@@ -64,7 +64,7 @@ export async function sellableAt(db: Reader, loc: string): Promise<Sellable> {
 /** How many of `it` the location could sell right now: the free units of a stocked item. A
  *  made-to-order item holds no stock and moves none (`planBill`), so nothing caps it here -
  *  only its switch, which `availOf` reads. */
-export function coverOf(s: Sellable, it: string): number {
+function coverOf(s: Sellable, it: string): number {
   if (s.master.items[it]?.t === "MTO") return Number.POSITIVE_INFINITY;
   return avail(s.stock, s.rsv, s.loc, it);
 }

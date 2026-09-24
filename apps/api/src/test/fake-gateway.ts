@@ -14,8 +14,8 @@ import { GatewayError, hmacHex, signatureMatches, type GatewayOrder, type Gatewa
  *   a test key often answers at once).
  */
 export const FAKE_KEY_ID = "rzp_test_fake";
-export const FAKE_KEY_SECRET = "fake-key-secret";
-export const FAKE_WEBHOOK_SECRET = "fake-webhook-secret";
+const FAKE_KEY_SECRET = "fake-key-secret";
+const FAKE_WEBHOOK_SECRET = "fake-webhook-secret";
 
 type Method = "createOrder" | "fetchPayment" | "capture" | "refund" | "refundsOf";
 export type FakeGateway = PaymentGateway & {

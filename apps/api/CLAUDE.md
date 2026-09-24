@@ -31,8 +31,9 @@ src/app.ts        buildApp(): plugins in order, then registerModules
 src/server.ts     listen; SIGTERM drains (see Shutdown)
 src/config.ts     the Zod env schema - the only reader of process.env
 src/routes.ts     mount(): the only way a module registers a route
-src/plugins/*     logging, errors, metrics, health, security, db, auth, access, rbac, sse, idempotency, audit, images
-src/lib/*         ledger, reservations, tickets, adjustments, ids, history, rules, events, claims, credit, master, audit, access, roles, images, …
+src/plugins/*     logging, errors, metrics, health, security, db, auth, access, rbac, sse, idempotency, audit, images, payments
+src/lib/*         ledger, reservations, tickets, adjustments, ids, history, rules, events, claims, credit, master, audit, access, roles, images,
+                  sale, payments, refunds, system-users, …
 src/modules/*     one folder per slice, registered in modules/index.ts; _template is the skeleton to copy
 src/db/*          schema/, client.ts, migrate.ts, seed.ts
 src/cli/*         migrate, seed, rebuild-balances, users, payers, keys, purge
@@ -90,9 +91,10 @@ holding a shelf.
 - **Purchase-order claims use a narrower order:** the PO row first, then the requisition rows in ascending
   order (`lib/claims.ts`). `createPo` is the one write that locks requisition rows without holding an order
   lock. That is safe only because it is minting that order.
-- **Two writes invert the order on purpose:** `pos` (bill number) and `adjustments` (`ADJ-` number) allocate
+- **Two writes invert the order on purpose:** the sale (bill number) and `adjustments` (`ADJ-` number) allocate
   after the cover check. Each is the only caller of its own sequence row, so the deadlock a lock order
-  prevents can't form.
+  prevents can't form. The sale is `postSale` in `lib/sale.ts`, which both the till (`pos.pay`) and a QR
+  order's capture call - `allocateId(tx, "bill")` still has exactly one call site.
 - **Don't copy the inversion.** An id taken at the head of a transaction serialises everything behind it and
   masks every balance guard. That is how a race test on adjustments once passed with both guards deleted.
 
@@ -116,6 +118,59 @@ For a uniqueness rule, the insert (or update) decides; a pre-check only gives th
 `catalog.createItem` also takes a `pg_advisory_xact_lock` on the item's slug, and a second one on its
 type's code series (`item-code:<prefix>`) before it reads the highest code there: `items.code` has no
 unique index, so that lock is the whole guarantee two new products of one type never share a code.
+
+## The sale
+
+`lib/sale.ts` is the counter sale, for two callers: `modules/pos`'s `pay` (the till: the signed-in operator,
+a till tender, `source: "till"`) and a QR order's capture (the system account, tender `Online`, `source:
+"qr"` with the order's id). `postSale(tx, input)` runs inside the caller's transaction and takes, in order,
+the outlet (`lockLocation`, `FOR SHARE`), its register session (`sessionFor`), the payer's credit lock where
+there is a payer, the shelves (`lockBalances`), then the one bill number - and returns `{ result, changed,
+message }` **without announcing**: the caller adds what it changed besides and calls `emitChanged` once. A
+caller with a document of its own (the capture's `qr_orders` row) locks it `FOR UPDATE` before calling. A
+refusal throws; a caller that must commit something else when the sale is refused (a capture that refunds
+instead) runs it in a savepoint (`tx.transaction(...)`) and reads the `RuleError`'s sentence.
+
+- **The menu readers are shared too.** `sellableAt(db, loc)` reads the master, the outlet's menu, its shelf,
+  its holds, its switches and every price list; `menuOf` turns that into lines at the till's price capped at
+  MRP (`priceOf`), with availability, the reason and the free units (`coverOf`; made-to-order is unbounded);
+  `assertSellable` is the till's four refusals (unknown item 404, not listed, not available, short, no price
+  - and no price list at all, first). The public QR menu reads `menuOf`, so it can never offer what the
+  sale would refuse.
+- **A bill's source is stored**: `bills.source` (`till` | `qr`) and `bills.qr_order_id` (unique, so one bill
+  per order - the insert decides a verify and a webhook racing; `bills_source_ck` keeps the two in step).
+  `toWireBill` carries `src` and `qo` on a QR bill only, so a till bill's wire shape is unchanged.
+
+## QR ordering: the gateway, the refunds and the system account
+
+Migration `0027_qr_orders` (schema `db/schema/qr.ts`) holds codes, hours, the pause switch, orders and their
+lines, `payment_refunds` and `rzp_webhook_events`. The routes, the webhook and the worker are
+`modules/qr/` (Phase 2); what they stand on is here.
+
+- **`lib/payments.ts` is the one door to the payment gateway.** `PaymentGateway` is create an order, fetch
+  and capture a payment, refund and list a payment's refunds, and verify the checkout
+  (`hmac(order_id|payment_id)`, key secret) and a webhook (`hmac(raw body)`, webhook secret) - HMAC-SHA256
+  hex compared with `timingSafeEqual`. `createRazorpayGateway(cfg, fetchImpl)` is Razorpay's REST API over
+  `fetch` with basic auth and no SDK, a 10 s timeout, and every field it relies on checked; a failure is a
+  `GatewayError` whose `retryable` (network, timeout, 429, 5xx) is what the worker backs off on. **Never call
+  it inside a transaction.** `plugins/payments.ts` decorates `app.payments`: the real gateway when all three
+  Razorpay keys are set, `null` when none are (QR ordering then answers 503), or `AppDeps.payments` - a test
+  injects `createFakeGateway()` (`src/test/fake-gateway.ts`: in-memory orders, payments and refunds, every
+  call recorded, `failNext`, signing with fixed secrets) through `buildTestApp({ payments })`.
+- **`lib/refunds.ts` is the only writer of `payment_refunds`** (`scripts/check-boundaries.sh`).
+  `queueRefund` runs under the order's `FOR UPDATE` and numbers the refund `<order id>-R<n>` - also the
+  `notes.rid` the worker sets at the gateway and looks for before sending again. `moveRefund` walks
+  `REFUND_TRANSITIONS` (a retry, `Failed → Pending`, resets the attempts); `deferRefund` counts a failed
+  send and backs it off 1 min, 5 min, 15 min, 1 h, 6 h, failing it on the sixth or at once when `final`.
+- **The system account** (`lib/system-users.ts`): `systemOperator(tx)` gets or creates `sys-qr` (`SYS-QR`,
+  "QR Orders", desk `counter` at the store, `system = true`, `role_id` null - `users_role_id_ck` is now
+  `admin or system or role_id is not null` - password hash `!`). A race is settled by the primary key. Its id
+  and number are outside the `u<n>` and `RC-<n>` series, so neither the user sequence nor `nextEmpNo` sees it.
+  Sign-in treats it as an unknown number before any password check; the directory, the admin's account list
+  and lookups (edit, delete, reset, deactivate are 404s), the location staff counts (and so the outlet
+  close's), the users CLI (`byEmp`) and the snapshot's `users` all leave it out. `roleLabelOf` prints
+  `System`, and its audit actor stands at no location. It never signs in, so it never opens a shift: a QR bill
+  counts on the X and Z and on nobody's Close Shift.
 
 ## What a party is charged, and what they owe
 
@@ -414,6 +469,8 @@ test files may insert, update or delete these six tables: `stock_moves`, `stock_
 - A **read** of a protected table from a module repo is fine. `posRepo.saleMoves` does one.
 - `stock_moves` and `document_history` are append-only in the database; triggers refuse UPDATE and DELETE. To
   correct a mistake, append a reversing move or a correcting entry.
+- **`payment_refunds` has one writer**, `src/lib/refunds.ts`; the same check refuses an insert, update or
+  delete of it anywhere else outside a test.
 - **`audit_outbox` is narrower still.** Outside test files, only `src/lib/audit.ts` inserts into it, and nothing
   selects, updates or deletes from it. The audit service is its only reader. Migration `0016_audit_outbox` also
   puts a trigger on it (`audit_outbox_no_update`) that refuses every UPDATE, for every role.
@@ -450,6 +507,7 @@ drains it; this app only ever inserts. `lib/audit.ts` holds the code.
 | `withTransaction` | Straight after `recordIdempotent` returns `ok: true`, in the same transaction: `recordAudit(tx, ctx, value)` inserts the `done` event |
 | `plugins/audit.ts` (`onResponse`) | A reply no transaction recorded, from a caller a valid token identifies: `refused` for a 4xx (with `req.refusal`'s cause), `error` for a 5xx, `done` for production's `onSend` fallback. Body validation runs before authentication, so the hook verifies the bearer token itself, quietly. Inserted on the pool; a failed insert is logged at `error` and doesn't change the reply |
 | `modules/auth` | `recordAuthEvent`: sign-in, failed sign-in (with its cause), lock-out, a sign-out that ended a live session, password change. A per-IP lock-out never reaches the handler (`@fastify/rate-limit` refuses in a `preHandler`), so an `onSend` hook in `modules/auth/routes.ts` records it |
+| `recordSystemEvent` | What the system does with nobody signed in: an accepted anonymous QR write (the public routes are not audited by `mount()`), a capture billed or refunded, a refund sent, processed or failed. Always `done`, the QR Orders account as the actor, inside the caller's transaction, masked. A refused anonymous write leaves no event |
 
 - **Not events:** a 401 (the client refreshes and retries, and the retry is the event), a reply carrying
   `idempotency-replayed: true`, a refused write with no verifiable token, a token refresh, `GET /auth/directory`,
@@ -564,6 +622,9 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   bands above both the fixtures and the sequence starts. `given.adjustment` writes the document only, never a
   ledger move; `given.adjustmentRequest` likewise writes only the request, whatever status you hand it - it
   never calls `writeAdjustment`, so a case about the queue does not accidentally exercise the write path too.
+  `given.qrCode` and `given.qrOrder` write a code and an order (its lines at the rates the case names, the
+  secret `BUILDER_QR_SECRET` stored as its sha256 hex - export it once a case reads it; knip refuses an
+  export nothing imports) and nothing else - no bill, no refund.
   `given.settlement` writes the payment and its allocation and nothing else, for the same reason: a case about
   the *ceiling* needs a balance brought down, and going through `POST /settlements` to get one would exercise
   the oldest-first allocation on the way past. There is no `given.payer`: insert into `payers` directly.
@@ -623,6 +684,11 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   `audit_outbox` `insert` alone. No `truncate`, and nothing in `audit` or `audit_drizzle`. The grants are
   re-applied on every run. When the two URLs name the same user, as locally and in the tests, the migrations
   run and nothing else does.
+- **QR ordering's config is optional.** `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`
+  are all or nothing (`config.razorpay`, null with none; some without the others is a `ConfigError` naming
+  each one missing). `QR_ORDER_MAX_RUPEES` (5000), `QR_ORDER_TTL_MIN` (30) and `QR_WORKER_INTERVAL_MS`
+  (30000; `0` switches the worker off) are `config.qr`. For all six an empty string - what Compose passes for
+  an unset variable - means unset: no key, and the default for a number, never `0`.
 - **Four config variables decide where photo bytes live**: `IMAGE_STORE` (`"disk" | "s3"`, default `disk`),
   `IMAGE_DIR` (default `.data/images`, used by `disk`), `IMAGE_BUCKET` and `AWS_REGION` (both required when
   `IMAGE_STORE=s3`). `NODE_ENV=production` with `IMAGE_STORE=disk` is a `ConfigError`: a second replica would
