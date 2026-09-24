@@ -7,7 +7,7 @@ human reader. This file covers what is specific to `@rch/ui`.
 
 ```bash
 pnpm --filter @rch/ui dev         # vite on :5173, proxying /api/v1/admin/audit → http://localhost:3100 and the rest of /api → http://localhost:3000
-pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 82 / branches 66
+pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 83 / branches 67
 pnpm --filter @rch/ui exec vitest run src/__tests__/writes.test.ts   # one file, no coverage gate
 pnpm --filter @rch/ui typecheck   # tsc --noEmit -p tsconfig.app.json
 pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
@@ -273,6 +273,41 @@ try {
   sessions only. `ui/ShiftSlip.tsx` is the paper; `printShiftSlip()` marks the body `print-shift` so a page's other
   `.print-slip` stays off the paper.
 
+## The public QR ordering page
+
+- **`main.tsx` picks the app by path before anything runs.** `/order/...` (`isOrderPath` in
+  `lib/orderPath.ts`) lazily imports `pages/public/OrderApp.tsx`; anything else lazily imports
+  `staff.tsx`, which is the staff start-up `main.tsx` used to hold (`startEventStream`, `restore()`,
+  `BrowserRouter`). Each is its own chunk, so a customer's phone downloads none of the staff app,
+  and the public page never calls `restore()` or opens `/events`: a customer has no session, and a
+  refresh attempt there could only ever fail. `vite.config.ts`'s `base` is `/` (it was `./`) because
+  the page lives several segments deep, where relative asset URLs resolve under the path.
+- **It has its own store, `store/publicOrder.ts`** - a separate `create()`, never a slice of `useApp`.
+  It calls the manifest routes (`publicQrMenu`, `createQrOrder`, `verifyQrPayment`, `publicQrOrder`)
+  through the one `call()`, which for a `/public/...` route opens no session channel, sends no token and
+  never refreshes on a 401. Screens under `pages/public/` go through the store (the lint rule on
+  `pages/**` covers them).
+- **Placing an order** sends a `nonce` minted per attempt: a retry of exactly the same cart and details
+  keeps it, anything changed mints another, and a Pay pressed again for an order still awaiting payment
+  reopens its checkout rather than placing a second. Razorpay's `checkout.js` is injected on the first
+  Pay only (`loadRazorpay`). The checkout's handler forwards its three fields to `verifyQrPayment` with
+  the order's `secret`, and the page moves to the status screen whether or not that verify answered -
+  the webhook settles a payment the browser could not confirm.
+- **The secret lives in the fragment** (`/order/<token>/o/<id>#k=<secret>`, `statusUrl`); only the API
+  read carries it, as `?k=`. `{ orderId, secret, token }` is remembered in `localStorage` (every access
+  in try/catch) so the status page still opens without the fragment on this phone.
+- **The status poll** (`poll(id, secret)`, returning its stop) asks every 5 s while the tab is visible,
+  every 15 s once ten minutes have passed, nothing while hidden (it asks at once on `visibilitychange`),
+  and stops at `Collected`, `Delivered`, `Refunded`, `Expired`, `Voided` or an unknown order.
+- **Every price on it is a preview.** The server quotes each line again on placing and on capture;
+  the receipt prints what it answered. A refusal is shown verbatim in the sheet, and what was typed stays.
+- Styles are `pages/public/public.css` (`.qo-` prefixed), imported by `OrderApp` only: phone first, a
+  560 px column from 640 px, 44 px targets, the shared tokens in both themes, and a print block that
+  leaves the receipt. It uses no `kit.tsx` component, because the kit reads the staff registries.
+- Tests: `public-order.test.ts` (the store on the wire, the caps, nonce reuse, the stubbed Razorpay,
+  verify, the poll under fake timers, storage that throws, the addresses) and
+  `public-order-screens.test.tsx` (the menu, the sheet, every status), sharing `publicFixture.ts`.
+
 ## src/api
 
 - **`client.ts`** is the one generic client.
@@ -403,7 +438,8 @@ a background refresh and must not blank the screen.
   state update that removes a line.
 - **Styling is plain CSS** in `src/styles.css`, with no framework. It has one token set on `:root`, redefined
   under `@media (prefers-color-scheme: dark)` guarded by `:root:not([data-theme="light"])`, and again under
-  `[data-theme="dark"]`.
+  `[data-theme="dark"]` - kept in `src/tokens.css`, which `styles.css` and the public page's `public.css`
+  each `@import`, so the two apps share one palette and neither bundle carries the other's rules.
 - **Printing** uses three classes: `.print-slip` (the only thing on paper), `.no-print` and `.print-only`.
   A ticket's slip is `.print-slip.receipt`, a 72 mm column.
 - **PDFs are built in `src/lib/pdf.ts`, and jsPDF is imported at the press** (`await import("jspdf")`), so

@@ -78,6 +78,8 @@
       }
     },
     {
+      // `pages/**` covers the public QR ordering page (`pages/public/**`) too: its screens go through
+      // `store/publicOrder.ts`, which - like every store - may import the client.
       "files": ["UI/src/roles/**", "UI/src/pages/**"],
       "rules": {
         "no-restricted-imports": [
@@ -86,7 +88,7 @@
             "patterns": [
               {
                 "group": ["**/apps/**", "@rch/api", "@rch/audit", "**/api/client"],
-                "message": "Screens read/write through useApp, not api/client directly. UI may not import from apps/api or apps/audit either."
+                "message": "Screens read/write through useApp (the public QR page through usePublicOrder), not api/client directly. UI may not import from apps/api or apps/audit either."
               }
             ]
           }

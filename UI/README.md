@@ -112,6 +112,10 @@ RC-xxxx permanently" or "Keep"); the server still refuses one with any history, 
 
 ```
 src/
+  main.tsx, staff.tsx                     the entry picks the app by path: /order/... lazily loads the public
+                                           QR ordering page, anything else staff.tsx (restore, event stream,
+                                           router) - each its own chunk
+  tokens.css, styles.css                  the colour tokens (light + dark) · the staff app's styles
   types.ts, drawers.ts, App.tsx          entities · drawer registry · router
   screens.ts, registry.tsx, nav.ts        every screen as data · key → component (and every drawer
                                            import) · sidebar, landing and route guard
@@ -146,6 +150,10 @@ src/
                                            admin page: AdminDashboard.tsx, AdminUsers.tsx, AdminOutlets.tsx,
                                            AdminQrCodes.tsx, AdminPayers.tsx, AdminSupport.tsx, AdminAudit.tsx,
                                            AuditEntryDrawer.tsx
+  pages/public/                           the customer's QR ordering page (no sign-in): OrderApp.tsx (its own
+                                           root and path routing), Menu.tsx, CartBar.tsx, CheckoutSheet.tsx
+                                           (Razorpay checkout.js loaded on Pay), OrderStatus.tsx (status and
+                                           e-receipt), public.css; its store is store/publicOrder.ts
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/ - the manager's Credit.tsx is
                                            the rate card, who owes what and the settlements, with StatementDrawer
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
@@ -153,6 +161,16 @@ src/
                                            login-picker, admin-accounts, admin-outlets, admin-payers,
                                            admin-audit, audit-lib, admin-qr, qr-poster
 ```
+
+**The public QR ordering page** (`/order/<token>`) is what a customer's phone opens from a code at
+an outlet: the outlet's menu at the till's prices, a cart, name and phone (and a bed or seat on a
+"deliver" code), and Pay through Razorpay. After paying it moves to `/order/<token>/o/<id>#k=<secret>`,
+which shows the order number large, the status as it moves (asked every 5 s while on screen, every
+15 s after ten minutes, never while the tab is hidden, and not at all once the order is done), and a
+printable GST receipt. The secret stays in the URL's fragment, which no server sees, and the phone
+remembers the last order in `localStorage` so a reload still works. It never calls `restore()` and
+never opens the event stream - a customer has no session - and it has its own store
+(`store/publicOrder.ts`), so none of the staff app's code or styles reach the phone.
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the
 route key against the signed-in role. A route the role cannot reach redirects - it is not

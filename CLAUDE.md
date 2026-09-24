@@ -88,7 +88,7 @@ Every change must pass all of it. Four things trip people up:
 
 - **Lint is zero-warning.** Every package's `lint` is `oxlint --max-warnings 0`, so a warning fails the job
   just like an error does.
-- **Coverage floors are part of `test`.** The floors are UI lines 82 / branches 66, `apps/api` 95 / 82,
+- **Coverage floors are part of `test`.** The floors are UI lines 83 / branches 67, `apps/api` 95 / 82,
   `apps/audit` 97 / 89, `packages/domain` 99 / 94, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
   lower one to turn a run green. The `--coverage` flag lives on each `test` script, which is why a single-file
   run isn't judged against the floor.
@@ -337,7 +337,8 @@ values before it.
 - **Browser-only state** is `tills` (each counter's open bills, at most `MAX_OPEN_BILLS` = 10, see
   `UI/src/store/till.ts`), `draft`, `prqDraft`, `poolVendor` (the buyer's vendor pick per
   procurement-list item), `drawer`, `toast`, `authError`, `shopFilter`, `theme` and `catalogVersion`. Only the
-  theme, a few UI preferences and the bell's read record reach `localStorage`. Open bills do not: a reload
+  theme, a few UI preferences, the bell's read record and the public QR page's last order (`store/publicOrder.ts`,
+  its own store - a customer has no session) reach `localStorage`. Open bills do not: a reload
   loses them, and a sign-out clears them.
 
 ## Domain invariants
