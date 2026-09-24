@@ -81,6 +81,12 @@ const LEGACY_ACCESS: Record<string, readonly Role[]> = {
   approveAdjustmentRequest: ["manager"],
   rejectAdjustmentRequest: ["manager"],
   createProdOrder: ["counter", "manager"],
+  // ---- QR ordering: not legacy, but the seeded roles' access from the day it shipped - the
+  // counter works the queue, the manager watches it and retries a refund the gateway refused.
+  qrOrders: ["counter", "manager"],
+  setQrOrderStatus: ["counter"],
+  setQrPause: ["counter"],
+  retryQrRefund: ["manager"],
 };
 
 /** The deliberate change: nobody but the super admin closes or reads Z until a role is given it. */
@@ -143,12 +149,12 @@ describe("DESK_DEFAULTS", () => {
 
   it("holds exactly what each desk had", () => {
     expect(DESK_DEFAULTS.counter.perms).toEqual({
-      f: { billing: "edit", availability: "edit", item_photos: "edit", outlet_stock: "edit", outlet_requests: "edit", outlet_tickets: "edit", x_report: "view" },
+      f: { billing: "edit", availability: "edit", item_photos: "edit", outlet_stock: "edit", outlet_requests: "edit", outlet_tickets: "edit", qr_orders: "edit", x_report: "view" },
       a: [],
     });
     expect(DESK_DEFAULTS.manager.perms).toEqual({
       f: {
-        billing: "view", x_report: "view", shift_reports: "view", stock_ledger: "view",
+        billing: "view", x_report: "view", shift_reports: "view", stock_ledger: "view", qr_orders: "view",
         credit: "edit", settlements: "edit", approvals: "edit", items_stock: "edit", menu: "edit", prices: "edit", availability: "edit", item_photos: "edit",
       },
       a: ["void_bill", "void_settlement", "all_outlets"],
@@ -179,11 +185,12 @@ describe("DESK_DEFAULTS", () => {
 });
 
 describe("FEATURES and ACTIONS", () => {
-  it("catalogues thirty-five features in seven sections", () => {
-    expect(Object.keys(FEATURES)).toHaveLength(35);
+  it("catalogues thirty-six features in seven sections", () => {
+    expect(Object.keys(FEATURES)).toHaveLength(36);
     expect([...new Set(Object.values(FEATURES).map((f) => f.section))]).toEqual(["Sales", "Outlets", "My counter", "Central store", "Kitchen", "Purchasing", "Items"]);
     expect(FEATURES.billing.levels).toEqual({ view: ["counter", "manager"], edit: ["counter"] });
     expect(FEATURES.availability.levels).toEqual({ edit: ["counter", "manager", "prod"] });
+    expect(FEATURES.qr_orders).toEqual({ label: "QR orders", section: "Sales", scope: "local", levels: { view: ["counter", "manager"], edit: ["counter", "manager"] } });
     expect(Object.entries(FEATURES).filter(([, f]) => f.scope === "wide").map(([k]) => k)).toEqual([
       "shift_reports", "credit", "settlements", "approvals", "items_stock", "menu", "prices",
       "requisitions", "procurement_list", "purchase_orders", "rate_contracts", "vendors", "new_products", "inventory", "stock_ledger",
@@ -260,6 +267,11 @@ describe("admits", () => {
     const both: Permissions = { f: { items_stock: "edit", outlet_tickets: "edit" }, a: [] };
     expect(admits(routes.transfer.access, "counter", both)).toEqual({ ok: true, wide: true });
     expect(admits(routes.transfer.access, "counter", { f: { outlet_tickets: "edit" }, a: ["all_outlets"] })).toEqual({ ok: true, wide: true });
+  });
+  it("lets the seeded manager watch the QR queue but not work it, and tells it what to ask for", () => {
+    expect(admits(routes.qrOrders.access, "manager", DESK_DEFAULTS.manager.perms)).toEqual({ ok: true, wide: true });
+    expect(admits(routes.setQrOrderStatus.access, "manager", DESK_DEFAULTS.manager.perms)).toEqual({ ok: false, status: 403, message: permissionRefusal("qr_orders") });
+    expect(admits(routes.setQrOrderStatus.access, "counter", counter)).toEqual({ ok: true, wide: false });
   });
   it("answers 404, not 403, when the desk could never be given the level or the action", () => {
     // The till's edit is the counter's alone: a manager holding Bills at view is not told to ask.

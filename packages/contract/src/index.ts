@@ -11,5 +11,6 @@ export * from "./schemas/receivables.js";
 export * from "./schemas/admin.js";
 export * from "./schemas/permissions.js";
 export * from "./schemas/audit.js";
+export * from "./schemas/qr.js";
 export * from "./routes.js";
 export * from "./audit.js";

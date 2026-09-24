@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListIdSchema, Qty, RoleSchema, SourceSchema, StockLocSchema, TenderSchema } from "./common.js";
 import { PermissionsSchema } from "./permissions.js";
+import { BillSourceSchema, RefundStatusSchema } from "./qr.js";
 
 export const ReqStatusSchema = z.enum(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received", "Closed", "Rejected", "Cancelled"]);
 // A ticket that was issued and never collected is withdrawn rather than left open: the hold it
@@ -154,6 +155,11 @@ export const BillSchema = z.object({
   // ---- the walk-in customer the counter may name on the bill. Both optional, both absent when
   // nobody typed one; the phone is stored as its ten digits.
   customerName: z.string().optional(), customerPhone: z.string().optional(),
+  // ---- QR ordering. All three absent on a till's bill, so it stays byte for byte what it was:
+  // `src` is "qr" on a bill a QR order's capture raised, `qo` the order it came from, and
+  // `refund` the money going back to the customer once such a bill is voided.
+  src: BillSourceSchema.optional(), qo: z.string().optional(),
+  refund: z.strictObject({ id: z.string(), status: RefundStatusSchema }).nullable().optional(),
 });
 export const DraftLineSchema = z.object({ it: z.string(), qty: Qty });
 export const AvailabilitySchema = z.object({ ok: z.boolean(), mode: z.enum(["Manual", "Stock"]), why: z.string().optional(), left: z.string().optional() });

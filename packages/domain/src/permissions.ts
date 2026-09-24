@@ -35,6 +35,9 @@ export const FEATURES: Readonly<Record<Feature, FeatureDef>> = {
   // a commercial decision; taking a party's money and laying it over their open bills is cashiering.
   credit:             { label: "Discounts & credit limits", section: "Sales", scope: "wide", levels: both(ALL) },
   settlements:        { label: "Receivables & settlements", section: "Sales", scope: "wide", levels: both(ALL) },
+  // The queue of orders customers placed from a QR code and paid online: the counter works it,
+  // the manager watches it.
+  qr_orders:          { label: "QR orders", section: "Sales", scope: "local", levels: both(["counter", "manager"]) },
   // ---- Outlets
   approvals:          { label: "Approvals", section: "Outlets", scope: "wide", levels: both(ALL) },
   items_stock:        { label: "Items & stock", section: "Outlets", scope: "wide", levels: both(ALL) },
@@ -111,13 +114,14 @@ const view = (...fs: Feature[]): Permissions["f"] => Object.fromEntries(fs.map((
 /**
  * The five seeded roles, one per desk, and what each holds: exactly the access each desk had before
  * roles were configurable, route for route and screen for screen, with one deliberate change -
- * nobody holds `z_report`. Closing the day is the super admin's until a role is given it.
+ * nobody holds `z_report`. Closing the day is the super admin's until a role is given it. QR
+ * orders came after: the counter works the queue (edit) and the manager watches it (view).
  */
 export const DESK_DEFAULTS: Readonly<Record<Role, { name: string; perms: Permissions }>> = {
   counter: {
     name: "Counter Operator",
     perms: {
-      f: { ...edit("billing", "availability", "item_photos", "outlet_stock", "outlet_requests", "outlet_tickets"), ...view("x_report") },
+      f: { ...edit("billing", "availability", "item_photos", "outlet_stock", "outlet_requests", "outlet_tickets", "qr_orders"), ...view("x_report") },
       a: [],
     },
   },
@@ -125,7 +129,7 @@ export const DESK_DEFAULTS: Readonly<Record<Role, { name: string; perms: Permiss
     name: "Outlet Manager",
     perms: {
       f: {
-        ...view("billing", "x_report", "shift_reports", "stock_ledger"),
+        ...view("billing", "x_report", "shift_reports", "stock_ledger", "qr_orders"),
         ...edit("credit", "settlements", "approvals", "items_stock", "menu", "prices", "availability", "item_photos"),
       },
       a: ["void_bill", "void_settlement", "all_outlets"],

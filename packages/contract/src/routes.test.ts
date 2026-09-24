@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CollectionSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema, SetItemImageBodySchema, ITEM_IMAGE_PATH, itemImagePath, UpdateOutletBodySchema, CreateAdminUserBodySchema, UpdateAdminUserBodySchema } from "./index";
+import { AdjustReasonSchema, CollectionSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema, SetItemImageBodySchema, ITEM_IMAGE_PATH, itemImagePath, UpdateOutletBodySchema, CreateAdminUserBodySchema, UpdateAdminUserBodySchema, UpdateQrCodeBodySchema } from "./index";
 import { isWriteRoute, need, routes, serviceOf } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -88,6 +88,14 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- postings and the register
   setAdminUserPostings: { locs: ["coffee", "kiosk"] },
   closeRegister: { loc: "coffee", countedCash: 26885, note: "Drawer counted at the pass" },
+  // ---- QR ordering
+  createQrOrder: { nonce: "0b6f2c1e-8d4a-4f3b-9c2d-5e7a1b3c9d10", name: "Anitha", phone: "98430 22118", detail: "Bed 12", lines: [{ it: "SKU-1", qty: 2 }] },
+  verifyQrPayment: { secret: "q".repeat(43), razorpay_order_id: "order_Pq7x2", razorpay_payment_id: "pay_Pq7x9", razorpay_signature: "a".repeat(64) },
+  setQrOrderStatus: { to: "Preparing" },
+  setQrPause: { paused: true },
+  createQrCode: { loc: "coffee", label: "Table 4", mode: "pickup" },
+  updateQrCode: { label: "Table 4 (window)" },
+  setOrderHours: { days: [{ dow: 1, opens: "08:00", closes: "20:30" }] },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -150,6 +158,8 @@ describe("what buying puts on the wire", () => {
     expect(PatchContractBodySchema.parse({})).toEqual({});
     // ---- item patch ----
     expect(PatchItemBodySchema.parse({})).toEqual({});
+    // ---- QR codes
+    expect(UpdateQrCodeBodySchema.parse({})).toEqual({});
     expect(PatchVendorBodySchema.parse({ terms: "45 days" })).toEqual({ terms: "45 days" });
   });
   it("carries the finance slab as a rule's constant, not as seed data", () => {

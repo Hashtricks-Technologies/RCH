@@ -8,9 +8,9 @@ import { act, anyOf, desk, need } from "../routes";
 const perms = { f: { prices: "edit", stock_ledger: "view" }, a: ["void_bill"] };
 
 describe("the permission vocabulary", () => {
-  it("is a closed catalogue of thirty-five features", () => {
-    expect(FeatureSchema.options).toHaveLength(35);
-    expect(FeatureSchema.options.slice(0, 6)).toEqual(["billing", "x_report", "z_report", "shift_reports", "credit", "settlements"]);
+  it("is a closed catalogue of thirty-six features", () => {
+    expect(FeatureSchema.options).toHaveLength(36);
+    expect(FeatureSchema.options.slice(0, 7)).toEqual(["billing", "x_report", "z_report", "shift_reports", "credit", "settlements", "qr_orders"]);
     expect(FeatureSchema.safeParse("payroll").success).toBe(false);
   });
   it("has two levels, the editor's none, and three actions", () => {

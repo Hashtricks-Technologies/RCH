@@ -10,6 +10,7 @@ import { CurrentShiftResponseSchema, ShiftReportSchema, ShiftReportsResponseSche
 import { AuditEntrySchema, AuditIdParamsSchema, AuditPageSchema, AuditQuerySchema } from "./schemas/audit.js";
 import { AdjustmentRequestSchema, AdjustmentSchema, BatchSchema, BillSchema, PriceListSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
 import { OutletPricesResultSchema, SaveOutletPricesBodySchema } from "./schemas/writes.js";
+import { AdminQrCodeSchema, AdminQrCodesResponseSchema, CreateQrCodeBodySchema, CreateQrOrderBodySchema, OrderHoursSchema, PublicMenuSchema, PublicQrOrderQuerySchema, PublicQrOrderSchema, QrCodeIdParamsSchema, QrOrderCreatedSchema, QrOrderIdParamsSchema, QrOrderSchema, QrOrdersResponseSchema, QrPauseBodySchema, QrPauseResultSchema, QrRefundSchema, QrTokenParamsSchema, SetOrderHoursBodySchema, SetQrOrderStatusBodySchema, UpdateQrCodeBodySchema, VerifyQrPaymentBodySchema } from "./schemas/qr.js";
 import { ActivatePriceListResultSchema, AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveAdjustmentRequestResultSchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateAdjustmentBodySchema, CreateAdjustmentRequestBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreatePriceListBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DeletedPriceListSchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, OutletParamsSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceListIdParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, DeskReplyBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RedirectRequestBodySchema, RejectAdjustmentRequestBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetOutletPriceListBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse, ItemKeyParamsSchema, ItemResultSchema, PatchItemBodySchema, SetItemImageBodySchema, BillNoParamsSchema, VoidBillBodySchema, CreateProdOrderBodySchema } from "./schemas/writes.js";
 
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -316,6 +317,30 @@ export const routes = {
   deskTickets:           defineRoute({ method: "GET",   path: "/admin/support/tickets",            access: "admin", response: SupportTicketsResponseSchema }),
   replyAsDesk:           defineRoute({ method: "POST",  path: "/admin/support/tickets/:id/messages", access: "admin", params: DocIdParamsSchema, body: DeskReplyBodySchema, response: writeResponse(SupportTicketSchema) }),
   setDeskTicketStatus:   defineRoute({ method: "POST",  path: "/admin/support/tickets/:id/status", access: "admin", params: DocIdParamsSchema, body: SetTicketStatusBodySchema, response: writeResponse(SupportTicketSchema) }),
+  // ---- QR ordering: the customer's side. No token - a phone that scanned a code has none - so
+  // each is "public", and the server's own limits (per IP, per phone, the caps) stand in for a
+  // role gate. An unknown or switched-off code is one 404 however it is asked. Placing an order and
+  // verifying its payment are writes and carry a label, so an accepted one lands in the audit log
+  // under the system's account; a refused anonymous write leaves nothing, so the log cannot be
+  // flooded. The status read proves itself with the order's secret (`k`), not a token.
+  publicQrMenu:     defineRoute({ method: "GET",  path: "/public/qr/:token",         access: "public", params: QrTokenParamsSchema, response: PublicMenuSchema }),
+  createQrOrder:    defineRoute({ method: "POST", path: "/public/qr/:token/orders",  access: "public", params: QrTokenParamsSchema, body: CreateQrOrderBodySchema, response: writeResponse(QrOrderCreatedSchema) }),
+  verifyQrPayment:  defineRoute({ method: "POST", path: "/public/orders/:id/verify", access: "public", params: QrOrderIdParamsSchema, body: VerifyQrPaymentBodySchema, response: writeResponse(PublicQrOrderSchema) }),
+  publicQrOrder:    defineRoute({ method: "GET",  path: "/public/orders/:id",        access: "public", params: QrOrderIdParamsSchema, query: PublicQrOrderQuerySchema, response: PublicQrOrderSchema }),
+  // ---- QR ordering: the counter's queue. The seeded counter works it (edit) and the manager
+  // watches it (view); a retry of a refund the gateway refused is the void's own power, since it
+  // is money leaving the till.
+  qrOrders:         defineRoute({ method: "GET",  path: "/qr-orders",                access: need("qr_orders", "view"), response: QrOrdersResponseSchema }),
+  setQrOrderStatus: defineRoute({ method: "POST", path: "/qr-orders/:id/status",     access: need("qr_orders", "edit"), params: QrOrderIdParamsSchema, body: SetQrOrderStatusBodySchema, response: writeResponse(QrOrderSchema) }),
+  setQrPause:       defineRoute({ method: "PUT",  path: "/outlets/:loc/qr-pause",    access: need("qr_orders", "edit"), params: OutletParamsSchema, body: QrPauseBodySchema, response: writeResponse(QrPauseResultSchema) }),
+  retryQrRefund:    defineRoute({ method: "POST", path: "/qr-refunds/:id/retry",     access: act("void_bill"), params: DocIdParamsSchema, response: writeResponse(QrRefundSchema) }),
+  // ---- admin: QR codes and each outlet's ordering hours. Codes are switched off, never deleted -
+  // an order names the code it came from.
+  adminQrCodes:     defineRoute({ method: "GET",   path: "/admin/qr-codes",                access: "admin", response: AdminQrCodesResponseSchema }),
+  createQrCode:     defineRoute({ method: "POST",  path: "/admin/qr-codes",                access: "admin", body: CreateQrCodeBodySchema, response: writeResponse(AdminQrCodeSchema) }),
+  updateQrCode:     defineRoute({ method: "PATCH", path: "/admin/qr-codes/:id",            access: "admin", params: QrCodeIdParamsSchema, body: UpdateQrCodeBodySchema, response: writeResponse(AdminQrCodeSchema) }),
+  regenerateQrCode: defineRoute({ method: "POST",  path: "/admin/qr-codes/:id/regenerate", access: "admin", params: QrCodeIdParamsSchema, response: writeResponse(AdminQrCodeSchema) }),
+  setOrderHours:    defineRoute({ method: "PUT",   path: "/admin/outlets/:loc/order-hours", access: "admin", params: OutletParamsSchema, body: SetOrderHoursBodySchema, response: writeResponse(OrderHoursSchema) }),
   // ---- admin: the audit log. Answered by `apps/audit`, not by the API: `service: "audit"` is what
   // keeps these out of the API's `mount()` and in the audit service's. Both live under
   // `AUDIT_PATH`, so every proxy in front of the two services routes them with one prefix rule.

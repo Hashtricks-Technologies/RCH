@@ -6,6 +6,7 @@ import type * as A from "./schemas/admin.js";
 import type * as V from "./schemas/receivables.js";
 import type * as Auth from "./schemas/auth.js";
 import type * as P from "./schemas/permissions.js";
+import type * as Q from "./schemas/qr.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
 export type Source = z.infer<typeof C.SourceSchema>;
@@ -128,3 +129,26 @@ export type RecordSettlementBody = z.infer<typeof V.RecordSettlementBodySchema>;
 /** One line of the public sign-in picker. */
 export type SignInEntry = z.infer<typeof Auth.SignInEntrySchema>;
 export type SignInCounter = z.infer<typeof Auth.SignInCounterSchema>;
+
+// ---- QR ordering: a customer's order from a code at an outlet, paid online.
+export type QrMode = z.infer<typeof Q.QrModeSchema>;
+export type QrOrderStatus = z.infer<typeof Q.QrOrderStatusSchema>;
+export type RefundStatus = z.infer<typeof Q.RefundStatusSchema>;
+export type RefundReason = z.infer<typeof Q.RefundReasonSchema>;
+export type BillSource = z.infer<typeof Q.BillSourceSchema>;
+export type OrderHoursDay = z.infer<typeof Q.OrderHoursDaySchema>;
+export type OrderHours = z.infer<typeof Q.OrderHoursSchema>;
+export type PublicMenu = z.infer<typeof Q.PublicMenuSchema>;
+export type PublicMenuItem = z.infer<typeof Q.PublicMenuItemSchema>;
+export type CreateQrOrderBody = z.infer<typeof Q.CreateQrOrderBodySchema>;
+export type QrOrderLine = z.infer<typeof Q.QrOrderLineSchema>;
+export type PublicQrOrder = z.infer<typeof Q.PublicQrOrderSchema>;
+export type QrOrderCreated = z.infer<typeof Q.QrOrderCreatedSchema>;
+export type VerifyQrPaymentBody = z.infer<typeof Q.VerifyQrPaymentBodySchema>;
+export type QrRefund = z.infer<typeof Q.QrRefundSchema>;
+export type QrOrder = z.infer<typeof Q.QrOrderSchema>;
+export type QrOrdersResponse = z.infer<typeof Q.QrOrdersResponseSchema>;
+export type AdminQrCode = z.infer<typeof Q.AdminQrCodeSchema>;
+export type AdminQrCodesResponse = z.infer<typeof Q.AdminQrCodesResponseSchema>;
+export type CreateQrCodeBody = z.infer<typeof Q.CreateQrCodeBodySchema>;
+export type UpdateQrCodeBody = z.infer<typeof Q.UpdateQrCodeBodySchema>;

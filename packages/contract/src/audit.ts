@@ -19,8 +19,12 @@ export type WriteRouteName = {
   [K in RouteName]: IsAudit<(typeof routes)[K]> extends true ? never : IsWrite<(typeof routes)[K]> extends true ? K : never;
 }[RouteName];
 
-/** Every manifest route that is a write (method !== "GET" unless `write` says otherwise, `write: false` excluded), plus the three auth events. */
-export type AuditAction = WriteRouteName | "login" | "logout" | "changePassword";
+/** What the system does on its own, with no request behind it: a QR order's capture billed or
+ *  refunded, and a refund's journey through the gateway. Written by `recordSystemEvent` with the
+ *  system's account as the actor. */
+export type SystemAuditAction = "qrOrderPaid" | "qrOrderRefunded" | "qrRefundSent" | "qrRefundProcessed" | "qrRefundFailed";
+/** Every manifest route that is a write (method !== "GET" unless `write` says otherwise, `write: false` excluded), plus the three auth events and the system's own. */
+export type AuditAction = WriteRouteName | "login" | "logout" | "changePassword" | SystemAuditAction;
 export type AuditLabel = { label: string; refused?: string; group: AuditGroup };
 
 /**
@@ -59,6 +63,18 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   toggleAvail:            { label: "Switched an item's availability", group: "sales" },
   recordSettlement:       { label: "Recorded a settlement", group: "sales" },
   voidSettlement:         { label: "Voided a settlement", group: "sales" },
+  // ---- QR ordering. The customer's two writes are logged only when accepted, under the
+  // system's account; the rest are the counter's, the manager's and the system's own.
+  createQrOrder:          { label: "Placed a QR order", group: "sales" },
+  verifyQrPayment:        { label: "Confirmed a QR order's payment", group: "sales" },
+  setQrOrderStatus:       { label: "Moved a QR order", group: "sales" },
+  setQrPause:             { label: "Paused or resumed QR ordering", group: "sales" },
+  retryQrRefund:          { label: "Retried a QR refund", group: "sales" },
+  qrOrderPaid:            { label: "Billed a paid QR order", group: "sales" },
+  qrOrderRefunded:        { label: "Refunded a QR order that could not be filled", group: "sales" },
+  qrRefundSent:           { label: "Sent a refund to the payment gateway", group: "sales" },
+  qrRefundProcessed:      { label: "Refund processed by the payment gateway", group: "sales" },
+  qrRefundFailed:         { label: "Refund failed at the payment gateway", group: "sales" },
   // ---- stock movement
   createRequest:          { label: "Raised a stock request", group: "stock" },
   cancelRequest:          { label: "Cancelled a stock request", group: "stock" },
@@ -120,6 +136,10 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   updateOutlet:           { label: "Changed an outlet", group: "master" },
   closeOutlet:            { label: "Closed an outlet", group: "master" },
   reopenOutlet:           { label: "Reopened an outlet", group: "master" },
+  createQrCode:           { label: "Created a QR code", group: "master" },
+  updateQrCode:           { label: "Changed a QR code", group: "master" },
+  regenerateQrCode:       { label: "Regenerated a QR code", group: "master" },
+  setOrderHours:          { label: "Set an outlet's QR ordering hours", group: "master" },
   createPayer:            { label: "Added a payer", group: "master" },
   updatePayer:            { label: "Changed a payer", group: "master" },
   setClassTerms:          { label: "Changed a category's discount and credit limit", group: "master" },

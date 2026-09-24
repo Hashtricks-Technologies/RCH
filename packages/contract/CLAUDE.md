@@ -30,6 +30,8 @@ src/schemas/snapshot.ts   SnapshotSchema and the narrow read responses; BILL_DAY
 src/schemas/{auth,admin,events,reports}.ts
 src/schemas/permissions.ts FeatureSchema, LevelSchema, GrantLevelSchema, ActionSchema, PermissionsSchema
 src/schemas/audit.ts      AuditEventSchema (the API → audit service event), AuditRow/Entry/Page/Query schemas
+src/schemas/qr.ts         QR ordering: the public menu/order/verify shapes, the counter's queue, the admin's
+                          codes and ordering hours, BillSource/RefundStatus, RAZORPAY_WEBHOOK_PATH
 src/schemas/images.ts     ITEM_IMAGE_PATH, itemImagePath() - the photo's own path, not a manifest route
 src/fixtures/*            the demo hospital: master data and seeded documents
 ```
@@ -94,10 +96,23 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   each write labelled in the `roles` audit group ("Roles & permissions"). `CreateAdminUserBodySchema` is
   `{ name, email, roleId, loc, phone? }` and `UpdateAdminUserBodySchema` `{ roleId, loc }`: an account form
   names a role, and the role's desk is the account's `r`.
+- **QR ordering** has four `access: "public"` routes (`publicQrMenu`, `createQrOrder`, `verifyQrPayment`,
+  `publicQrOrder`), the counter's three under `qr_orders` (`qrOrders` at view, `setQrOrderStatus` and
+  `setQrPause` at edit), `retryQrRefund` under `act("void_bill")`, and the admin's five (`adminQrCodes`,
+  `createQrCode`, `updateQrCode`, `regenerateQrCode`, `setOrderHours`). The two public writes carry audit
+  labels like any write; the API logs them only when accepted, under the system account. `AuditAction`
+  also takes `SystemAuditAction` - `qrOrderPaid`, `qrOrderRefunded`, `qrRefundSent`, `qrRefundProcessed`,
+  `qrRefundFailed` - events the system writes with no request behind them. The order's secret travels as
+  `secret` in bodies and results (so `SECRET_KEYS` masks it) and as `k` on the status read's query.
+  `RAZORPAY_WEBHOOK_PATH` is the gateway's webhook, kept out of the manifest like `EVENTS_PATH`.
 - **`voidBill`'s path parameter is percent-encoded.** Bill numbers contain a slash (`CF/1188` → `CF%2F1188`).
 
 ## Schema rules
 
+- **`Tender` has seven members; the till takes six.** `Online` is the QR capture's alone. `TillTenderSchema`
+  (`TenderSchema.exclude(["Online"])`) is what `PayBodySchema` takes, so no till can post an online bill.
+  `BillSchema` gains `src` (`till`/`qr`), `qo` (the order) and `refund`, all optional and absent on a
+  till's bill.
 - **Closed enums, never widened.** `Role`, `Tender`, `PayerKind` and every status are `z.enum`s. A status enum
   here and its Postgres enum in `apps/api/src/db/schema/enums.ts` change together or not at all. Two are
   deliberately not enums: `LocKey` is a checked string (a lower-case slug, `quarantine` refused by a lookahead),

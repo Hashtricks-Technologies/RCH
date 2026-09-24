@@ -4,13 +4,14 @@ import { AUDIT_GROUPS, AUDIT_LABELS, AUDIT_PATH, actionsInGroup, auditLabelOf, t
 import { isWriteRoute, routes, serviceOf } from "./routes";
 
 const AUTH_ACTIONS = ["login", "logout", "changePassword"];
+const SYSTEM_ACTIONS = ["qrOrderPaid", "qrOrderRefunded", "qrRefundSent", "qrRefundProcessed", "qrRefundFailed"];
 
 describe("AUDIT_LABELS", () => {
-  it("labels exactly the writes the API answers, plus sign-in, sign-out and a password change", () => {
+  it("labels exactly the writes the API answers, plus sign-in, sign-out, a password change and the system's own", () => {
     // The runtime twin of `Record<AuditAction, AuditLabel>`: the type catches a missing label at
     // typecheck, this catches a route whose `write` flag and method disagree with the type's reading.
     const writes = Object.entries(routes).filter(([, r]) => isWriteRoute(r) && serviceOf(r) === "api").map(([name]) => name);
-    expect(Object.keys(AUDIT_LABELS).sort()).toEqual([...writes, ...AUTH_ACTIONS].sort());
+    expect(Object.keys(AUDIT_LABELS).sort()).toEqual([...writes, ...AUTH_ACTIONS, ...SYSTEM_ACTIONS].sort());
   });
 
   it("gives every action a label of its own, so the table and the CSV never print two actions alike", () => {
@@ -21,7 +22,7 @@ describe("AUDIT_LABELS", () => {
 
   it("keeps reads, the token refresh and the audit service's own routes out of the type", () => {
     const writes: WriteRouteName[] = ["pay", "patchMe", "savePrice", "deleteAdminUser"];
-    const actions: AuditAction[] = [...writes, "login", "logout", "changePassword"];
+    const actions: AuditAction[] = [...writes, "login", "logout", "changePassword", "qrOrderPaid", "qrRefundFailed"];
     const notActions: AuditAction[] = [
       // @ts-expect-error - a GET is a read, and reads are not audited
       "snapshot",
@@ -29,6 +30,8 @@ describe("AUDIT_LABELS", () => {
       "refresh",
       // @ts-expect-error - reading the log is not an event in it
       "auditLog",
+      // @ts-expect-error - a customer reading their order's status is a read
+      "publicQrOrder",
     ];
     expect(actions.every((a) => a in AUDIT_LABELS)).toBe(true);
     expect(notActions.some((a) => a in AUDIT_LABELS)).toBe(false);
@@ -48,7 +51,10 @@ describe("AUDIT_GROUPS", () => {
 
   it("files sign-in with accounts and a bill with sales", () => {
     expect(actionsInGroup("accounts")).toEqual(expect.arrayContaining(["login", "logout", "changePassword", "createAdminUser"]));
-    expect(actionsInGroup("sales").sort()).toEqual(["closeRegister", "closeShift", "pay", "recordSettlement", "toggleAvail", "voidBill", "voidSettlement"]);
+    expect(actionsInGroup("sales").sort()).toEqual([
+      "closeRegister", "closeShift", "createQrOrder", "pay", "qrOrderPaid", "qrOrderRefunded", "qrRefundFailed", "qrRefundProcessed", "qrRefundSent",
+      "recordSettlement", "retryQrRefund", "setQrOrderStatus", "setQrPause", "toggleAvail", "verifyQrPayment", "voidBill", "voidSettlement",
+    ]);
   });
 
   it("files every role write under roles & permissions", () => {
