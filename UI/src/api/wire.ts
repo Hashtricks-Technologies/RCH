@@ -4,7 +4,7 @@ import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePri
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { AdminAction, AdminLocation, AdminPayer, AdminRole, AdminUser, Bill, Contract, Dated, HistEntry, RateContract, StockLoc } from "../types";
+import type { AdminAction, AdminLocation, AdminPayer, AdminQrCode, AdminQrCodesResponse, AdminRole, AdminUser, Bill, Contract, OrderHours, Dated, HistEntry, RateContract, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -232,6 +232,25 @@ export function applyAdminLocations(adminLocations: AdminLocation[]): void { use
  *  with what each still owes. An operational session reads the live list out of `roster`
  *  instead, which every payer write names alongside this one. */
 export function applyAdminPayers(adminPayers: AdminPayer[]): void { useApp.setState({ adminPayers }); }
+/** GET /admin/qr-codes -> every code at every outlet, switched-off ones too, and each outlet's
+ *  ordering hours. The instants stay as sent: the page prints them with `fromWireDay` /
+ *  `fromWireTime` and sorts on them, and nothing else reads this. */
+export function applyAdminQrCodes(r: AdminQrCodesResponse): void {
+  useApp.setState({ adminQrCodes: r.codes, adminOrderHours: r.hours });
+}
+/** One code as a write handed it back - put in its place, or added - so the row shows what the
+ *  server stored before the read-back lands. */
+export function applyAdminQrCode(code: AdminQrCode): void {
+  useApp.setState((s) => ({
+    adminQrCodes: s.adminQrCodes.some((c) => c.id === code.id)
+      ? s.adminQrCodes.map((c) => (c.id === code.id ? code : c))
+      : [...s.adminQrCodes, code],
+  }));
+}
+/** One outlet's week as `PUT /admin/outlets/:loc/order-hours` stored it. */
+export function applyOrderHours(hours: OrderHours): void {
+  useApp.setState((s) => ({ adminOrderHours: [...s.adminOrderHours.filter((h) => h.loc !== hours.loc), hours] }));
+}
 /** GET /admin/roles -> every role, active or not, with how many active accounts hold each. The
  *  account form picks from the active ones; a row shows its account's role whatever its state. */
 export function applyAdminRoles(adminRoles: AdminRole[]): void { useApp.setState({ adminRoles }); }

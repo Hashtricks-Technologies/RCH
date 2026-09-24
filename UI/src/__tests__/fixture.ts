@@ -135,6 +135,8 @@ export function resetStore() {
     // action log, and leaving either out of this reset would let one test's rows leak into the
     // next one's (`setState` merges, it does not replace).
     accounts: [], adminActions: [], deskTickets: [],
+    // ---- admin: QR codes and ordering hours, empty for the same reason.
+    adminQrCodes: [], adminOrderHours: [],
     // ---- audit log: the tab's list, filter and pill count, back to a first visit's.
     audit: initialAudit(),
   });

@@ -4,8 +4,8 @@
 import { routes } from "@rch/contract";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
-import { applyAccounts, applyAdminActions, applyAdminLocations, applyAdminPayers, applyAdminRoles } from "../api/wire";
-import type { AdminAction, AdminLocation, AdminPayer, AdminRole, AdminUser, CreateOutletBody, CreateRoleBody, Dated, LocKey, PayerKind, UpdateOutletBody, UpdateRoleBody } from "../types";
+import { applyAccounts, applyAdminActions, applyAdminLocations, applyAdminPayers, applyAdminQrCode, applyAdminQrCodes, applyAdminRoles, applyOrderHours } from "../api/wire";
+import type { AdminAction, AdminLocation, AdminPayer, AdminQrCode, AdminRole, AdminUser, CreateOutletBody, CreateQrCodeBody, OrderHours, OrderHoursDay, UpdateQrCodeBody, CreateRoleBody, Dated, LocKey, PayerKind, UpdateOutletBody, UpdateRoleBody } from "../types";
 import type { AppState } from "./index";
 
 type Get = () => AppState;
@@ -83,6 +83,24 @@ export interface AdminSlice {
   createPayer: (body: { kind: PayerKind; id: string; name: string }) => Promise<AdminPayer | null>;
   /** A rename and the on/off switch in one patch, the way an account's switch is a patch. */
   updatePayer: (kind: PayerKind, id: string, body: { name?: string; active?: boolean }) => Promise<boolean>;
+
+  // ---- QR codes and each outlet's ordering hours
+  /** Every code at every outlet, switched-off ones too - a code is never deleted, because an
+   *  order names the code it came from. */
+  adminQrCodes: AdminQrCode[];
+  /** Each outlet's week of ordering windows, in IST. An outlet with no row takes no QR orders. */
+  adminOrderHours: OrderHours[];
+  /** A read, like `loadAdminPayers`: no toast of its own but an outage's. */
+  loadAdminQrCodes: () => Promise<void>;
+  /** The server's row (it numbers the code and draws its token), or `null` on a refusal - the
+   *  form then stays as typed, the same shape as `createOutlet`. */
+  createQrCode: (body: CreateQrCodeBody) => Promise<AdminQrCode | null>;
+  /** A rename, a change of mode and the on/off switch, one patch; only the fields that changed. */
+  updateQrCode: (id: string, body: UpdateQrCodeBody) => Promise<boolean>;
+  /** A new token for the code: every poster already printed stops working. */
+  regenerateQrCode: (id: string) => Promise<boolean>;
+  /** The whole week at once - the editor's seven rows, the closed days left out. */
+  setOrderHours: (loc: LocKey, days: OrderHoursDay[]) => Promise<boolean>;
 }
 
 const fail = (get: Get, e: unknown, what: string): false => {
@@ -99,6 +117,8 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
   roleActions: [],
   adminPayers: [],
   payerActions: [],
+  adminQrCodes: [],
+  adminOrderHours: [],
 
   loadAccounts: async () => {
     try { applyAccounts(await call(routes.adminUsers)); }
@@ -252,5 +272,50 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) { return fail(get, e, "save that payer"); }
+  },
+
+  // ---- QR codes: placed around an outlet, each opening that outlet's menu on a customer's phone.
+  // Switched off and back on, never deleted; a regenerate draws a new token, so a poster that has
+  // gone astray stops working. Each write puts the row the server stored in place at once, then
+  // reads back what it named.
+  loadAdminQrCodes: async () => {
+    try { applyAdminQrCodes(await call(routes.adminQrCodes)); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the QR codes - check the connection and try again."); }
+  },
+  createQrCode: async (body) => {
+    try {
+      const r = await call(routes.createQrCode, { body });
+      applyAdminQrCode(r.result);
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result;
+    } catch (e) { fail(get, e, "create the QR code"); return null; }
+  },
+  updateQrCode: async (id, body) => {
+    try {
+      const r = await call(routes.updateQrCode, { params: { id }, body });
+      applyAdminQrCode(r.result);
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the QR code"); }
+  },
+  regenerateQrCode: async (id) => {
+    try {
+      const r = await call(routes.regenerateQrCode, { params: { id } });
+      applyAdminQrCode(r.result);
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "regenerate the QR code"); }
+  },
+  setOrderHours: async (loc, days) => {
+    try {
+      const r = await call(routes.setOrderHours, { params: { loc }, body: { days } });
+      applyOrderHours(r.result);
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the ordering hours"); }
   },
 });

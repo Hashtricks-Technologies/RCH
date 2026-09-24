@@ -1,7 +1,7 @@
 import { routes, type Changed, type Feature } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyAccounts, applyAdjustmentRequests, applyAdjustments, applyAdminLocations, applyAdminPayers, applyAdminRoles, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
+  applyAccounts, applyAdjustmentRequests, applyAdjustments, applyAdminLocations, applyAdminPayers, applyAdminQrCodes, applyAdminRoles, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
   applyPos, applyPriceLists, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyTerms, applyVendors,
@@ -36,7 +36,7 @@ async function rereadMe(): Promise<void> {
  * names `bills`. Anything else is a no-op for that session rather than a 404 that would qualify
  * the write's own sentence with "the screen could not be refreshed".
  */
-const ADMIN_READS: ReadonlySet<Changed> = new Set<Changed>(["tickets", "payers", "roles", "accounts", "outlets", "audit"]);
+const ADMIN_READS: ReadonlySet<Changed> = new Set<Changed>(["tickets", "payers", "roles", "accounts", "outlets", "qrCodes", "audit"]);
 
 /** The slices `GET /stock` answers for, in one call. */
 const STOCK: readonly Changed[] = ["stock", "rsv", "ovr"];
@@ -111,6 +111,10 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   // own, pulls back the admin list. Each reader does nothing for the other session.
   locations: () => useApp.getState().user?.admin ? Promise.resolve() : call(routes.locations).then(applyLocations),
   outlets: () => useApp.getState().user?.admin ? call(routes.adminLocations).then(applyAdminLocations) : Promise.resolve(),
+  // ---- admin: QR codes and ordering hours. `GET /admin/qr-codes` is the super admin's alone, so an
+  // operational session that hears `qrCodes` on the stream reads nothing - its menu and queue do
+  // not change because a code was printed, renamed or switched off.
+  qrCodes: () => useApp.getState().user?.admin ? call(routes.adminQrCodes).then(applyAdminQrCodes) : Promise.resolve(),
   // ---- audit log: nothing is read here. The Audit log tab's list never moves by itself (spec
   // 5.2), so a notice only adds to the count behind the tab's "New events - show" pill.
   // The server sends `audit` to admin streams alone; the guard keeps any other session from counting one.
