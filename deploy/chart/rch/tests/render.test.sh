@@ -86,6 +86,27 @@ grep -q 'location /api/v1/events' ../../nginx/default.conf.template
 # /readyz itself: without it the check fell through to the SPA catch-all and passed on index.html,
 # a 200 that says nothing about nginx.
 grep -q 'location = /readyz' ../../nginx/default.conf.template
+# The security headers must reach index.html and the assets. nginx inherits add_header only into a
+# location that sets none of its own, and `/` and `/assets/` each set Cache-Control - so for a long
+# time they served every page with no CSP. Each such block must include the snippet itself.
+tpl=../../nginx/default.conf.template
+for loc in 'location \/ {' 'location \/assets\/ {'; do
+  block=$(sed -n "/$loc/,/^  }/p" "$tpl")
+  grep -q '^ *include /etc/nginx/rch/security-headers.conf;' <<<"$block" \
+    || { echo "FAIL: nginx '$loc' sets its own add_header but does not include security-headers.conf"; exit 1; }
+done
+grep -q '^ *include /etc/nginx/rch/security-headers.conf;' <(sed -n '/^server {/,/location = \/healthz/p' "$tpl")
+grep -q '^COPY deploy/nginx/snippets/ /etc/nginx/rch/$' ../../../UI/Dockerfile \
+  || { echo "FAIL: UI/Dockerfile must copy deploy/nginx/snippets to /etc/nginx/rch/"; exit 1; }
+# The QR ordering page: its own CSP, admitting Razorpay Checkout, and index.html served from its own
+# block - a trailing `/index.html` fallback would redirect into `location /` and its staff CSP.
+order_block=$(sed -n '/location \/order\/ {/,/^  }/p' "$tpl")
+grep -q '^ *include /etc/nginx/rch/order-security-headers.conf;' <<<"$order_block"
+grep -q 'try_files \$uri /index.html =404;' <<<"$order_block"
+grep -q 'script-src .*https://checkout.razorpay.com' ../../nginx/snippets/order-security-headers.conf
+grep -q 'frame-src https://api.razorpay.com' ../../nginx/snippets/order-security-headers.conf
+grep -q "frame-ancestors 'self'" ../../nginx/snippets/order-security-headers.conf
+refute grep -q 'razorpay' ../../nginx/snippets/security-headers.conf
 grep -q 'location = /healthz' ../../nginx/default.conf.template
 # ...and it must forward the client on, like /api/ does: the API trusts one hop, so a stream
 # without X-Forwarded-For is rate-limited and logged as nginx itself.

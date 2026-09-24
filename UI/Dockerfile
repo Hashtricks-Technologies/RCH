@@ -20,5 +20,6 @@ ENV AUDIT_UPSTREAM=http://rch-audit:3100
 # without hardcoding a DNS server address.
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 COPY deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY deploy/nginx/snippets/ /etc/nginx/rch/
 COPY --from=build /repo/UI/dist /usr/share/nginx/html
 EXPOSE 8080
