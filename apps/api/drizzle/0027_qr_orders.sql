@@ -120,7 +120,7 @@ CREATE INDEX "qr_orders_ip_created_idx" ON "qr_orders" USING btree ("ip","create
 CREATE INDEX "qr_orders_expiry_idx" ON "qr_orders" USING btree ("expires_at") WHERE "qr_orders"."status" = 'Awaiting payment';--> statement-breakpoint
 ALTER TABLE "bills" ADD CONSTRAINT "bills_qr_order_id_qr_orders_id_fk" FOREIGN KEY ("qr_order_id") REFERENCES "qr_orders"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "bills_qr_order_uq" ON "bills" USING btree ("qr_order_id");--> statement-breakpoint
-ALTER TABLE "users" ADD CONSTRAINT "users_role_id_ck" CHECK ("users"."admin" or "users"."system" or "users"."role_id" is not null);--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_role_id_ck" CHECK (("users"."admin" or "users"."system" or "users"."role_id" is not null) and not ("users"."admin" and "users"."system"));--> statement-breakpoint
 ALTER TABLE "bills" ADD CONSTRAINT "bills_source_ck" CHECK (("bills"."source" = 'qr') = ("bills"."qr_order_id" is not null));--> statement-breakpoint
 -- QR orders came after the seeded roles: the Counter Operator works the queue (edit) and the
 -- Outlet Manager watches it (view), as `DESK_DEFAULTS` in @rch/domain now says. Invisible to

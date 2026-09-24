@@ -1325,7 +1325,7 @@
       "checkConstraints": {
         "users_role_id_ck": {
           "name": "users_role_id_ck",
-          "value": "\"users\".\"admin\" or \"users\".\"system\" or \"users\".\"role_id\" is not null"
+          "value": "(\"users\".\"admin\" or \"users\".\"system\" or \"users\".\"role_id\" is not null) and not (\"users\".\"admin\" and \"users\".\"system\")"
         }
       },
       "isRLSEnabled": false

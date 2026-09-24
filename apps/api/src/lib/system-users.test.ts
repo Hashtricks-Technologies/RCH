@@ -38,6 +38,10 @@ describe("systemOperator", () => {
       passwordHash: "!", admin: false, system: true, active: true,
     });
   });
+  it("can never also be the super admin", async () => {
+    await withTransaction(app.db, (tx) => systemOperator(tx));
+    await expect(app.db.update(users).set({ admin: true }).where(eq(users.id, SYSTEM_QR.id))).rejects.toMatchObject({ cause: expect.objectContaining({ constraint: "users_role_id_ck" }) });
+  });
   it("is settled by the key when two transactions race to create it", async () => {
     await app.db.delete(users).where(eq(users.id, SYSTEM_QR.id));
     const ids = await Promise.all([1, 2].map(() => withTransaction(app.db, (tx) => systemOperator(tx))));

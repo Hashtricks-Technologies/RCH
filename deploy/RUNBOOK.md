@@ -2980,7 +2980,7 @@ counter." Everything else in the system is unaffected.
 **Migration `0027_qr_orders`** creates `qr_codes`, `outlet_order_hours`, `qr_outlet_state`,
 `qr_orders`, `qr_order_lines`, `payment_refunds` and `rzp_webhook_events`; adds `bills.source`
 (`till|qr`) and `bills.qr_order_id`; adds `users.system` and relaxes `users_role_id_ck` to
-*admin, or system, or has a role*. It gives the new feature **QR orders** to the seeded
+*admin, or system, or has a role - and never both admin and system*. It gives the new feature **QR orders** to the seeded
 **Counter Operator** role at Edit and the **Outlet Manager** at View, so the counters see the QR
 orders screen from the moment the release is up. A role you created yourself on `/admin` gets it
 only when the super admin adds it (**Admin → Roles**). The two new id series (`QO-<year>-<nnnn>`

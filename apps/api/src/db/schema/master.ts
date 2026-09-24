@@ -92,7 +92,9 @@ export const users = pgTable("users", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("users_emp_no_uq").on(t.empNo),
-  check("users_role_id_ck", sql`${t.admin} or ${t.system} or ${t.roleId} is not null`),
+  // A person holds a role unless they are the super admin; the system account holds none - and
+  // no account is both, since the admin flag opens `/admin` and a system account must never.
+  check("users_role_id_ck", sql`(${t.admin} or ${t.system} or ${t.roleId} is not null) and not (${t.admin} and ${t.system})`),
   foreignKey({ name: "users_role_desk_fk", columns: [t.roleId, t.role], foreignColumns: [roles.id, roles.desk] }),
 ]);
 

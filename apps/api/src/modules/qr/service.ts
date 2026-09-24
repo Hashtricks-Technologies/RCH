@@ -673,6 +673,7 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
       return withTransaction(db, async (tx) => {
         const row = await lockOutlet(tx, loc);
         auditBefore({ days: await qrRepo.hoursOf(tx, loc) });
+        assertRule(row.active, `Refused - ${row.name} is closed; reopen it before setting its QR ordering hours`);
         const sorted = [...days].sort((a, b) => a.dow - b.dow);
         await qrRepo.replaceHours(tx, loc, sorted);
         // The counter's queue carries each outlet's hours too, so it refetches as well.

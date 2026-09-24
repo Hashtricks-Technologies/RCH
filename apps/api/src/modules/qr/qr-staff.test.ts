@@ -266,6 +266,11 @@ describe("the admin's codes and hours", () => {
     const bad = await as("u7", "PUT", "/admin/outlets/rest/order-hours", { days: [{ dow: 1, opens: "20:00", closes: "08:00" }] });
     expect(bad.statusCode).toBe(400);
     expect((await as("u7", "PUT", "/admin/outlets/kitchen/order-hours", { days: [] })).statusCode).toBe(404);
+    // A closed outlet's hours are refused like a new code there.
+    await app.db.insert(s.locations).values({ key: "shut2", name: "Night Canteen", code: "OT-NC", type: "Outlet", floor: "B2", costCentre: "CC-NC", active: false });
+    const shut = await as("u7", "PUT", "/admin/outlets/shut2/order-hours", { days: ALL_DAY });
+    expect(shut.statusCode).toBe(422);
+    expect(shut.json().error.message).toBe("Refused - Night Canteen is closed; reopen it before setting its QR ordering hours");
   });
 });
 
