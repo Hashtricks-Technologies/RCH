@@ -149,7 +149,8 @@ lines, `payment_refunds` and `rzp_webhook_events`. The routes, the webhook and t
 `modules/qr/` (next section); what they stand on is here.
 
 - **`lib/payments.ts` is the one door to the payment gateway.** `PaymentGateway` is create an order, fetch
-  and capture a payment, refund and list a payment's refunds, and verify the checkout
+  and capture a payment, list an order's payments (`paymentsOfOrder`, the reconcile pass), refund, list a
+  payment's refunds and read one back (`fetchRefund`), and verify the checkout
   (`hmac(order_id|payment_id)`, key secret) and a webhook (`hmac(raw body)`, webhook secret) - HMAC-SHA256
   hex compared with `timingSafeEqual`. `createRazorpayGateway(cfg, fetchImpl)` is Razorpay's REST API over
   `fetch` with basic auth and no SDK, a 10 s timeout, and every field it relies on checked; a failure is a
@@ -157,7 +158,9 @@ lines, `payment_refunds` and `rzp_webhook_events`. The routes, the webhook and t
   it inside a transaction.** `plugins/payments.ts` decorates `app.payments`: the real gateway when all three
   Razorpay keys are set, `null` when none are (QR ordering then answers 503), or `AppDeps.payments` - a test
   injects `createFakeGateway()` (`src/test/fake-gateway.ts`: in-memory orders, payments and refunds, every
-  call recorded, `failNext`, signing with fixed secrets) through `buildTestApp({ payments })`.
+  call recorded, `failNext`, signing with fixed secrets) through `buildTestApp({ payments })`. Only the api
+  container is given the keys: neither Compose's `migrate` nor Helm's `rch.apiCliEnv` (the migrate
+  initContainer and the purge CronJob) carries them, since no CLI talks to the gateway.
 - **`lib/refunds.ts` is the only writer of `payment_refunds`** (`scripts/check-boundaries.sh`).
   `queueRefund` runs under the order's `FOR UPDATE` and numbers the refund `<order id>-R<n>` - also the
   `notes.rid` the worker sets at the gateway and looks for before sending again. `moveRefund` walks
@@ -171,7 +174,7 @@ lines, `payment_refunds` and `rzp_webhook_events`. The routes, the webhook and t
   `QR_ORDER_TRANSITIONS` plus the trail line), shared by `modules/qr` and `modules/pos`'s void.
 - **The system account** (`lib/system-users.ts`): `systemOperator(tx)` gets or creates `sys-qr` (`SYS-QR`,
   "QR Orders", desk `counter` at the store, `system = true`, `role_id` null - `users_role_id_ck` is now
-  `admin or system or role_id is not null` - password hash `!`). A race is settled by the primary key. Its id
+  `(admin or system or role_id is not null) and not (admin and system)` - password hash `!`). A race is settled by the primary key. Its id
   and number are outside the `u<n>` and `RC-<n>` series, so neither the user sequence nor `nextEmpNo` sees it.
   Sign-in treats it as an unknown number before any password check; the directory, the admin's account list
   and lookups (edit, delete, reset, deactivate are 404s), the location staff counts (and so the outlet
@@ -184,8 +187,12 @@ lines, `payment_refunds` and `rzp_webhook_events`. The routes, the webhook and t
 `modules/qr/` mounts the thirteen QR manifest routes and the webhook; `worker.ts` is the worker's body and
 `plugins/qr-worker.ts` its timer.
 
-- **The public routes** (`publicQrMenu`, `createQrOrder`, `verifyQrPayment`, `publicQrOrder`) carry per-IP
-  limits of 60, 10, 20 and 60 a minute (`QR_RATE_LIMITS` in `routes.ts`) on top of the global one. An
+- **The public routes** (`publicQrMenu`, `createQrOrder`, `verifyQrPayment`, `publicQrOrder`) carry limits
+  of 120, 10 and 20 a minute per address and 30 a minute per order *and* address (the status poll's own
+  `keyGenerator`, so phones on one ward Wi-Fi never share a budget) - `QR_RATE_LIMITS` in `routes.ts`, on
+  top of the global one. The menu reads **closed** with `NOT_SET_UP` as its `why` while no gateway is
+  configured (a closed outlet reads closed first), and an item that cannot be ordered carries the one
+  customer sentence "Not available right now." - never the till's reason. An
   unknown, switched-off or regenerated token is one 404 sentence (`CODE_GONE`); an order id with the wrong
   secret is the same 404 as no order. The secret is compared as sha256 digests with `timingSafeEqual`. The
   status read's `?k=` is the secret, so `plugins/logging.ts`'s `scrubUrl` replaces it on every logged URL
@@ -193,35 +200,56 @@ lines, `payment_refunds` and `rzp_webhook_events`. The routes, the webhook and t
 - **Placing an order** reads the code and refuses with no gateway (503, before any write), normalises the
   phone (`customerPhoneRefusal`), then in one transaction: the code `FOR SHARE`, the outlet (`lockLocation`;
   closed is refused), the IST window (`qrOpenAt`) and the pause, two advisory locks (phone, then address)
-  under which the caps are counted (3 unpaid per phone per outlet, 422; 5 unpaid per address in 30 min,
-  429), the quote (`sellableAt`, `assertSellable`, `termsFor("customer")`, `planBill`; 20 units of an item
-  after folding, `QR_ORDER_MAX_RUPEES`), the `qr_order` number, the insert and a `createQrOrder` system
-  event. Only after commit does it ask the gateway for its order (`checkoutFor`), storing the id once
-  (`setRzpOrder` keeps the first); a gateway that cannot be reached is a 503 and the phone retries.
+  under which the caps are counted (3 unpaid per phone at any outlet, 422; `QR_PENDING_PER_IP` - default
+  20 - unpaid per address in 30 min, 429), the quote (`sellableAt`, `assertSellable`, `termsFor("customer")`,
+  `planBill`; 20 units of an item after folding, at least ₹1 - the gateway's minimum - and at most
+  `QR_ORDER_MAX_RUPEES`), the `qr_order` number, the insert and a `createQrOrder` system event. Only after
+  commit does it ask the gateway for its order (`checkoutFor`), storing the id once (`setRzpOrder` keeps the
+  first). A gateway that cannot be reached (network, 5xx, 429) is a 503 "We could not reach the payment
+  service - try again in a moment." and the phone retries; a gateway that refuses (any other 4xx) is a 422
+  "Online payment is not available right now - please order at the counter." and the order is moved to
+  Expired at once, so it counts toward neither cap.
 - **The nonce is stored as its sha256 and never logged or audited.** A request whose nonce already has an
   order is the same phone retrying a checkout whose answer it lost: while that order is still awaiting
   payment and inside its window it answers the same order and checkout with a **fresh secret** (the old one
   stops working - only a hash was ever kept, so the first cannot be repeated). A nonce from another code, or
   whose order is paid, refunded or lapsed, is a 409. Two requests with one nonce at once are settled by
   `qr_orders_nonce_uq`: the loser replays.
-- **The capture is `settleCapture`**, reached by the verify and by the webhook. The verify does every gateway
-  call first (checkout signature, the payment, a capture where it is only authorised) and none inside a
-  transaction. Then: the order `FOR UPDATE` → (in a savepoint, `postSale`) the outlet, the session, the
+- **The capture is `settleCapture`**, reached by the verify, the webhook and the worker's reconcile pass. Each
+  does every gateway call first and none inside a transaction: the verify checks the checkout signature and
+  fetches the payment, and all three take an authorised payment for the order's exact amount through
+  `take` (a capture refused because it was captured meanwhile is read back; one still authorised after a
+  failed capture throws the gateway's error, to be tried again). `settlePayment` is `take` plus
+  `settleCapture` for a payment nobody's phone reported. Then: the order `FOR UPDATE` → (in a savepoint, `postSale`) the outlet, the session, the
   shelves, the bill number. The same payment again is a no-op; another payment on a settled order is queued as
   a `duplicate` refund. An amount or currency that does not match, or any 4xx from the sale or a line whose
   rate moved since the quote, rolls the savepoint back (its bill number with it), and the order goes
-  **Refunded** with an `unfulfillable` refund. Events `qrOrderPaid` / `qrOrderRefunded`; a bill announces
+  **Refunded** with an `unfulfillable` refund - except `RegisterClosingError` (`sessionFor`'s three passes
+  lost to a Z closing that register), which is thrown on and rolls the whole capture back: the verify and
+  the webhook answer 503 (`notYet`) and the payment is settled on the next try, never refunded. Checked by
+  class, never by message. Events `qrOrderPaid` / `qrOrderRefunded`; a bill announces
   `stock`, `bills`, `qrOrders`. `bills_qr_order_uq` is the backstop; the race test fails with the order's
   lock removed.
 - **The webhook** (`POST /api/v1/public/razorpay/webhook`) is registered by hand in its own scope, whose only
   content-type parser hands the handler the raw buffer. It answers 503 with no gateway, **401** when the
-  `X-Razorpay-Signature` does not match, 400 for a body that is not JSON, and 200 for everything else,
-  including an event it ignores. It skips an `X-Razorpay-Event-Id` already in `rzp_webhook_events` and marks
-  one after handling it, so a delivery that failed (a 5xx, only when the database fails) is redelivered and
-  handled. `payment.captured` and `order.paid` go to `settleCapture`; `refund.processed` and `refund.failed`
-  find the refund by its gateway id or its `notes.rid` and move it (a Pending one through Sent).
-- **The worker** (`app.qrWorker.tick(now?)`): expires Awaiting-payment orders past `expires_at` (`skip
-  locked`, no announcement - the counter never showed them), then claims due refunds, asks the gateway for
+  `X-Razorpay-Signature` does not match, 400 for a body that is not JSON, 415 (Fastify's) for another
+  content type, and 200 for everything else, including an event it ignores. It skips an
+  `X-Razorpay-Event-Id` already in `rzp_webhook_events` and marks one after handling it, so a delivery that
+  failed - a 503 when the gateway did not answer a capture or a Z was closing the register, a 5xx when the
+  database fails - is redelivered and handled. `payment.captured`, `order.paid` and `payment.authorized` go
+  to `settlePayment`; `refund.processed` and `refund.failed` go to `settleRefund`, which finds the refund by
+  its gateway id or its `notes.rid` and moves it (a Pending one through Sent) - but only when the row
+  carries no gateway refund id or that one, so a late `refund.failed` for a send since retried (the retry
+  clears `rzp_refund_id`) leaves the new send alone.
+- **The worker** (`app.qrWorker.tick(now?, { reconcile? })`): expires Awaiting-payment orders past
+  `expires_at` (`skip locked`, no announcement - the counter never showed them), then - at most every
+  `RECONCILE_EVERY_MS` (2 min) of wall clock, or when `reconcile: true` forces it - the **reconcile pass**:
+  every Awaiting-payment or Expired order with a gateway order, placed 2 min to 48 h before `now`, is asked
+  for its payments (`paymentsOfOrder`) and each authorised or captured one goes to `settlePayment`; every
+  refund Sent 30 min or more before `now` is read back (`fetchRefund`) and a processed or failed one goes to
+  `settleRefund`. At most 20 of each a pass; each is asked again only after half its age (never sooner than
+  the pass interval), remembered per process in `nextAsk`. It builds its own `createQrService` in
+  `plugins/qr-worker.ts`. A gateway or register error leaves that one for later. Then it claims due refunds, asks the gateway for
   the payment's refunds and looks for its own `notes.rid` before sending, and records Sent (Processed or
   Failed too when the gateway answers so at once) under a fresh lock - skipping a refund a webhook already
   moved. A failed send is `deferRefund(counted)`; a non-retryable one fails at once. Each step is a system
@@ -233,14 +261,16 @@ lines, `payment_refunds` and `rzp_webhook_events`. The routes, the webhook and t
   Out for delivery whenever placed, plus those finished (Collected, Delivered, Refunded, Voided) since the IST
   day began, with the refund, the trail, each outlet's pause and hours. `setQrOrderStatus` locks the order,
   holds a local role to its outlet, and allows only `nextQrStep` for the order's mode - never `Voided`.
-  `setQrPause` locks the outlet, refuses a closed one or a switch already that way, `auditBefore`s it.
+  `setQrPause` locks the outlet and the switch, `auditBefore`s it, then refuses a closed outlet or a switch
+  already that way.
   `retryQrRefund` (`void_bill`, hospital-wide) moves a Failed refund to Pending with `auditBefore`.
 - **The void of a QR bill** (`pos.voidBill`) locks the order after the bill and before the outlet, moves it to
   **Voided**, queues a `void` refund of the bill's total, says "`<bill>` voided - ₹… is being refunded to the
   customer's UPI/card", announces `qrOrders` too, and nudges the worker after commit. A bill's `refund`
   (`billRefundOf`: id, status, amount, last error) is joined in by `readBills` and the void; a till bill
   carries none.
-- **The admin's writes** announce `qrCodes` (the hours too). A code is created only at an open outlet
+- **The admin's writes** announce `qrCodes` (the hours `qrOrders` too, since the counter's queue carries
+  them). A code is created only at an open outlet, and hours are set only at one
   (`allocateId("qr_code")` after the outlet lock, a 24-byte base64url token); an update refuses an empty
   change in words; update, regenerate and hours `auditBefore` (the token is masked). A closed outlet's
   public menu reads closed.
@@ -368,7 +398,8 @@ same violation.
 
 A **role** (`roles`, `ROLE-00n`) is the super admin's: a name, a **desk** (the old fixed `role` enum - where the
 holder works, its postings, its shift) and `perms` (`Permissions` from `@rch/contract`). Every account but the
-super admin holds exactly one (`users.role_id`; `users_role_id_ck` allows null only with `admin`), and the
+super admin holds exactly one (`users.role_id`; `users_role_id_ck` allows null only with `admin` or
+`system`, and never both), and the
 composite foreign key `(role_id, role) → roles(id, desk)` keeps `users.role` equal to its role's desk.
 `users.role_label` is kept equal to the role's name (a rename rewrites it). Migration `0026_roles` seeds
 `ROLE-001`…`ROLE-005` from `DESK_DEFAULTS` (one per desk, in `RoleSchema` order) and backfills every account;
@@ -571,7 +602,8 @@ test files may insert, update or delete these six tables: `stock_moves`, `stock_
 
 ## Audit capture
 
-Every write and every sign-in leaves exactly one event in `audit_outbox`. The audit service (`apps/audit`)
+Every signed-in write and every sign-in leaves exactly one event in `audit_outbox`; an anonymous QR write
+leaves one only when accepted (`recordSystemEvent`, below). The audit service (`apps/audit`)
 drains it; this app only ever inserts. `lib/audit.ts` holds the code.
 
 | Where | What it records |
@@ -634,8 +666,8 @@ drains it; this app only ever inserts. `lib/audit.ts` holds the code.
 - **`plugins/sse.ts` fans notices out to every open stream**, with one exception: it records whether each
   stream's token is an admin's, and sends an `audit` notice (only the audit service's drainer emits one) to
   admin streams alone. It holds one `LISTEN` client per pod and sends a `resync` after a reconnect.
-- **`GET /events` is one of three routes outside the manifest and `mount()`** (with an item's photo and the
-  payment webhook), so its auth and role gates are attached by hand. Its gate is `roleGate("any", false, { admitAdmin: true })`: with the register's X, Z list
+- **`GET /events` is one of three `/api` routes outside the manifest and `mount()`** (with an item's photo
+  and the payment webhook; `/healthz`, `/readyz` and `/metrics` are the plugins' own, at the root), so its auth and role gates are attached by hand. Its gate is `roleGate("any", false, { admitAdmin: true })`: with the register's X, Z list
   and close (`admitAdmin` in the manifest), the only routes that admit a super admin without being
   `access: "admin"`.
 
@@ -761,8 +793,9 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   run and nothing else does.
 - **QR ordering's config is optional.** `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`
   are all or nothing (`config.razorpay`, null with none; some without the others is a `ConfigError` naming
-  each one missing). `QR_ORDER_MAX_RUPEES` (5000), `QR_ORDER_TTL_MIN` (30) and `QR_WORKER_INTERVAL_MS`
-  (30000; `0` switches the worker off) are `config.qr`. For all six an empty string - what Compose passes for
+  each one missing, so the API refuses to start - the chart fails its render on the same partial set).
+  `QR_ORDER_MAX_RUPEES` (5000), `QR_ORDER_TTL_MIN` (30), `QR_WORKER_INTERVAL_MS` (30000; `0` switches the
+  worker off) and `QR_PENDING_PER_IP` (20) are `config.qr`. For all seven an empty string - what Compose passes for
   an unset variable - means unset: no key, and the default for a number, never `0`.
 - **Four config variables decide where photo bytes live**: `IMAGE_STORE` (`"disk" | "s3"`, default `disk`),
   `IMAGE_DIR` (default `.data/images`, used by `disk`), `IMAGE_BUCKET` and `AWS_REGION` (both required when

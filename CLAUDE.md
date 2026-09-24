@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Royal Care Hospital's F&B inventory and billing system. It runs one item master and one stock ledger behind a
 central store, a central kitchen and three retail outlets (Restaurant, Coffee Shop, Snack Kiosk) the hospital
 opened with - the super admin opens, edits, closes and reopens outlets from `/admin` as the hospital grows - and
-covers purchase requisition → purchase order → goods receipt → production → issue → counter sale.
+covers purchase requisition → purchase order → goods receipt → production → issue → counter sale. Customers
+can also order and pay from their phones: a QR code at an outlet opens a public order page, Razorpay takes the
+payment, and the capture becomes an ordinary Online bill at that outlet (`deploy/RUNBOOK.md` §19).
 
 It is a pnpm + Turborepo monorepo (Node 24, pnpm 10.28.2):
 
@@ -134,7 +136,8 @@ body?, response, … })`.
   ingress each send `/api/v1/admin/audit` to the audit service, ahead of `/api`.
 
 There are no hand-written fetch wrappers. A new endpoint is one manifest entry plus a handler, landed in the
-same commit. Exactly three API routes live outside the manifest, each registered by hand for a reason the
+same commit. Exactly three `/api` routes live outside the manifest (the probes and metrics - `/healthz`,
+`/readyz`, `/metrics` - are the plugins' own, at the root), each registered by hand for a reason the
 manifest cannot carry: `GET /events` (a stream, not JSON), `GET /items/:it/image/:hash` (bytes, read by an
 `<img>` with no token) and `POST /public/razorpay/webhook` (`RAZORPAY_WEBHOOK_PATH`; signed by the gateway
 over the raw body, so it has a scope and a body parser of its own).
@@ -311,8 +314,18 @@ back where it stood.
   "QR Orders" account (`users.system`: never signs in, never on a staff list, never on a shift). A capture the
   outlet cannot fill makes no bill; the order is Refunded and the money queued back. The counter works its
   outlet's queue (`GET /qr-orders`, one next step at a time, a pause switch); a void of an Online bill voids
-  its order and queues a refund; `plugins/qr-worker.ts` expires unpaid orders and sends refunds. The
-  public routes have per-IP limits, and an unknown, switched-off or regenerated code is one 404 sentence.
+  its order and queues a refund; `plugins/qr-worker.ts` expires unpaid orders and sends refunds. A
+  `payment.authorized` webhook is captured (with no transaction open) and settled too, though the Razorpay
+  account is meant to capture automatically. A capture refused only because a Z is closing that register
+  (`RegisterClosingError`) is never refunded: the verify and the webhook answer 503 and it is tried again.
+  The worker's **reconcile pass** (every ~2 min, at most 20 orders and 20 refunds, each asked about again
+  after half its age) lists the gateway's payments for every unpaid or lapsed order from the last 48 hours
+  (once it is 2 minutes old), captures and settles what it finds, and reads back a refund Sent over half an
+  hour ago with no webhook since - so a closed tab plus a lost webhook still becomes a bill. The public
+  routes are rate-limited for a ward's shared Wi-Fi: the menu 120/min per address, the status poll 30/min
+  per order *and* address, placing 10 and verifying 20 per address; unpaid orders are capped at 3 per phone
+  hospital-wide and `QR_PENDING_PER_IP` (20) per address in 30 minutes. An unknown, switched-off or
+  regenerated code is one 404 sentence.
   `lib/payments.ts` is the only code that talks to the gateway (`app.payments`, null without the keys), and
   `lib/refunds.ts` the only writer of `payment_refunds` (`scripts/check-boundaries.sh`).
 - `lib/images.ts` is the only code that touches photo bytes (S3 in production, a folder in dev/test).
@@ -332,7 +345,8 @@ back where it stood.
 
 ### The audit log
 
-**Every write and every sign-in leaves exactly one audit event.** The super admin reads them on `/admin`'s
+**Every signed-in write and every sign-in leaves exactly one audit event**; an anonymous QR write leaves one
+only when accepted (below). The super admin reads them on `/admin`'s
 Audit log tab: who, when, from which IP and device, what was sent, the server's sentence, and for an edit the
 values before it.
 
@@ -483,8 +497,9 @@ The code enforces these and tests pin them. Breaking one is a bug.
   with no live contract nothing else changes, and the line is simply the next "last purchased" price. An edit
   of the rate on Rate Contracts logs the same row without an order. The trail rides on each contract as
   `changes` (`GET /contracts` and the snapshot) and is never edited.
-- **Every write and every sign-in leaves an audit event; nobody can edit or delete one.** A write whose event
-  can't be inserted doesn't commit. No password, temporary password, OTP or token is ever stored in one.
+- **Every signed-in write and every sign-in leaves an audit event; nobody can edit or delete one.** A
+  customer's anonymous QR write is the one exception: it leaves an event (under the QR Orders account) only
+  when accepted, and a refused one leaves none. A write whose event can't be inserted doesn't commit. No password, temporary password, OTP or token is ever stored in one.
 
 ## Conventions
 
