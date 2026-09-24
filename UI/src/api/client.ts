@@ -153,16 +153,23 @@ export async function refreshOnce(had: string | null = null): Promise<boolean> {
   return refreshing;
 }
 
+/** The customer-facing QR ordering routes: public, and under `/public/`. */
+const isCustomerRoute = (route: AnyRoute): boolean => route.access === "public" && route.path.startsWith("/public/");
+
 /** Call a manifest route. Adding an endpoint is one manifest entry - never a new function here. */
 export async function call<R extends AnyRoute>(route: R, input: Input = {}): Promise<z.infer<R["response"]>> {
-  sessionChannel();      // this tab listens from its first call, whether or not it ever refreshes
+  // A customer's phone on the QR ordering page (`/public/...`) has no session at all: it never
+  // opens the channel, never sends a token and never refreshes, so a stray 401 there is just an
+  // error to show - never a sign-out of a staff session that does not exist.
+  const customer = isCustomerRoute(route);
+  if (!customer) sessionChannel();      // this tab listens from its first call, whether or not it ever refreshes
   // Minted once per call, not once per fetch: the retry after a refresh is the *same* write,
   // and a second key would let the server run it twice - exactly what the header is for. The
   // request id travels with it for the same reason: one id names one attempt end to end.
   const stamps: Stamps = { idempotencyKey: idempotencyKeyFor(route), requestId: crypto.randomUUID() };
-  const had = getAccessToken();
+  const had = customer ? null : getAccessToken();
   let res = await raw(route, input, had, stamps);
-  if (res.status === 401 && !route.path.startsWith("/auth/")) {
+  if (res.status === 401 && !customer && !route.path.startsWith("/auth/")) {
     if (await refreshOnce(had)) res = await raw(route, input, getAccessToken(), stamps);
     else { sessionLost(); }
   }
