@@ -36,6 +36,11 @@ export class UnauthenticatedError extends AppError { constructor(message = "Sign
 export class ForbiddenError extends AppError { constructor(message: string) { super("forbidden", 403, message); } }
 export class NotFoundError extends AppError { constructor(message: string) { super("not_found", 404, message); } }
 export class ConflictError extends AppError { constructor(message: string, details?: unknown) { super("conflict", 409, message, details); } }
+/** The register's session could not be taken because a Z is closing it at this instant
+ *  (`sessionFor` in `lib/register.ts`). A 409 like any conflict, and a class of its own so a
+ *  caller can tell "try again in a moment" from a sale that was refused: a QR capture must never
+ *  turn it into a refund. */
+export class RegisterClosingError extends ConflictError { constructor() { super("The register is being closed - take the bill again in a moment."); } }
 /**
  * A domain rule refused the action. The message is what the operator reads.
  * @public - consumed by Phase 2 write endpoints.

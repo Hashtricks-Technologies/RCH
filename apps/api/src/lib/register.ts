@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { registerSessions } from "../db/schema/index.js";
-import { ConflictError } from "./errors.js";
+import { RegisterClosingError } from "./errors.js";
 import type { Reader, Tx } from "./db.js";
 
 /**
@@ -75,5 +75,5 @@ export async function sessionFor(tx: Tx, loc: string, by: string): Promise<Sessi
       .values({ id: randomUUID(), loc, openedBy: by }).onConflictDoNothing().returning();
     if (minted) return minted;
   }
-  throw new ConflictError("The register is being closed - take the bill again in a moment.");
+  throw new RegisterClosingError();
 }

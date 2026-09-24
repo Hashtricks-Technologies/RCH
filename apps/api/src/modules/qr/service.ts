@@ -15,7 +15,7 @@ import {
 import type { Db } from "../../db/client.js";
 import { auditBefore, recordSystemEvent } from "../../lib/audit.js";
 import { isUniqueViolation, withReadTransaction, withTransaction, type Reader, type Tx } from "../../lib/db.js";
-import { AppError, ConflictError, NotFoundError, NotReadyError, RateLimitedError, RuleError, UnauthenticatedError, ValidationError } from "../../lib/errors.js";
+import { AppError, ConflictError, NotFoundError, NotReadyError, RateLimitedError, RegisterClosingError, RuleError, UnauthenticatedError, ValidationError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
@@ -122,6 +122,15 @@ async function publicOrderOf(db: Reader, o: QrOrderRow): Promise<PublicQrOrder> 
   return toPublicOrder(o, lines, refunds, loc?.name ?? o.loc);
 }
 
+/** A capture a Z's close put off (`RegisterClosingError`) as a 503 carrying `sentence`: the phone
+ *  keeps polling, the gateway redelivers, and nothing was billed or refunded. */
+async function notYet<T>(p: Promise<T>, sentence: string): Promise<T> {
+  try { return await p; } catch (e) {
+    if (e instanceof RegisterClosingError) throw new NotReadyError(sentence, e);
+    throw e;
+  }
+}
+
 /** What a capture decided, for the verify's answer and the webhook's log. */
 type Settled = { order: QrOrderRow; changed: Changed[]; message: string; refundQueued: boolean };
 
@@ -202,6 +211,8 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
    * the outlet closed, a price that moved since the quote) - or an amount that does not match -
    * makes no bill, and the order is Refunded with the whole payment queued to go back. A capture
    * that arrives after the order expired is billed or refunded the same way; it is never lost.
+   * The one refusal that is not a reason to refund is a Z closing the register at that instant
+   * (`RegisterClosingError`): it rolls the whole capture back and is thrown on, as "not yet".
    */
   async function settleCapture(orderId: string, p: GatewayPayment, via: { method: string; path: string } & Partial<RequestMeta>): Promise<Settled> {
     const out = await withTransaction(db, async (tx): Promise<Settled> => {
@@ -243,7 +254,9 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
             return s;
           });
         } catch (e) {
-          if (!(e instanceof AppError) || e.status >= 500) throw e;
+          // A Z closing the register this instant is "not yet", not "no": the whole capture rolls
+          // back and is tried again - by the phone, the gateway's redelivery or the reconcile pass.
+          if (e instanceof RegisterClosingError || !(e instanceof AppError) || e.status >= 500) throw e;
           why = e.message;
         }
       }
@@ -432,7 +445,7 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
         throw new RuleError("The payment did not go through - you have not been charged. Tap Pay to try again.");
       }
       const settled = p.status === "captured"
-        ? await settleCapture(o.id, p, { method: "POST", path: routes.verifyQrPayment.path, ...meta })
+        ? await notYet(settleCapture(o.id, p, { method: "POST", path: routes.verifyQrPayment.path, ...meta }), VERIFY_LATER)
         : { order: o, changed: [] as Changed[], message: `Payment ${p.id} was already refunded` };
       return { result: await publicOrderOf(db, settled.order), changed: settled.changed, message: settled.message };
     },
@@ -463,7 +476,8 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
       if (event === "payment.captured" || event === "order.paid") {
         const p = paymentOf(body.payload?.payment?.entity);
         const order = p?.orderId ? await qrRepo.orderByRzpOrder(db, p.orderId) : undefined;
-        if (p && order && p.status === "captured") await settleCapture(order.id, p, via);
+        // A Z closing the register this instant answers 503, and the gateway delivers again.
+        if (p && order && p.status === "captured") await notYet(settleCapture(order.id, p, via), "The register is being closed - deliver this again.");
       } else if (event === "refund.processed" || event === "refund.failed") {
         const r = body.payload?.refund?.entity;
         if (r && typeof r.id === "string") {

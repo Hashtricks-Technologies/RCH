@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { API_PREFIX, AuditEventSchema, PublicMenuSchema, PublicQrOrderSchema, QrOrderCreatedSchema, RAZORPAY_WEBHOOK_PATH, routes, type QrOrderCreated } from "@rch/contract";
 import { customerPhoneRefusal, hoursRefusal, pausedRefusal, qrOpenAt } from "@rch/domain";
 import * as s from "../../db/schema/index.js";
@@ -386,6 +386,32 @@ describe("capture - POST /public/orders/:id/verify", () => {
     expect(refunds).toHaveLength(1);
     expect(refunds[0]).toMatchObject({ reason: "duplicate", paymentId: second.paymentId, amount: 150 });
     expect((await orderRow(c.order.id)).status).toBe("Paid");
+    expect(await billsOf(c.order.id)).toHaveLength(1);
+  });
+
+  it("puts a capture off while a Z is closing the register - no bill, no refund - and bills it on the next try", async () => {
+    const c = await placed([{ it: "juice", qty: 1 }]);
+    const pay = fake.pay(c.checkout.orderId);
+    // A Z that closes the session and wins every race after: no open session, and none can open.
+    await app.db.update(s.registerSessions).set({ closedAt: new Date(), zNo: `Z-QR-${randomUUID().slice(0, 8)}` })
+      .where(and(eq(s.registerSessions.loc, "coffee"), isNull(s.registerSessions.closedAt)));
+    await app.db.execute(sql.raw(`create function qr_z_race() returns trigger language plpgsql as $$ begin return null; end $$;
+      create trigger qr_z_race before insert on register_sessions for each row execute function qr_z_race()`));
+    try {
+      const v = await verify(c, pay);
+      expect(v.statusCode, v.body).toBe(503);
+      expect(v.json().error.message).toBe("We could not confirm your payment yet - this page will update as soon as it goes through.");
+      const w = await webhook(captured(pay.paymentId), { eventId: `evt_${randomUUID()}` });
+      expect(w.statusCode).toBe(503);
+      expect(await billsOf(c.order.id)).toHaveLength(0);
+      expect(await refundsOf(c.order.id)).toHaveLength(0);
+      expect((await orderRow(c.order.id)).status).toBe("Awaiting payment");
+    } finally {
+      await app.db.execute(sql.raw("drop trigger qr_z_race on register_sessions; drop function qr_z_race()"));
+    }
+    const again = await verify(c, pay);
+    expect(again.statusCode, again.body).toBe(200);
+    expect(again.json().result.status).toBe("Paid");
     expect(await billsOf(c.order.id)).toHaveLength(1);
   });
 
