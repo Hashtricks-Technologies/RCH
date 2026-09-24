@@ -156,6 +156,11 @@ void is about to invalidate.
   the sentence.
 - **A Z's totals are stored on `closed_totals`**, for the reason a settlement's allocation is
   stored: re-deriving next week against a changed set of bills would answer differently.
+- **Who reaches which register** is `registerOf` in `routes.ts`: a local caller only its own session's
+  outlet (the 403 every location-scoped route gives), a wide one (`all_outlets`) any outlet by name and
+  its own when it names none, and the super admin (`admitAdmin` on all three routes) any outlet - but it
+  must name one, a 400 otherwise. No seeded role holds `z_report`, so out of the box only the super admin
+  reads the Z list or takes a Z.
 - **`closeRegister` does not `assertOpen` the outlet.** Refusing a Z at an outlet the admin has
   since closed would strand a day's money with no way to reconcile it. The outlet *close* names an
   open register as a blocker instead.
@@ -253,14 +258,14 @@ role; `truncateAll` in the test harness keeps `roles` too.
   which `mount()` passes, or `/events`' by hand), and an admitted admin skips permissions; every other token
   has its role resolved from `app.access`, and a missing role, a switched-off role or a desk other than the
   token's `role` claim is a **401** "Your account was changed - sign in again." (the browser refreshes into a
-  token for the account as it stands). Then `admits` (`@rch/domain`) decides: a desk list is the legacy form
-  and reads the desk alone, exactly as before; `{ desk }` likewise; `{ needs }` is 404 with no need met, 403
+  token for the account as it stands). Then `admits` (`@rch/domain`) decides: `{ desk }` reads the desk
+  alone; `{ needs }` is 404 with no need met, 403
   with `permissionRefusal`'s sentence where the feature is held at view and edit was needed (or the parent
   of a missing action is held). Finally the must-change-password 403.
 - **`req.actor`** (`Actor` in `plugins/rbac.ts`, declared on `FastifyRequest` the way `req.user` is) is set on
   every non-public route: `{ ...claims, perms, wide }`. `wide` is `admits`' answer - the matched need is a
-  hospital-wide feature, or the role holds `all_outlets`; for `"any"` it is `all_outlets`; for a desk list
-  it is "not the counter desk, or `all_outlets`". A super admin's actor is `{ perms: { f: {}, a: [] }, wide:
+  hospital-wide feature, or the role holds `all_outlets`; for `"any"` and `{ desk }` it is `all_outlets`. A
+  super admin's actor is `{ perms: { f: {}, a: [] }, wide:
   true }`. Read permissions in a service with `can(req.actor.perms, f, l)` / `holds(req.actor.perms, a)`
   from `@rch/domain`, passed down from `routes.ts` like `req.user`; never re-read the role.
 - **`modules/roles/`** serves `/admin/roles`. Each write locks the role `FOR UPDATE`, calls `auditBefore`,
@@ -369,7 +374,8 @@ gives the five seeded roles exactly what their desks read before roles were conf
 - **The OTP** reaches only a caller at the ticket's `to` location, while the ticket is `Issued`, whose role
   holds `outlet_tickets`, `kitchen_tickets` or `issue_desk` at edit - the doors a collection goes through.
 - A write's own response always carries `otp: ""`.
-- **The super admin reads none of it.** None of these routes is `admitAdmin`, so an admin token is a 404 on
+- **The super admin reads none of it.** None of these routes is `admitAdmin` (only the register's X, Z list
+  and close are), so an admin token is a 404 on
   every one before a handler runs (`req.actor` for an admin has empty perms and would read nothing of note
   anyway).
 
@@ -475,8 +481,9 @@ drains it; this app only ever inserts. `lib/audit.ts` holds the code.
   stream's token is an admin's, and sends an `audit` notice (only the audit service's drainer emits one) to
   admin streams alone. It holds one `LISTEN` client per pod and sends a `resync` after a reconnect.
 - **`GET /events` is the one route outside the manifest and `mount()`**, so its auth and role gates are
-  attached by hand. Its gate is `roleGate("any", false, { admitAdmin: true })`, the only route that admits a
-  super admin without being `access: "admin"`.
+  attached by hand. Its gate is `roleGate("any", false, { admitAdmin: true })`: with the register's X, Z list
+  and close (`admitAdmin` in the manifest), the only routes that admit a super admin without being
+  `access: "admin"`.
 
 ## Item photos
 

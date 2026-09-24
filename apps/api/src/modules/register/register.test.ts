@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, isNull } from "drizzle-orm";
-import { RegisterReportSchema, RegisterReportsResponseSchema } from "@rch/contract";
+import type { InjectOptions } from "fastify";
+import { RegisterReportSchema, RegisterReportsResponseSchema, type AdminRole, type Permissions } from "@rch/contract";
+import { DESK_DEFAULTS } from "@rch/domain";
 import * as s from "../../db/schema/index.js";
 import { postMoves } from "../../lib/ledger.js";
 import { buildTestApp } from "../../test/app.js";
@@ -12,7 +14,34 @@ import { authHeaders } from "../../test/auth.js";
 import type { App } from "../../app.js";
 
 let app: App;
-beforeAll(async () => { app = await buildTestApp({ schema: "register" }); await seedTestDb(app.testDb!.db); await app.ready(); });
+
+/** u7 (RC-0001) is the seed's super admin: it makes the roles and the accounts these cases need. */
+const asAdmin = async (method: InjectOptions["method"], url: string, payload: Record<string, unknown>) => {
+  const r = await app.inject({ method, url: `/api/v1${url}`, headers: { ...(await authHeaders(app, "u7")), "idempotency-key": randomUUID() }, payload });
+  expect(r.statusCode, r.body).toBe(200);
+  return r.json().result as { id: string };
+};
+const newRole = async (name: string, desk: AdminRole["desk"], perms: Permissions) => (await asAdmin("POST", "/admin/roles", { name, desk, perms })).id;
+/** A fresh account on a role, at a location, past its first-sign-in password change - its id,
+ *  to mint a token for. */
+const hire = async (name: string, roleId: string, loc: string) => {
+  const { id } = await asAdmin("POST", "/admin/users", { name, email: `${name.toLowerCase().replace(/\W+/g, ".")}@royalcare.in`, roleId, loc });
+  await app.db.update(s.users).set({ mustChangePassword: false }).where(eq(s.users.id, id));
+  return id;
+};
+
+/** No seeded role holds the Z - it is the super admin's until a role is given it. The two seeded
+ *  counters here are moved onto a counter role that also holds it, so every case that is about
+ *  the Z itself, rather than about who may take one, runs as the till that took the bills. */
+const counterWithZ: Permissions = { f: { ...DESK_DEFAULTS.counter.perms.f, z_report: "edit" }, a: [] };
+beforeAll(async () => {
+  app = await buildTestApp({ schema: "register" });
+  await seedTestDb(app.testDb!.db);
+  await app.ready();
+  const zRole = await newRole("Counter Operator with Z", "counter", counterWithZ);
+  await asAdmin("PATCH", "/admin/users/u1", { roleId: zRole, loc: "coffee" });
+  await asAdmin("PATCH", "/admin/users/u6", { roleId: zRole, loc: "kiosk" });
+});
 afterAll(async () => { await app.close(); });
 
 type PayBody = { loc: string; tender: string; payer?: { kind: string; id: string; name: string }; lines: { it: string; qty: number }[] };
@@ -432,12 +461,61 @@ describe("who may close which register", () => {
     expect((await zList("u1", "?loc=kiosk")).statusCode).toBe(403);
   });
 
-  it("the manager is hospital-wide and may close any outlet by name", async () => {
+  it("the super admin may close any outlet's register by name, and signs the Z", async () => {
     await pay("u6", { loc: "kiosk", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
-    const r = await close("u2", { loc: "kiosk" });
+    await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const kiosk = await close("u7", { loc: "kiosk" });
+    expect(kiosk.statusCode, kiosk.body).toBe(200);
+    expect(kiosk.json().result.loc).toBe("kiosk");
+    expect(kiosk.json().result.takenBy).toBe("System Administrator");
+    expect((await close("u7", { loc: "coffee" })).statusCode).toBe(200);
+    const list = await zList("u7", "?loc=kiosk");
+    expect(list.statusCode, list.body).toBe(200);
+    expect(list.json().map((z: { zNo: string }) => z.zNo)).toEqual([kiosk.json().result.zNo]);
+    expect((await xReport("u7", "coffee")).statusCode).toBe(200);
+  });
+
+  it("the super admin has no till of its own, so it must name the outlet - a 400 otherwise", async () => {
+    const sentence = "Choose the outlet whose register you want - the super admin has no counter of its own.";
+    for (const r of [await xReport("u7"), await zList("u7")]) {
+      expect(r.statusCode, r.body).toBe(400);
+      expect(r.json().error.message).toBe(sentence);
+    }
+    const r = await app.inject({
+      method: "POST", url: "/api/v1/register/close",
+      headers: { ...(await authHeaders(app, "u7")), "idempotency-key": randomUUID() }, payload: { note: "" },
+    });
+    expect(r.statusCode, r.body).toBe(400);
+  });
+
+  it("the seeded counter and manager roles reach neither the Z list nor the close - the Z is nobody's by default", async () => {
+    const plain = await hire("Plain Counter", "ROLE-001", "coffee");
+    await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    for (const who of [plain, "u2"]) {
+      expect((await zList(who)).statusCode, who).toBe(404);
+      expect((await close(who, { loc: "coffee" })).statusCode, who).toBe(404);
+      // The X is still theirs.
+      expect((await xReport(who, "coffee")).statusCode, who).toBe(200);
+    }
+    expect((await openAt("coffee")).length).toBe(1);
+  });
+
+  it("the manager reads any outlet's X by name - the seeded role works for every outlet", async () => {
+    await pay("u6", { loc: "kiosk", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const r = await xReport("u2", "kiosk");
     expect(r.statusCode, r.body).toBe(200);
-    expect(r.json().result.loc).toBe("kiosk");
-    expect(r.json().result.takenBy).toBe("Ramesh Kumar");
+    expect(r.json().totals.billCount).toBe(1);
+  });
+
+  it("a manager-desk role without every outlet is held to its own outlet's X", async () => {
+    const role = await newRole("Restaurant Supervisor", "manager", { f: { x_report: "view" }, a: [] });
+    const sup = await hire("Rest Supervisor", role, "rest");
+    const own = await xReport(sup);
+    expect(own.statusCode, own.body).toBe(200);
+    expect(own.json().loc).toBe("rest");
+    const other = await xReport(sup, "kiosk");
+    expect(other.statusCode, other.body).toBe(403);
+    expect(other.json().error.message).toBe("You can only do this for your own counter.");
   });
 
   it("an outlet nobody opened is a 404, not a report of zeros", async () => {

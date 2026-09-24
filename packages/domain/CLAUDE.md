@@ -66,8 +66,9 @@ need more context than their names give:
   `DESK_DEFAULTS` (the five seeded roles, which reproduce each desk's access before roles were
   configurable, except that nobody holds `z_report`), `grantRefusal`, `admits` (a route's `Access`
   against a desk and permissions: `{ ok, wide }` or a 404/403), `readsHospitalWide` and
-  `permissionRefusal`. `permissions.test.ts` pins the seeded roles to every role-listed route in the
-  manifest, route by route and desk by desk.
+  `permissionRefusal`. `permissions.test.ts` holds `LEGACY_ACCESS`, the role list every gated
+  route carried before roles were configurable, frozen, and pins the seeded roles to it through the
+  manifest itself, route by route and desk by desk (the Z excepted).
 - `items.ts`'s `ITEM_FIELD_FEATURES` is `ITEM_FIELD_ROLES` in permissions: `mayEditItemField`,
   `unauthorisedItemFields` and `mayEditItemImage` take either a desk (read as its seeded role) or a
   role's permissions.

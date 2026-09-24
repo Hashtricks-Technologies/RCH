@@ -258,9 +258,10 @@ describe("who may bill", () => {
     expect(r.statusCode, r.body).toBe(403);
     expect(r.json().error.message).toBe("You can only do this for your own counter.");
   });
-  it("hides the route from a manager altogether", async () => {
+  it("refuses a manager, who sees Bills but does not take them, in the one sentence", async () => {
     const r = await pay("u2", { loc: "rest", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
-    expect(r.statusCode, r.body).toBe(404);
+    expect(r.statusCode, r.body).toBe(403);
+    expect(r.json().error.message).toBe("You can see Bills but not change them - ask the administrator for edit access.");
   });
   it("lets the other counter sell at their own shop", async () => {
     const r = await pay("u6", { loc: "kiosk", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
@@ -823,10 +824,14 @@ describe("POST /bills/:no/void - the manager takes a bill back", () => {
     });
   });
 
-  it("is absent for every role but the manager", async () => {
+  it("is refused to every seeded role but the manager", async () => {
     const no = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash" });
-    // The till that took the bill is exactly the party that must not be able to unsell it.
-    for (const who of ["u1", "u3", "u4", "u5"]) {
+    // The till that took the bill is exactly the party that must not be able to unsell it: it
+    // holds Bills, so it is told what to ask for; the desks that never see a bill get nothing.
+    const counter = await voidBill("u1", no, "Not mine to take back");
+    expect(counter.statusCode, counter.body).toBe(403);
+    expect(counter.json().error.message).toBe("You can see Bills but not void one - ask the administrator for the void permission.");
+    for (const who of ["u3", "u4", "u5"]) {
       const r = await voidBill(who, no, "Not mine to take back");
       expect(r.statusCode, `${who} reached the void`).toBe(404);
     }

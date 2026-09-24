@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineRoute, routes } from "@rch/contract";
+import { defineRoute, need, routes } from "@rch/contract";
 import { buildTestApp } from "./test/app.js";
 import { seedTestDb } from "./test/seed.js";
 import { authHeaders } from "./test/auth.js";
@@ -12,7 +12,7 @@ beforeAll(async () => {
   app = await buildTestApp({ schema: "routes" });
   await seedTestDb(app.testDb!.db);
   mount(app, defineRoute({ method: "GET", path: "/_test/any", access: "any", response: z.object({ who: z.string() }) }), async (req) => ({ who: req.user.sub }));
-  mount(app, defineRoute({ method: "GET", path: "/_test/buyer", access: ["buyer"], response: z.object({ ok: z.literal(true) }) }), async () => ({ ok: true as const }));
+  mount(app, defineRoute({ method: "GET", path: "/_test/buyer", access: need("vendors", "edit"), response: z.object({ ok: z.literal(true) }) }), async () => ({ ok: true as const }));
   mount(app, defineRoute({ method: "GET", path: "/_test/public", access: "public", response: z.object({ ok: z.literal(true) }) }), async () => ({ ok: true as const }));
   await app.ready();
 });

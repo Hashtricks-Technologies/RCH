@@ -198,7 +198,7 @@ const NOTHING: Admitted = { ok: false, status: 404, message: "There is nothing h
  *   `all_outlets` held). None met is a 404 - the route does not exist for them - unless one of them
  *   was a feature held at view where edit was needed, or an action whose parent they hold: those are
  *   a 403 with the sentence saying what to ask for, because the screen is in front of them.
- * - `{ desk }` and the legacy role list admit by desk alone.
+ * - `{ desk }` admits by desk alone.
  * - `"public"` and `"any"` admit everybody; `"admin"` is the admin claim's, never a desk's.
  *
  * The 404's `message` is a placeholder: the server prints its own "There is nothing at …".
@@ -207,7 +207,6 @@ export function admits(access: Access, desk: Role, perms: Permissions): Admitted
   const allOutlets = holds(perms, "all_outlets");
   if (access === "public" || access === "any") return { ok: true, wide: allOutlets };
   if (access === "admin") return NOTHING;
-  if (isRoleList(access)) return access.includes(desk) ? { ok: true, wide: desk !== "counter" || allOutlets } : NOTHING;
   if ("desk" in access) return access.desk.includes(desk) ? { ok: true, wide: allOutlets } : NOTHING;
   let refusal: string | undefined;
   for (const n of access.needs) {
@@ -222,7 +221,6 @@ export function admits(access: Access, desk: Role, perms: Permissions): Admitted
   }
   return refusal ? { ok: false, status: 403, message: refusal } : NOTHING;
 }
-const isRoleList = (a: Exclude<Access, string>): a is readonly Role[] => Array.isArray(a);
 
 /**
  * Whether this caller's reads are the hospital's rather than their own counter's: every desk but the

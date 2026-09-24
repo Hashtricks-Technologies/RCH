@@ -155,10 +155,20 @@ was. Its audit event is written after the reply, since the write's own transacti
 
 There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with its own sidebar.
 
-- **Unknown route:** a role without a module gets a **404**, the same as a screen that doesn't exist for it.
+- **Every operational route is gated by what a role holds**, never by a list of roles: the manifest's
+  `access` is a permission (`need`/`act`/`anyOf`) or, for the few doors that are a desk's own (a counter's
+  shift), a desk (`desk`). A role holding none of a route's needs gets a **404**, the same as a screen that
+  doesn't exist for it; one holding the feature at view where edit is needed (or the feature an action hangs
+  off, but not the action) gets a **403** with `permissionRefusal`'s sentence.
 - **Wrong location:** a caller outside the location a document belongs to gets a **403**.
-- **`manager`** is hospital-wide, so its writes never scope to a location.
-- **`counter` and `prod`** are location-scoped. `store` and `buyer` each work one desk.
+- **Hospital-wide or local is decided per request** (`req.actor.wide`): the need a caller matched is a
+  hospital-wide feature, or its role holds `all_outlets`. A wide caller's writes never scope to a location
+  (the seeded Outlet Manager is wide everywhere); a local one is held to its session's location (the
+  seeded Counter Operator and Kitchen In-charge). `store` and `buyer` each work one desk.
+- **The Z is the super admin's by default.** No seeded role holds `z_report`, so a seeded counter or
+  manager gets a **404** on `GET /register/z` and `POST /register/close` until a role is given it. The X,
+  the Z list and the close are `admitAdmin` in the manifest: the super admin reaches them for any outlet,
+  and must name it (`loc`) - a **400** otherwise, since it has no till of its own.
 - **A counter operator may be posted to several outlets.** `user_postings` is where an account
   *may* work; the token's `loc` claim is where it *is* working, and it is still exactly one
   location - so every location guard is unchanged. An account with one posting signs in exactly as
@@ -332,7 +342,8 @@ The code enforces these and tests pin them. Breaking one is a bug.
 - **A settlement is a numbered document** (`STL-`). The server lays it over that party's open bills oldest
   first and **stores** the allocation, because it is a decision made against the bills open at one instant.
   More than is owed is refused, naming the balance; nothing is ever parked as a credit balance. It is voided
-  only on the IST day it was recorded, and only by the manager - badged, never erased, so the bills it closed
+  only on the IST day it was recorded, and only by a role holding `void_settlement` (the seeded Outlet
+  Manager) - badged, never erased, so the bills it closed
   reopen and the balance comes back.
 - **Nothing is created or destroyed without a document.**
   - A batch books what the kitchen made onto its rack. It draws nothing down; kitchen raw stock is cleared
@@ -355,7 +366,8 @@ The code enforces these and tests pin them. Breaking one is a bug.
   re-derived, and nothing may alter a bill once its session is closed. `Z-<year>-<nnnn>` is gapless
   like every other document number. A Z is still allowed at a closed outlet - money already taken
   must always be reconcilable - so an open register is a blocker on *closing* the outlet instead.
-- **A bill is voided only on the IST day it was billed, and only by the manager**, and only while
+- **A bill is voided only on the IST day it was billed, and only by a role holding `void_bill`** (the seeded
+  Outlet Manager; a role that takes bills without it gets a 403 saying what to ask for), and only while
   its register session is still open. The void posts reversal
   moves, frees the credit room it used, and badges the bill rather than erasing it. A bill a live settlement
   has already closed refuses its own void and names the settlement to take back first.

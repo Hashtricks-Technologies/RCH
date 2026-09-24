@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { act, anyOf, desk, need, routes, type Access, type Permissions, type Role, type RouteName } from "@rch/contract";
+import { act, desk, need, routes, type Access, type Permissions, type Role, type RouteName } from "@rch/contract";
 import { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsHospitalWide } from "./permissions";
 
 const DESKS: readonly Role[] = ["counter", "manager", "store", "prod", "buyer"];
 const none: Permissions = { f: {}, a: [] };
 
 /**
- * Today's role list for every role-listed route in the manifest, written out by hand. The first test
- * below pins it to the manifest as it stands, so this is the access the seeded roles must reproduce.
+ * The role list every permission-gated route carried before roles were configurable, written out by
+ * hand and frozen. The seeded roles must reproduce it through the manifest as it stands, route for
+ * route and desk for desk - the only change being the Z, which is nobody's.
  */
 const LEGACY_ACCESS: Record<string, readonly Role[]> = {
   priceLists: ["manager"],
@@ -81,98 +82,16 @@ const LEGACY_ACCESS: Record<string, readonly Role[]> = {
   createProdOrder: ["counter", "manager"],
 };
 
-/**
- * What each of those routes will need once the manifest moves off role lists - the table Wave 3
- * copies into `packages/contract/src/routes.ts`. Any-of lists put the hospital-wide need first.
- * `xReport`, `zReports` and `closeRegister` also take `admitAdmin: true` in the manifest.
- */
-const TARGET_ACCESS: Partial<Record<RouteName, Access>> = {
-  priceLists: need("prices", "view"),
-  savePrice: need("prices", "edit"),
-  createPriceList: need("prices", "edit"),
-  deletePriceList: need("prices", "edit"),
-  setOutletPriceList: need("prices", "edit"),
-  saveOutletPrices: need("prices", "edit"),
-  addMenuItem: need("menu", "edit"),
-  removeMenuItem: need("menu", "edit"),
-  approveRequest: need("approvals", "edit"),
-  rejectRequest: need("approvals", "edit"),
-  redirectRequest: need("approvals", "edit"),
-  approveAdjustmentRequest: need("approvals", "edit"),
-  rejectAdjustmentRequest: need("approvals", "edit"),
-  setClassTerms: need("credit", "edit"),
-  setPayerTerms: need("credit", "edit"),
-  recordSettlement: need("credit", "edit"),
-  statement: need("credit", "view"),
-  voidSettlement: act("void_settlement"),
-  voidBill: act("void_bill"),
-  approveRequisition: need("requisitions", "edit"),
-  declineRequisition: need("requisitions", "edit"),
-  addToProcurementList: need("procurement_list", "edit"),
-  createPo: need("procurement_list", "edit"),
-  updatePoLine: need("purchase_orders", "edit"),
-  removePoLine: need("purchase_orders", "edit"),
-  patchPo: need("purchase_orders", "edit"),
-  sendPo: need("purchase_orders", "edit"),
-  cancelPo: need("purchase_orders", "edit"),
-  closePoShort: need("purchase_orders", "edit"),
-  receivePo: need("goods_receipt", "edit"),
-  addVendor: need("vendors", "edit"),
-  updateVendor: need("vendors", "edit"),
-  addContract: need("rate_contracts", "edit"),
-  updateContract: need("rate_contracts", "edit"),
-  removeContract: need("rate_contracts", "edit"),
-  pay: need("billing", "edit"),
-  askShop: need("outlet_requests", "edit"),
-  answerShopAsk: need("outlet_requests", "edit"),
-  declineShopAsk: need("outlet_requests", "edit"),
-  createAdjustmentRequest: need("outlet_stock", "edit"),
-  currentShift: desk("counter"),
-  closeShift: desk("counter"),
-  dispatchProdOrder: need("kitchen_orders", "edit"),
-  setOrderStatus: need("kitchen_orders", "edit"),
-  distribute: need("make_distribute", "edit"),
-  makeBatch: need("make_distribute", "edit"),
-  issueTicket: need("issue_desk", "edit"),
-  createRequisition: need("store_requisitions", "edit"),
-  createRequest: anyOf(need("outlet_requests", "edit"), need("kitchen_requests", "edit")),
-  cancelRequest: anyOf(need("approvals", "edit"), need("outlet_requests", "edit"), need("kitchen_requests", "edit")),
-  handover: anyOf(need("issue_desk", "edit"), need("kitchen_tickets", "edit"), need("outlet_tickets", "edit")),
-  receiveTicket: anyOf(need("issue_desk", "edit"), need("kitchen_tickets", "edit"), need("outlet_tickets", "edit")),
-  cancelTicket: anyOf(need("issue_desk", "edit"), need("kitchen_tickets", "edit"), need("outlet_tickets", "edit")),
-  transfer: anyOf(need("items_stock", "edit"), need("outlet_tickets", "edit")),
-  createProductRequest: anyOf(need("menu", "edit"), need("outlet_requests", "edit")),
-  // The manager raises a kitchen order from the Dashboard, not from Items & stock, so the
-  // manager's half stays on Approvals - the desk that decides what an outlet is sent.
-  createProdOrder: anyOf(need("approvals", "edit"), need("outlet_requests", "edit")),
-  cancelAdjustmentRequest: anyOf(need("approvals", "edit"), need("outlet_stock", "edit")),
-  toggleAvail: need("availability", "edit"),
-  setItemImage: need("item_photos", "edit"),
-  removeItemImage: need("item_photos", "edit"),
-  createItem: need("item_master", "edit"),
-  patchItem: anyOf(need("items_stock", "edit"), need("item_master", "edit")),
-  answerProductRequest: anyOf(need("new_products", "edit"), need("store_requisitions", "edit")),
-  createAdjustment: need("adjustments", "edit"),
-  stockLedger: need("stock_ledger", "view"),
-  creditReport: anyOf(need("credit", "view"), need("billing", "edit")),
-  xReport: need("x_report", "view"),
-  zReports: need("z_report", "view"),
-  closeRegister: need("z_report", "edit"),
-};
-
 /** The deliberate change: nobody but the super admin closes or reads Z until a role is given it. */
 const Z_ROUTES = new Set(["zReports", "closeRegister"]);
 
-const roleListed = () => Object.entries(routes).filter(([, r]) => Array.isArray(r.access)).map(([k]) => k).sort();
+/** Every route a desk or a permission gates - what used to be a role list. */
+const gated = () => Object.entries(routes).filter(([, r]) => typeof r.access !== "string").map(([k]) => k).sort();
+const accessOf = (r: string): Access => routes[r as RouteName].access;
 
-describe("the parity tables", () => {
-  it("LEGACY_ACCESS is the manifest's role lists today, route for route", () => {
-    expect(Object.keys(LEGACY_ACCESS).sort()).toEqual(roleListed());
-    for (const [k, r] of Object.entries(routes)) if (Array.isArray(r.access)) expect(r.access, k).toEqual(LEGACY_ACCESS[k]);
-  });
-
-  it("TARGET_ACCESS covers every role-listed route in the manifest, and nothing else", () => {
-    expect(Object.keys(TARGET_ACCESS).sort()).toEqual(roleListed());
+describe("the parity table", () => {
+  it("LEGACY_ACCESS names every route the manifest gates by desk or permission, and nothing else", () => {
+    expect(Object.keys(LEGACY_ACCESS).sort()).toEqual(gated());
   });
 });
 
@@ -181,23 +100,23 @@ describe("the seeded roles reproduce today's access", () => {
     for (const d of DESKS) {
       const expected = Z_ROUTES.has(r) ? false : LEGACY_ACCESS[r].includes(d);
       it(`${r} × ${d} → ${expected}`, () => {
-        expect(admits(TARGET_ACCESS[r as RouteName]!, d, DESK_DEFAULTS[d].perms).ok).toBe(expected);
+        expect(admits(accessOf(r), d, DESK_DEFAULTS[d].perms).ok).toBe(expected);
       });
     }
   }
 
   it("the Z is nobody's: a seeded counter or manager reaches neither the Z list nor the close", () => {
     for (const d of ["counter", "manager"] as const) {
-      expect(admits(TARGET_ACCESS.zReports!, d, DESK_DEFAULTS[d].perms)).toEqual({ ok: false, status: 404, message: "There is nothing here." });
-      expect(admits(TARGET_ACCESS.closeRegister!, d, DESK_DEFAULTS[d].perms).ok).toBe(false);
+      expect(admits(routes.zReports.access, d, DESK_DEFAULTS[d].perms)).toEqual({ ok: false, status: 404, message: "There is nothing here." });
+      expect(admits(routes.closeRegister.access, d, DESK_DEFAULTS[d].perms).ok).toBe(false);
     }
     for (const d of DESKS) expect(can(DESK_DEFAULTS[d].perms, "z_report")).toBe(false);
   });
 
   it("on the dual-scope routes the seeded manager runs hospital-wide and the seeded counter at its own outlet", () => {
     for (const r of ["transfer", "createProductRequest", "createProdOrder", "cancelRequest", "cancelAdjustmentRequest", "xReport"] as const) {
-      expect(admits(TARGET_ACCESS[r]!, "manager", DESK_DEFAULTS.manager.perms), r).toEqual({ ok: true, wide: true });
-      expect(admits(TARGET_ACCESS[r]!, "counter", DESK_DEFAULTS.counter.perms), r).toEqual({ ok: true, wide: false });
+      expect(admits(routes[r].access, "manager", DESK_DEFAULTS.manager.perms), r).toEqual({ ok: true, wide: true });
+      expect(admits(routes[r].access, "counter", DESK_DEFAULTS.counter.perms), r).toEqual({ ok: true, wide: false });
     }
   });
 
@@ -307,10 +226,9 @@ describe("admits", () => {
     expect(admits("any", "manager", DESK_DEFAULTS.manager.perms)).toEqual({ ok: true, wide: true });
     expect(admits("admin", "manager", DESK_DEFAULTS.manager.perms)).toEqual({ ok: false, status: 404, message: "There is nothing here." });
   });
-  it("reads a role list and a desk list by desk alone", () => {
-    expect(admits(["counter", "manager"], "counter", none)).toEqual({ ok: true, wide: false });
-    expect(admits(["counter", "manager"], "manager", none)).toEqual({ ok: true, wide: true });
-    expect(admits(["counter"], "store", counter).ok).toBe(false);
+  it("reads a desk list by desk alone", () => {
+    expect(admits(desk("counter", "manager"), "manager", none)).toEqual({ ok: true, wide: false });
+    expect(admits(desk("counter"), "store", counter).ok).toBe(false);
     expect(admits(desk("counter"), "counter", none)).toEqual({ ok: true, wide: false });
     expect(admits(desk("counter"), "counter", { f: {}, a: ["all_outlets"] })).toEqual({ ok: true, wide: true });
     expect(admits(desk("counter"), "manager", DESK_DEFAULTS.manager.perms)).toEqual({ ok: false, status: 404, message: "There is nothing here." });
@@ -328,12 +246,12 @@ describe("admits", () => {
   });
   it("takes the first need met, so the hospital-wide one decides the scope when both are held", () => {
     const both: Permissions = { f: { items_stock: "edit", outlet_tickets: "edit" }, a: [] };
-    expect(admits(TARGET_ACCESS.transfer!, "counter", both)).toEqual({ ok: true, wide: true });
-    expect(admits(TARGET_ACCESS.transfer!, "counter", { f: { outlet_tickets: "edit" }, a: ["all_outlets"] })).toEqual({ ok: true, wide: true });
+    expect(admits(routes.transfer.access, "counter", both)).toEqual({ ok: true, wide: true });
+    expect(admits(routes.transfer.access, "counter", { f: { outlet_tickets: "edit" }, a: ["all_outlets"] })).toEqual({ ok: true, wide: true });
   });
   it("keeps the first refusal sentence when no need is met", () => {
     const p: Permissions = { f: { approvals: "view", outlet_stock: "view" }, a: [] };
-    expect(admits(TARGET_ACCESS.cancelAdjustmentRequest!, "counter", p)).toEqual({ ok: false, status: 403, message: permissionRefusal("approvals") });
+    expect(admits(routes.cancelAdjustmentRequest.access, "counter", p)).toEqual({ ok: false, status: 403, message: permissionRefusal("approvals") });
   });
 });
 

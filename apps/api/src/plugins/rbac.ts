@@ -39,8 +39,7 @@ const nothingAt = (req: FastifyRequest) => new NotFoundError(`There is nothing a
  * no role in practice, and its `role`/`loc` claims are placeholders the `users` row needs. Every
  * other token has its role resolved from `app.access`: an account whose role is gone, switched
  * off, or on another desk than the token says is a 401, so the browser refreshes (and gets a
- * token for the account as it now stands). Then the route's own access decides. A list of desks
- * is the legacy form and reads only the desk, exactly as before permissions existed.
+ * token for the account as it now stands). Then the route's own access decides.
  */
 export default fp(async (app) => {
   app.decorate("roleGate", (access: Access, allowMcp: boolean, opts: GateOptions = {}) => async (req: FastifyRequest) => {
@@ -52,8 +51,7 @@ export default fp(async (app) => {
     } else {
       const role = await app.access.of(claims.sub);
       if (!role || !role.active || role.desk !== claims.role) throw new UnauthenticatedError("Your account was changed - sign in again.", "role changed");
-      // `admits` (@rch/domain) is the rule for every form: `any`, the legacy desk list (the desk
-      // alone, no permission read), `{ desk }`, and `{ needs }`.
+      // `admits` (@rch/domain) is the rule for every form: `any`, `{ desk }` and `{ needs }`.
       const verdict = admits(access, role.desk, role.perms);
       if (!verdict.ok) throw verdict.status === 404 ? nothingAt(req) : new ForbiddenError(verdict.message);
       req.actor = { ...claims, perms: role.perms, wide: verdict.wide };

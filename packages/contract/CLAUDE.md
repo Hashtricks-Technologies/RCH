@@ -50,14 +50,14 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   - `"public"`: no token needed.
   - `"any"`: any signed-in role.
   - `"admin"`: checks the JWT's admin claim, not its role.
-  - an array of roles (the legacy form every role-gated route still uses).
   - `{ needs }`, built with `need(feature, level)`, `act(action)` and `anyOf(...)`: any one need met
     opens it, the hospital-wide need listed first. `admits` in `@rch/domain` reads it.
   - `{ desk }`, built with `desk(...roles)`: a door that belongs to a desk, not a permission.
 
   A caller outside `access` gets a 404; one who holds the feature at view where edit is needed gets
-  a 403 with `permissionRefusal`'s sentence. `admitAdmin: true` lets the super admin through a
-  route that is not `access: "admin"`.
+  a 403 with `permissionRefusal`'s sentence. There is no bare list of roles any more: every gated route
+  is `{ needs }` or `{ desk }`, and `routes.test.ts` pins that. `admitAdmin: true` lets the super admin
+  through a route that is not `access: "admin"` - only `xReport`, `zReports` and `closeRegister` carry it.
 - **`write`** defaults to `method !== "GET"`. A write carries an `Idempotency-Key`. The auth routes set
   `write: false`. `isWriteRoute(r)` is the one runtime reading of that rule, and `defineRoute` keeps `method`
   and `write` as literal types so `AuditAction` can apply the same rule at the type level.
@@ -84,7 +84,7 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   `schemas/events.ts`, because a stream has no JSON response. `routes.test.ts` pins that it never becomes a
   manifest entry.
 - **`setItemImage`** (`PUT /items/:it/image`) and **`removeItemImage`** (`DELETE /items/:it/image`) are ordinary
-  manifest entries, `access: ["manager", "counter"]`, both `response: writeResponse(ItemResultSchema)`.
+  manifest entries, `access: need("item_photos", "edit")`, both `response: writeResponse(ItemResultSchema)`.
   `SetItemImageBodySchema` (`writes.ts`) takes only `{ data: string }`, base64, capped at 1 MB of wire text -
   the 700 KB byte limit and the type check are `@rch/domain`'s `checkPhoto`, refused as a sentence, not a
   schema shape. The photo itself is read at `ITEM_IMAGE_PATH` (`schemas/images.ts`), which is deliberately

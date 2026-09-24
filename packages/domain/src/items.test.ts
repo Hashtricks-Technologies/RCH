@@ -1,61 +1,68 @@
 import { describe, expect, it } from "vitest";
 import {
-  ITEM_FIELD_FEATURES, ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField, counterName, itemCodePrefix, nextItemCode,
+  ITEM_FIELD_FEATURES, mayEditItemField, unauthorisedItemFields, type ItemField, counterName, itemCodePrefix, nextItemCode,
   // ---- item photos ----
   mayEditItemImage, sniffImageType, checkPhoto, imageRetiredMessage, imageOffMenuMessage, imageNoneMessage,
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO,
 } from "./items.js";
-import { routes } from "@rch/contract";
-import { DESK_DEFAULTS } from "./permissions.js";
+import { routes, type Role } from "@rch/contract";
+import { admits, DESK_DEFAULTS } from "./permissions.js";
 
 const ALL_FIELDS: ItemField[] = ["n", "dn", "mrp", "cost", "gst", "hsn", "rl", "grp", "sl", "active", "src"];
+const DESKS: readonly Role[] = ["counter", "manager", "store", "prod", "buyer"];
+/** Who owned each field before roles were configurable, frozen: the seeded roles must reproduce it. */
+const LEGACY_FIELD_DESKS: Readonly<Record<ItemField, readonly Role[]>> = {
+  mrp: ["manager"], cost: ["manager"], gst: ["manager"], dn: ["manager"],
+  n: ["store", "buyer", "prod"], hsn: ["store", "buyer", "prod"], rl: ["store", "buyer", "prod"],
+  grp: ["store", "buyer", "prod"], sl: ["store", "buyer", "prod"], src: ["store", "buyer", "prod"],
+  active: ["manager", "store", "buyer", "prod"],
+};
+/** A seeded desk's permissions. */
+const P = (d: Role) => DESK_DEFAULTS[d].perms;
 
 describe("who owns which field on the item master", () => {
   it("gives the manager the three commercial figures and nothing else", () => {
-    expect(ITEM_FIELD_ROLES.mrp).toEqual(["manager"]);
-    expect(ITEM_FIELD_ROLES.cost).toEqual(["manager"]);
-    expect(ITEM_FIELD_ROLES.gst).toEqual(["manager"]);
-    expect(ITEM_FIELD_ROLES.dn).toEqual(["manager"]);
-    expect(mayEditItemField("manager", "mrp")).toBe(true);
-    expect(mayEditItemField("manager", "n")).toBe(false);
-    expect(mayEditItemField("manager", "hsn")).toBe(false);
-    expect(mayEditItemField("manager", "rl")).toBe(false);
-    expect(mayEditItemField("manager", "grp")).toBe(false);
+    for (const f of ["mrp", "cost", "gst", "dn"] as const) expect(mayEditItemField(P("manager"), f)).toBe(true);
+    expect(mayEditItemField(P("manager"), "mrp")).toBe(true);
+    expect(mayEditItemField(P("manager"), "n")).toBe(false);
+    expect(mayEditItemField(P("manager"), "hsn")).toBe(false);
+    expect(mayEditItemField(P("manager"), "rl")).toBe(false);
+    expect(mayEditItemField(P("manager"), "grp")).toBe(false);
   });
 
   it("gives the store, the buyer and the kitchen the six that describe the goods", () => {
     for (const role of ["store", "buyer", "prod"] as const) {
-      expect(mayEditItemField(role, "n")).toBe(true);
-      expect(mayEditItemField(role, "hsn")).toBe(true);
-      expect(mayEditItemField(role, "rl")).toBe(true);
-      expect(mayEditItemField(role, "grp")).toBe(true);
-      expect(mayEditItemField(role, "sl")).toBe(true);
-      expect(mayEditItemField(role, "src")).toBe(true);
-      expect(mayEditItemField(role, "mrp")).toBe(false);
-      expect(mayEditItemField(role, "cost")).toBe(false);
-      expect(mayEditItemField(role, "gst")).toBe(false);
-      expect(mayEditItemField(role, "dn")).toBe(false);
+      expect(mayEditItemField(P(role), "n")).toBe(true);
+      expect(mayEditItemField(P(role), "hsn")).toBe(true);
+      expect(mayEditItemField(P(role), "rl")).toBe(true);
+      expect(mayEditItemField(P(role), "grp")).toBe(true);
+      expect(mayEditItemField(P(role), "sl")).toBe(true);
+      expect(mayEditItemField(P(role), "src")).toBe(true);
+      expect(mayEditItemField(P(role), "mrp")).toBe(false);
+      expect(mayEditItemField(P(role), "cost")).toBe(false);
+      expect(mayEditItemField(P(role), "gst")).toBe(false);
+      expect(mayEditItemField(P(role), "dn")).toBe(false);
     }
   });
 
   it("lets all four retire a line, and the counter none of it", () => {
-    expect(ITEM_FIELD_ROLES.active).toEqual(["manager", "store", "buyer", "prod"]);
-    for (const f of ALL_FIELDS) expect(mayEditItemField("counter", f)).toBe(false);
+    for (const d of ["manager", "store", "buyer", "prod"] as const) expect(mayEditItemField(P(d), "active")).toBe(true);
+    for (const f of ALL_FIELDS) expect(mayEditItemField(P("counter"), f)).toBe(false);
   });
 
   it("names the fields a role does not own, in the order the patch named them", () => {
-    expect(unauthorisedItemFields("manager", ["mrp", "cost", "gst", "active"])).toEqual([]);
-    expect(unauthorisedItemFields("manager", ["mrp", "n", "rl"])).toEqual(["n", "rl"]);
-    expect(unauthorisedItemFields("store", ["n", "mrp", "grp", "cost"])).toEqual(["mrp", "cost"]);
-    expect(unauthorisedItemFields("counter", ["active"])).toEqual(["active"]);
-    expect(unauthorisedItemFields("buyer", [])).toEqual([]);
+    expect(unauthorisedItemFields(P("manager"), ["mrp", "cost", "gst", "active"])).toEqual([]);
+    expect(unauthorisedItemFields(P("manager"), ["mrp", "n", "rl"])).toEqual(["n", "rl"]);
+    expect(unauthorisedItemFields(P("store"), ["n", "mrp", "grp", "cost"])).toEqual(["mrp", "cost"]);
+    expect(unauthorisedItemFields(P("counter"), ["active"])).toEqual(["active"]);
+    expect(unauthorisedItemFields(P("buyer"), [])).toEqual([]);
   });
 
   it("splits the master in two with no field in both halves and none in neither", () => {
     // The two sentences the service gives depend on this: every field is either the manager's
     // or the three desks', and `active` is the one line both halves share.
-    const commercial = ALL_FIELDS.filter((f) => mayEditItemField("manager", f));
-    const operational = ALL_FIELDS.filter((f) => mayEditItemField("store", f));
+    const commercial = ALL_FIELDS.filter((f) => mayEditItemField(P("manager"), f));
+    const operational = ALL_FIELDS.filter((f) => mayEditItemField(P("store"), f));
     expect(commercial).toEqual(["dn", "mrp", "cost", "gst", "active"]);
     expect(operational).toEqual(["n", "hsn", "rl", "grp", "sl", "active", "src"]);
     expect(commercial.filter((f) => operational.includes(f))).toEqual(["active"]);
@@ -82,9 +89,9 @@ describe("the item master's split, read from permissions", () => {
     expect(unauthorisedItemFields(both, ["mrp", "n", "active", "hsn"])).toEqual([]);
   });
 
-  it("agrees with ITEM_FIELD_ROLES for every seeded role", () => {
-    for (const role of ["counter", "manager", "store", "prod", "buyer"] as const) {
-      for (const f of ALL_FIELDS) expect(mayEditItemField(DESK_DEFAULTS[role].perms, f), `${role} ${f}`).toBe(ITEM_FIELD_ROLES[f].includes(role));
+  it("gives every seeded role exactly the fields its desk owned before roles were configurable", () => {
+    for (const role of DESKS) {
+      for (const f of ALL_FIELDS) expect(mayEditItemField(P(role), f), `${role} ${f}`).toBe(LEGACY_FIELD_DESKS[f].includes(role));
     }
   });
 
@@ -102,9 +109,9 @@ describe("item photos", () => {
   const WEBP = bytes(0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50);
 
   it("lets the manager and the counter set a photo, and nobody else", () => {
-    expect(mayEditItemImage("manager")).toBe(true);
-    expect(mayEditItemImage("counter")).toBe(true);
-    for (const role of ["store", "buyer", "prod"] as const) expect(mayEditItemImage(role)).toBe(false);
+    expect(mayEditItemImage(P("manager"))).toBe(true);
+    expect(mayEditItemImage(P("counter"))).toBe(true);
+    for (const role of ["store", "buyer", "prod"] as const) expect(mayEditItemImage(P(role))).toBe(false);
   });
 
   it("knows a JPEG, a PNG and a WebP by their first bytes", () => {
@@ -140,9 +147,9 @@ describe("item photos", () => {
   });
 
   it("agrees with the manifest about who reaches the photo doors", () => {
-    for (const role of ["counter", "manager", "store", "prod", "buyer"] as const) {
-      expect((routes.setItemImage.access as readonly string[]).includes(role)).toBe(mayEditItemImage(role));
-      expect((routes.removeItemImage.access as readonly string[]).includes(role)).toBe(mayEditItemImage(role));
+    for (const role of DESKS) {
+      expect(admits(routes.setItemImage.access, role, P(role)).ok).toBe(mayEditItemImage(P(role)));
+      expect(admits(routes.removeItemImage.access, role, P(role)).ok).toBe(mayEditItemImage(P(role)));
     }
   });
 });

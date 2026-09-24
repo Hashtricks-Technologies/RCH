@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import { AdjustReasonSchema, CollectionSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema, SetItemImageBodySchema, ITEM_IMAGE_PATH, itemImagePath, UpdateOutletBodySchema, CreateAdminUserBodySchema, UpdateAdminUserBodySchema } from "./index";
-import { isWriteRoute, routes, serviceOf } from "./routes";
+import { isWriteRoute, need, routes, serviceOf } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
  *  arrives without a sample, so "every body schema" stays literally every body schema. */
@@ -359,9 +359,9 @@ describe("the audit log's routes", () => {
 
 // ---- item photos
 describe("item photos", () => {
-  it("opens both photo doors to the manager and the counter only", () => {
-    expect(routes.setItemImage).toMatchObject({ method: "PUT", path: "/items/:it/image", access: ["manager", "counter"] });
-    expect(routes.removeItemImage).toMatchObject({ method: "DELETE", path: "/items/:it/image", access: ["manager", "counter"] });
+  it("opens both photo doors to whoever may edit product photos", () => {
+    expect(routes.setItemImage).toMatchObject({ method: "PUT", path: "/items/:it/image", access: need("item_photos", "edit") });
+    expect(routes.removeItemImage).toMatchObject({ method: "DELETE", path: "/items/:it/image", access: need("item_photos", "edit") });
   });
 
   it("takes base64 and nothing else, under the 1 MB body limit", () => {
@@ -385,6 +385,19 @@ describe("the account bodies name a role, not a desk", () => {
     expect(CreateAdminUserBodySchema.safeParse({ name: "A", email: "a@royalcare.in", role: "counter", loc: "rest" }).success).toBe(false);
     expect(UpdateAdminUserBodySchema.safeParse({ role: "counter", loc: "rest" }).success).toBe(false);
     expect(UpdateAdminUserBodySchema.parse({ roleId: "ROLE-006", loc: "rest" })).toEqual({ roleId: "ROLE-006", loc: "rest" });
+  });
+  it("gates every operational door by a permission or a desk - no route still names a role list", () => {
+    for (const [name, r] of Object.entries(routes)) {
+      const a = r.access;
+      expect(typeof a === "string" ? ["public", "any", "admin"].includes(a) : "needs" in a || "desk" in a, name).toBe(true);
+    }
+  });
+  it("lets the super admin through the register's X, Z list and close, and nowhere else operational", () => {
+    const admitted = Object.entries(routes).filter(([, r]) => r.admitAdmin).map(([k]) => k).sort();
+    expect(admitted).toEqual(["closeRegister", "xReport", "zReports"]);
+    expect(routes.closeRegister.access).toEqual(need("z_report", "edit"));
+    expect(routes.zReports.access).toEqual(need("z_report", "view"));
+    expect(routes.xReport.access).toEqual(need("x_report", "view"));
   });
   it("keeps every role route the super admin's", () => {
     for (const name of ["adminRoles", "createRole", "updateRole", "deactivateRole", "reactivateRole", "deleteRole"] as const) expect(routes[name].access).toBe("admin");

@@ -3,7 +3,8 @@
 // No `requireLoc` anywhere here, on purpose. The outlet manager is hospital-wide - their `loc`
 // is a desk, not a scope - and an account is the hospital's, not an outlet's: the same doctor
 // runs up a balance at the coffee shop and the restaurant, and a settlement clears both. The
-// route's own `access: ["manager"]` is the whole of the gate.
+// route's own access - Credit & settlements, or the void-a-settlement action - is the whole of
+// the gate.
 //
 // `GET /payer-terms` is not here: it is a read of a slice the snapshot carries, scoped the way
 // the roster is, so it lives with the other snapshot reads (`modules/snapshot/routes.ts`).
