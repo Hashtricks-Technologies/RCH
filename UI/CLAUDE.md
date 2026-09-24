@@ -45,6 +45,15 @@ screen's own `section` - joining a group of the same name - and Account last. `d
 at once. Gate on a permission with these, never on `user.r`; the desk (`user.r`) still decides where
 someone works - the counter's till, its Close shift and the counter-only display names stay on it.
 
+**A screen held at `view` is read-only, and says so.** Its `PageHead` takes `readOnly={!may && "<feature>"}`,
+which draws a "View only" badge whose tip is `permissionRefusal(feature)` - the sentence the server refuses
+the write with. Buttons that open a form or write are not drawn at all (a drawer's decision buttons, a
+screen's Add / Save / Remove); an input, select or `Switch` that shows a value stays on the page `disabled`,
+with the same sentence behind it - `Switch` takes `disabled` and `tip`, and `Locked({ f, locked })` in
+`kit.tsx` wraps any other control. An action (`void_settlement`, `void_bill`) is gated with `useHolds`, never
+with the feature it sits under. The shared forms gate themselves: `PhotoPicker` on `item_photos`,
+`NewProductForm` on `item_master`, and the `adjstock` drawer on `adjustments`.
+
 A key names one screen for everybody, so no two desks share one: `outlet-stock`, `items-stock`, `store-stock`
 and `kitchen-stock` were all `stock`; `kitchen-orders` and `purchase-orders` were `orders`; `outlet-requests`
 / `kitchen-requests` and `outlet-tickets` / `kitchen-tickets` were `requests` and `tickets`. Every
@@ -389,6 +398,10 @@ a background refresh and must not blank the screen.
   refusal, the switch, and that no delete control exists anywhere on the page.
 - **`pdf.test.tsx`** mocks `jspdf` and `jspdf-autotable`, recording what is drawn and saved, and pins
   the receipt and GRN models, the file names, the Include OTP box and the GRN buttons.
+- **`view-mode.test.tsx`** is table-driven over every gated screen and drawer: each desk's seeded role with
+  one feature moved to `view` loses the write controls and gains the badge, and at `edit` has them. It also
+  pins the shut inputs (Prices' cells, the Credit rate card), `void_settlement` on Credit's Void, and the
+  edit-only grants (`availability`, `item_photos`, `item_master`, `goods_receipt`, `adjustments`).
 - **`counter-prices.test.tsx`** drives the Prices grid: a column per open outlet and only sellable rows,
   staged cells showing old → new, Confirm shut until `CONFIRM` is typed, Cancel and a refusal both keeping
   the staged edits, the zero / unpriced previews shutting Save, an above-MRP price staying saveable with its
