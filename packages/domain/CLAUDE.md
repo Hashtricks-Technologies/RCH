@@ -95,6 +95,11 @@ need more context than their names give:
   `toOnOffRefusal` (every place still holding or carrying a counted good), `notStockedAtKitchenMessage` -
   and the wastage record's `WASTAGE_REASONS` and `valueAtCost` are here so both sides print them alike.
   `ITEM_FIELD_FEATURES.onOff` is `make_distribute`: counted versus on/off only is the kitchen's alone.
+- `items.ts` also holds which desk adds which item type (`mayCreateType`, `createTypeRefusal` - read by
+  `POST /items` and by the new-product form's type list; this one takes a desk, because it is desk
+  mechanics like the shelf a new item books to), `MRP_MISSING_REFUSAL`, and what a till sells:
+  `isSellable` (MRP, FG, MTO) with `neverSoldRefusal` / `unpricedRefusal`, the sentences both the price
+  grid and `POST /menus/:loc/items` refuse with.
 - `items.ts`'s photo section is the one place the 700 KB limit, the three accepted types and every photo
   refusal sentence are written. `mayEditItemImage` is `item_photos` at edit (the seeded manager and counter) - not an `ItemField`,
   because a photo has a door of its own (`PUT /items/:it/image`), not one of the patch's nine boxes.

@@ -1,4 +1,4 @@
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { Item } from "@rch/contract";
 import type { Master } from "@rch/domain";
 import { items, locations } from "../db/schema/index.js";
@@ -13,6 +13,13 @@ export const loadItems = async (db: Reader): Promise<Master["items"]> =>
  *  lands, and what it lands as - used on arrival at the kitchen or stocked - is its type's. */
 export const loadItemTypes = async (db: Reader): Promise<Record<string, { t: Item["t"] }>> =>
   Object.fromEntries((await db.select({ key: items.key, type: items.type }).from(items)).map((r) => [r.key, { t: r.type }]));
+
+/** A withdrawn item's name, or `null` for an active or unknown key. `loadItems` leaves a retired
+ *  line out, so a rule that must say "retired" rather than "there is no item" asks here. */
+export async function retiredItemName(db: Reader, key: string): Promise<string | null> {
+  const [row] = await db.select({ name: items.name, active: items.active }).from(items).where(eq(items.key, key));
+  return row && !row.active ? row.name : null;
+}
 
 /** Every location, quarantine included. The rules ignore it; they do not need it hidden,
  *  and since Phase 5 the reader that feeds the UI (readers/master.ts) carries it too - the

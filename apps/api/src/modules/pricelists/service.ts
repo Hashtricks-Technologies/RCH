@@ -4,6 +4,7 @@
 // active on.
 import type { z } from "zod";
 import type { Changed, CreatePriceListBodySchema, LocKey, PriceList, SaveOutletPricesBodySchema, WriteResponse } from "@rch/contract";
+import { isSellable, neverSoldRefusal, unpricedRefusal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { auditBefore } from "../../lib/audit.js";
 import { isForeignKeyViolation, withTransaction, type Tx } from "../../lib/db.js";
@@ -22,9 +23,6 @@ type SaveOutletPricesBody = z.infer<typeof SaveOutletPricesBodySchema>;
 /** "A", "A and B", "A, B and C" - the grid's sentences name every counter they touched. */
 const joinNames = (names: string[]) =>
   names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-
-/** Only what a till can sell: a bought-in MRP line, a kitchen finished good, a made-to-order dish. */
-const SELLABLE: ReadonlySet<string> = new Set(["MRP", "FG", "MTO"]);
 
 const toWire = (row: { id: string; name: string }, outlets: LocKey[]): PriceList => ({ id: row.id, name: row.name, outlets });
 
@@ -170,12 +168,12 @@ export function createPricelistsService(db: Db) {
           assertRule(!seen.has(`${c.loc}:${c.it}`), `Refused - ${item.name} at ${outlet.name} is in this save twice`);
           seen.add(`${c.loc}:${c.it}`);
           assertRule(item.active, `Refused - ${item.name} is retired and cannot be priced or sold`);
-          assertRule(SELLABLE.has(item.type), `Refused - ${item.name} is ${item.type === "RAW" ? "a raw material" : "packing"} and is never sold at a counter`);
+          assertRule(isSellable(item.type), neverSoldRefusal(item.name, item.type));
           if (c.price !== undefined) {
             assertRule(c.price > 0, `Enter a price greater than zero for ${item.name} at ${outlet.name}`);
           }
           if (c.listed === true) {
-            assertRule((c.price ?? at.prices.get(c.it)) !== undefined, `Refused - give ${item.name} a price at ${outlet.name} before selling it there`);
+            assertRule((c.price ?? at.prices.get(c.it)) !== undefined, unpricedRefusal(item.name, outlet.name));
           }
           if ((c.price !== undefined && c.price !== at.prices.get(c.it)) || (c.listed !== undefined && c.listed !== at.menu.has(c.it))) effective++;
         }

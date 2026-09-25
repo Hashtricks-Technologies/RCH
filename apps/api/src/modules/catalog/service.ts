@@ -5,8 +5,9 @@ import type { z } from "zod";
 import type { Changed, CreateItemBodySchema, Item, LocKey, PatchItemBodySchema } from "@rch/contract";
 import { KITCHEN } from "@rch/contract";
 import {
-  bestBeforeText, checkPhoto, fq, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,
-  itemCodePrefix, nextItemCode, onOffRefusal, round3, toOnOffRefusal, unauthorisedItemFields, usedOnArrival, type ItemField,
+  bestBeforeText, checkPhoto, createTypeRefusal, fq, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage, isSellable,
+  itemCodePrefix, mayCreateType, MRP_MISSING_REFUSAL, neverSoldRefusal, nextItemCode, onOffRefusal, round3, toOnOffRefusal,
+  unauthorisedItemFields, unpricedRefusal, usedOnArrival, type ItemField,
 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { isForeignKeyViolation, withTransaction } from "../../lib/db.js";
@@ -76,6 +77,10 @@ export function createCatalogService(db: Db, images: ImageStore) {
         const name = body.name.trim();
         assertRule(name.length > 0, "Give the product a name");
         assertRule(body.cost > 0, "Cost must be more than zero");
+        // Which types a desk may add is desk mechanics, like the shelf below: the same table the
+        // new-product form offers its type list from.
+        assertRule(mayCreateType(claims.role, body.type), createTypeRefusal(claims.role, body.type));
+        assertRule(body.type !== "MRP" || (body.mrp ?? 0) > 0, MRP_MISSING_REFUSAL);
         // Location decides which rows. The kitchen books what it makes at the kitchen;
         // the store keeper and the buyer book at the central store. Derived from the caller's
         // role, not their loc - the two happen to agree today (see the task brief).
@@ -413,6 +418,12 @@ export function createCatalogService(db: Db, images: ImageStore) {
         auditBefore({ loc, items: await catalogRepo.menuItems(tx, loc) });
         const listed = await catalogRepo.isListed(tx, loc, it);
         assertRule(!listed, `${item.n} is already listed at ${location.name}`);
+        // The price grid's own two refusals, word for word: a till never sells a raw material or a
+        // packing line, and refuses a sale at no price - so neither may be put on one.
+        assertRule(isSellable(item.t), neverSoldRefusal(item.n, item.t));
+        const priced = location.priceListId !== null
+          && (await catalogRepo.pricesOf(tx, it)).some((p) => p.list === location.priceListId);
+        assertRule(priced, unpricedRefusal(item.n, location.name));
         // That check read before the insert took its lock, so two managers adding the same item
         // can both find it unlisted. The insert is the arbiter: it hands the loser no row back,
         // and the loser reads the same refusal the check would have given it a moment later.

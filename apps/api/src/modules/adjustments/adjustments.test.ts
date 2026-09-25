@@ -178,6 +178,17 @@ describe("POST /adjustments", () => {
     expect(kitchen.statusCode).toBe(403);
   });
 
+  it("keeps the store keeper to the central store and quarantine - never the kitchen or an outlet", async () => {
+    for (const loc of ["kitchen", "rest", "coffee", "kiosk"]) {
+      const before = await balance(loc, "milk");
+      const r = await post("u3", { loc, reason: "wastage", lines: [{ it: "milk", qty: 1 }] });
+      expect(r.statusCode, loc).toBe(403);
+      expect(r.json().error.message).toBe("You can only do this for the Central Store or quarantine.");
+      expect(await balance(loc, "milk")).toBe(before);
+    }
+    expect(await app.testDb!.db.select().from(adjustments)).toHaveLength(0);
+  });
+
   it("is absent for the manager - an outlet's shelf is only corrected through an adjustment request", async () => {
     const r = await post("u2", { loc: "kiosk", reason: "breakage", lines: [{ it: "water", qty: -2 }] });
     expect(r.statusCode).toBe(404);

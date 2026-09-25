@@ -1,4 +1,4 @@
-import type { Feature, ItemType, Permissions } from "@rch/contract";
+import type { Feature, ItemType, Permissions, Role } from "@rch/contract";
 import { can } from "./permissions.js";
 
 /**
@@ -102,6 +102,49 @@ export function nextItemCode(type: ItemType, existing: readonly string[]): strin
   }
   return `${prefix}-${next}`;
 }
+
+// ---- which desk adds which type ----
+/**
+ * The types each desk may put on the master. The store keeper shelves every kind of goods; the
+ * kitchen adds what it makes and what it makes it from; procurement adds only what it buys
+ * (`isPurchased`). The new-product form offers these and the server refuses anything else.
+ */
+const CREATABLE_TYPES: Readonly<Record<Role, readonly ItemType[]>> = {
+  store: ["RAW", "PACK", "MRP", "FG", "MTO"],
+  prod: ["FG", "MTO", "RAW"],
+  buyer: ["RAW", "PACK", "MRP"],
+  manager: [],
+  counter: [],
+};
+
+export const mayCreateType = (desk: Role, type: ItemType): boolean => CREATABLE_TYPES[desk].includes(type);
+
+const TYPE_PLURAL: Readonly<Record<ItemType, string>> = {
+  RAW: "raw materials", PACK: "packaging", MRP: "printed-price (MRP) goods", FG: "finished goods", MTO: "made-to-order items",
+};
+const DESK_WORD: Readonly<Record<Role, string>> = {
+  store: "the store keeper", prod: "the kitchen", buyer: "procurement", manager: "the outlet manager", counter: "a counter",
+};
+
+export function createTypeRefusal(desk: Role, type: ItemType): string {
+  const allowed = CREATABLE_TYPES[desk].map((t) => TYPE_PLURAL[t]);
+  const list = allowed.length === 0 ? "nothing"
+    : allowed.length === 1 ? allowed[0] : `${allowed.slice(0, -1).join(", ")} and ${allowed.at(-1)}`;
+  return `Refused - ${DESK_WORD[desk]} does not add ${TYPE_PLURAL[type]} to the item master, only ${list}`;
+}
+
+/** An MRP good is priced off its pack; without the printed figure there is no ceiling to hold. */
+export const MRP_MISSING_REFUSAL = "An MRP item needs the price printed on its pack";
+
+// ---- selling at a counter ----
+/** What a till sells. A raw material or a packing line is bought to be used, never sold. */
+export const isSellable = (type: ItemType): boolean => type === "MRP" || type === "FG" || type === "MTO";
+
+export const neverSoldRefusal = (name: string, type: ItemType): string =>
+  `Refused - ${name} is ${type === "RAW" ? "a raw material" : "packing"} and is never sold at a counter`;
+
+export const unpricedRefusal = (name: string, outlet: string): string =>
+  `Refused - give ${name} a price at ${outlet} before selling it there`;
 
 // ---- item photos ----
 /**
