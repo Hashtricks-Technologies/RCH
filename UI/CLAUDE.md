@@ -127,6 +127,26 @@ manager's Product On / Off screen (`roles/manager/Availability.tsx`, key `avail`
 `NewListDialog`, and the `plset` drawer) is hidden behind `PRICE_LISTS_ENABLED` in `src/registry.tsx`
 - still registered, still tested by importing it directly, reachable again by flipping the flag.
 
+**The kitchen holds finished goods only.** Its raw materials and packaging are used as they arrive
+(`usedOnArrival`), so the stock read carries no kitchen raw cell and nothing may compute a par, a low
+alert or a value off one. `roles/prod/Stock.tsx` shows the counted goods on the rack, then **Issued to the
+kitchen** - every active raw and packing line, those issued in the window first, each with its quantity
+and value at cost from `GET /reports/kitchen` and a quantity box and Request button (`requestFromStore`) -
+over Today / Last 7 days / Last 30 days, then the window's **Wastage** records. The report lives in
+`store/kitchen.ts` (`kitchenReport`, `kitchenReportFailed` for the outage line, `kitchenDays`,
+`loadKitchenReport(days?)`), read as the screen mounts, when the window changes and whenever `stock`
+moves; `recordWastage` is the ordinary `Promise<boolean>` write behind the `kwaste` drawer (item, a
+`DraftLineInput` quantity with its value at cost, a `WASTAGE_REASONS` reason, a note). Write off stays
+the `adjstock` drawer, whose picker leaves kitchen raw lines out. **A finished good is counted or on/off
+only** (`isOnOff`): the kitchen's `NewProductForm` asks Counted / On/off only / Raw material as a `seg`
+control - counted asks "How many made now" (a batch), on/off asks "Available now?" (a `Switch`, sent as
+`avail`) and takes no shelf life or opening, a raw line neither. The item drawer draws the same choice for
+any `isKitchenMade` item, live only for `mayEditItemField(perms, "onOff")`. The kitchen's Product On / Off
+lists `madeItems()` then `onOffItems()` (selectors), each with its outlets and an Edit button to the
+drawer, and the bell and dashboard count an on/off item the kitchen switched off. `availOf` reads the
+kitchen's switch for an on/off item at every outlet, so the till's tile reads "switched off by the
+kitchen" exactly as `POST /bills` refuses.
+
 **A drawer is a document; a modal is one decision.** `ui/Drawer.tsx` opens a document beside the list it came
 from - a ticket, a statement, an audit entry - and is the store's single `drawer` slot. `ui/Modal.tsx` is a
 dialog box in the middle of the screen for one short form with two answers (the grid's save confirmation in
@@ -382,7 +402,7 @@ try {
   its `changed`; only the audit service's notice does.
   - **A collection only some roles may read is still broadcast to every open session** - the server's
     `pg_notify` isn't per-role. So `NARROW.priceLists`, `receivables` and `shifts` read for an operator
-    holding Prices, Receivables & settlements, Shift reports or QR orders (`qrOrders`) alone and do nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
+    holding Prices, Receivables & settlements, Shift reports, QR orders (`qrOrders`) or Kitchen stock (`wastage`, which re-reads the kitchen's report) alone and do nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
     whole `Promise.all` and toast "the screen could not be refreshed" over a page of theirs that never
     changed. `accounts` is never announced on the stream - only the admin's own reply names it.
   - **`roles`** re-reads `GET /me` for an operator: a changed name is simply taken, and a changed desk or
@@ -590,6 +610,12 @@ a background refresh and must not blank the screen.
 - **`counter-names.test.tsx`** drives the walk-in customer (the body, the two boxes surviving a
   refusal and clearing on a sale, both Bills searches) and the display name (the till's tiles and
   cart, the counter's bill drawer against the manager's and the slip, the manager's item drawer).
+- **`kitchen.test.tsx`** drives the kitchen slice on the wire (the report per window and its outage flag,
+  `recordWastage`'s body, refusal and offline fallback, `NARROW.wastage` for the kitchen alone), Kitchen
+  Stock (issued and wasted instead of a raw shelf, the window, a row's Request, the `kwaste` drawer's
+  value preview), the new-product form's Counted / On/off only, the item drawer's choice (live for the
+  kitchen, shut for the store keeper, absent for a counter's drink), and the kitchen's switch on an on/off
+  item reaching the till's tile and the kitchen's board.
 - **`fixes.test.ts`** pins earlier defects by tag (C6, M3, M8, H4, UA-14…). Read the comment before changing
   what one covers.
 - **No production file under `src/` imports `@rch/contract/fixtures`.** Only tests do.

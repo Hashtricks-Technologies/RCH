@@ -1,4 +1,5 @@
 import type { Adjustment, AdjustmentRequest, Batch, Bill, Feature, LocKey, PayerRoster, Permissions, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Terms, Ticket } from "@rch/contract";
+import { KITCHEN } from "@rch/contract";
 import { can, readsBills, readsWide, type ReadCollection } from "@rch/domain";
 import { noTerms } from "../../lib/terms.js";
 import type { Actor } from "../../plugins/rbac.js";
@@ -24,7 +25,9 @@ const any = (who: Who, fs: readonly Feature[]): boolean => fs.some((f) => can(wh
 /** The three ledger maps, together: GET /stock's whole body and three of the snapshot's fields. */
 export type StockPart = Pick<Snapshot, "stock" | "rsv" | "ovr">;
 
-/** A counter operator sees their own counter's ledger and nobody else's. */
+/** A counter operator sees their own counter's ledger and nobody else's - and the kitchen's
+ *  switches, because the kitchen switching an on/off-only product off takes it off this till too
+ *  (`availOf`), and a till that could not see that switch would offer what the sale refuses. */
 export function scopeStock(part: StockPart, who: Who): StockPart {
   if (!cut(who, "stock")) return part;
   const L = who.loc;
@@ -32,7 +35,7 @@ export function scopeStock(part: StockPart, who: Who): StockPart {
   return {
     stock: { [L]: part.stock[L] ?? {} } as Snapshot["stock"],
     rsv: Object.fromEntries(own(Object.entries(part.rsv))) as Snapshot["rsv"],
-    ovr: Object.fromEntries(own(Object.entries(part.ovr))) as Snapshot["ovr"],
+    ovr: Object.fromEntries(Object.entries(part.ovr).filter(([k]) => k.startsWith(`${L}:`) || k.startsWith(`${KITCHEN}:`))) as Snapshot["ovr"],
   };
 }
 

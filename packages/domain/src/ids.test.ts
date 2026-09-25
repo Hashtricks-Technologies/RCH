@@ -28,6 +28,10 @@ describe("formatId", () => {
     expect(SEQUENCE_START.qr_order).toBe(1);
     expect(SEQUENCE_START.qr_code).toBe(1);
   });
+  it("numbers kitchen wastage by the year, padded to four, from one", () => {
+    expect(formatId("wastage", 1, at)).toBe("WST-2026-0001");
+    expect(SEQUENCE_START.wastage).toBe(1);
+  });
   it("continues each seeded series rather than restarting it", () => {
     expect(SEQUENCE_START.req).toBe(913);
     expect(SEQUENCE_START.tkt).toBe(441);

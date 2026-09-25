@@ -28,6 +28,8 @@ import receivables from "./receivables/routes.js";
 // ---- adjustments
 import adjustments from "./adjustments/routes.js";
 import adjustmentRequests from "./adjustmentRequests/routes.js";
+// ---- kitchen wastage, and what the kitchen was issued
+import wastage from "./wastage/routes.js";
 // ---- admin account management
 import admin from "./admin/routes.js";
 // ---- roles & permissions
@@ -64,6 +66,7 @@ export async function registerModules(app: App): Promise<void> {
   // ---- adjustments
   await app.register(adjustments);
   await app.register(adjustmentRequests);
+  await app.register(wastage);
   // ---- admin account management
   await app.register(admin);
   // ---- roles & permissions

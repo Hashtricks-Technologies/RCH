@@ -31,6 +31,11 @@ export {
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO, checkPhoto, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,
   mayEditItemImage, sniffImageType, type ImageType, type PhotoCheck,
 } from "./items.js";
+// ---- the kitchen: raw lines used on arrival, counted vs on/off-only finished goods, wastage.
+export {
+  isKitchenMade, isOnOff, KITCHEN_OFF_REASON, notStockedAtKitchenMessage, onOffRefusal, toOnOffRefusal, usedOnArrival,
+  valueAtCost, WASTAGE_REASONS,
+} from "./kitchen.js";
 // ---- adjustments: the words a write-off's reason is printed in, on both sides.
 export { REASON_LABEL } from "./adjustments.js";
 export { HSN_CODES, gstForHsn, hsnGroups, type HsnEntry } from "./hsn.js";

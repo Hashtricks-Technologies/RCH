@@ -10,13 +10,13 @@
 // posts the moves and writes the document, all under the one lock.
 import type { Adjustment, AdjustReason, StockLoc } from "@rch/contract";
 import type { Master } from "@rch/domain";
-import { fq, REASON_LABEL, round3, unitTotal } from "@rch/domain";
+import { fq, notStockedAtKitchenMessage, REASON_LABEL, round3, unitTotal, usedOnArrival } from "@rch/domain";
 import { adjustmentsRepo } from "../modules/adjustments/repo.js";
 import type { Tx } from "./db.js";
 import { NotFoundError } from "./errors.js";
 import { appendHistory } from "./history.js";
 import { allocateId } from "./ids.js";
-import { lockBalances, postMoves, type Move } from "./ledger.js";
+import { lockBalances, postMoves, withUseOnArrival, type Move } from "./ledger.js";
 import { assertOpen, lockLocation } from "./locations.js";
 import { reservedAt } from "./reservations.js";
 import { assertRule } from "./rules.js";
@@ -64,6 +64,11 @@ export async function writeAdjustment(tx: Tx, master: Master, draft: AdjustmentD
   assertRule(lines.length > 0, "Enter a quantity to write off or count up on at least one line");
 
   for (const l of lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
+  // The kitchen holds no raw or packing line - each was used as it arrived - so there is nothing
+  // to write off, and a loss is a wastage record instead (`modules/wastage`). A count-up is still
+  // taken: it lands, and is used, the way a receipt is (`withUseOnArrival` below).
+  const unstocked = lines.find((l) => l.qty < 0 && usedOnArrival(master.items[l.it]!.t, loc));
+  if (unstocked) assertRule(false, notStockedAtKitchenMessage(master.items[unstocked.it]!.n));
 
   await lockBalances(tx, lines.map((l) => ({ loc, it: l.it })));
   const keys = lines.map((l) => l.it);
@@ -86,7 +91,7 @@ export async function writeAdjustment(tx: Tx, master: Master, draft: AdjustmentD
   const moves: Move[] = lines.map((l) => ({
     loc, it: l.it, qty: l.qty, kind: "adjustment", refType: "adjustment", refId: id, by: draft.by, at,
   }));
-  await postMoves(tx, moves);
+  await postMoves(tx, withUseOnArrival(master.items, moves));
 
   const after = await adjustmentsRepo.balancesAt(tx, loc, down.map((l) => l.it));
   const heldAfter = await reservedAt(tx, loc, down.map((l) => l.it));

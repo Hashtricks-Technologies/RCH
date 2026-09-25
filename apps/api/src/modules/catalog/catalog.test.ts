@@ -184,13 +184,15 @@ describe("catalog: a new product on the master", () => {
   });
 
   it("books opening stock as an opening move, and says where", async () => {
-    const r = await post("/items", await hdr("u4"), { ...base, name: "Kitchen premix 2kg", loc: "kitchen", opening: 12 });
+    // At the central store. A raw line the kitchen opens is used as it lands instead
+    // (`modules/wastage/wastage.test.ts`).
+    const r = await post("/items", await hdr("u3"), { ...base, name: "Store premix 2kg", loc: "store", opening: 12 });
     const b = r.json();
     expect(b.changed).toEqual(["items", "stock"]);
-    expect(b.message).toBe(`Kitchen premix 2kg added to the catalogue as ${b.result.item.c} with 12.000 kg at Central Kitchen`);
+    expect(b.message).toBe(`Store premix 2kg added to the catalogue as ${b.result.item.c} with 12.000 kg at Central Store`);
     const moves = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.itemKey, b.result.key));
     expect(moves).toHaveLength(1);
-    expect(moves[0]).toMatchObject({ kind: "opening", loc: "kitchen", qty: 12, refType: "item" });
+    expect(moves[0]).toMatchObject({ kind: "opening", loc: "store", qty: 12, refType: "item" });
   });
 
   it("carries no stock-request source unless one is given, and carries it when one is", async () => {

@@ -16,6 +16,8 @@ const LEGACY_FIELD_DESKS: Readonly<Record<ItemField, readonly Role[]>> = {
   n: ["store", "buyer", "prod"], hsn: ["store", "buyer", "prod"], rl: ["store", "buyer", "prod"],
   grp: ["store", "buyer", "prod"], sl: ["store", "buyer", "prod"], src: ["store", "buyer", "prod"],
   active: ["manager", "store", "buyer", "prod"],
+  // Came after roles: whether a kitchen finished good is counted or on/off only is the kitchen's.
+  onOff: ["prod"],
 };
 /** A seeded desk's permissions. */
 const P = (d: Role) => DESK_DEFAULTS[d].perms;
@@ -76,6 +78,12 @@ describe("the item master's split, read from permissions", () => {
     expect(ITEM_FIELD_FEATURES.hsn).toEqual(["item_master"]);
     expect(ITEM_FIELD_FEATURES.src).toEqual(["item_master"]);
     expect(ITEM_FIELD_FEATURES.active).toEqual(["items_stock", "item_master"]);
+  });
+
+  it("gives counted versus on/off only to the kitchen alone", () => {
+    expect(ITEM_FIELD_FEATURES.onOff).toEqual(["make_distribute"]);
+    expect(mayEditItemField(P("prod"), "onOff")).toBe(true);
+    for (const d of ["counter", "manager", "store", "buyer"] as const) expect(mayEditItemField(P(d), "onOff")).toBe(false);
   });
 
   it("answers for a role's permissions, needing edit rather than view", () => {

@@ -33,7 +33,7 @@ src/config.ts     the Zod env schema - the only reader of process.env
 src/routes.ts     mount(): the only way a module registers a route
 src/plugins/*     logging, errors, metrics, health, security, db, auth, access, rbac, sse, idempotency, audit, images, payments,
                   qr-worker
-src/lib/*         ledger, reservations, tickets, adjustments, ids, history, rules, events, claims, credit, master, audit, access, roles, images,
+src/lib/*         ledger, reservations, tickets, adjustments, batches, ids, history, rules, events, claims, credit, master, audit, access, roles, images,
                   sale, payments, refunds, qr-orders, system-users, …
 src/modules/*     one folder per slice, registered in modules/index.ts; _template is the skeleton to copy
 src/db/*          schema/, client.ts, migrate.ts, seed.ts
@@ -111,6 +111,13 @@ holding a shelf.
   re-read and turn the operator's sentence into a bare 500.
 - **`postMoves` drops a move that rounds to zero at three decimals**, row by row, before locking anything.
   `stock_moves_qty_ck` refuses a zero move.
+- **A raw or packing line landing at the kitchen is used as it lands.** Every write that can land stock -
+  `tickets.receive`, `writeAdjustment` (a count-up), `catalog.createItem` (an opening figure) - hands its
+  moves through `withUseOnArrival(types, moves)` (`lib/ledger.ts`) before `postMoves`: each positive move
+  of a RAW or PACK line at the kitchen gets an equal `production_consume` beside it, in the same call and
+  under the same locks. The cell nets to zero, and the row it leaves is not a shelf: `readStock` drops
+  every kitchen RAW/PACK cell, so no stock read, report or screen sees one. `writeAdjustment` refuses a
+  write-off of one with `notStockedAtKitchenMessage` - a loss there is a wastage record (below).
 
 ### Uniqueness
 
@@ -133,7 +140,8 @@ refusal throws; a caller that must commit something else when the sale is refuse
 instead) runs it in a savepoint (`tx.transaction(...)`) and reads the `RuleError`'s sentence.
 
 - **The menu readers are shared too.** `sellableAt(db, loc)` reads the master, the outlet's menu, its shelf,
-  its holds, its switches and every price list; `menuOf` turns that into lines at the till's price capped at
+  its holds, its switches **and the kitchen's** (the kitchen switching an on/off-only product off takes it
+  off every till - `availOf`) and every price list; `menuOf` turns that into lines at the till's price capped at
   MRP (`priceOf`), with availability, the reason and the free units (`coverOf`; made-to-order is unbounded);
   `assertSellable` is the till's four refusals (unknown item 404, not listed, not available, short, no price
   - and no price list at all, first). The public QR menu reads `menuOf`, so it can never offer what the
@@ -274,6 +282,37 @@ lines, `payment_refunds` and `rzp_webhook_events`. The routes, the webhook and t
   (`allocateId("qr_code")` after the outlet lock, a 24-byte base64url token); an update refuses an empty
   change in words; update, regenerate and hours `auditBefore` (the token is masked). A closed outlet's
   public menu reads closed.
+
+## The kitchen: raw lines, wastage, counted and on/off only
+
+- **`modules/wastage/`** owns `POST /wastage` and `GET /reports/kitchen`. A record is the kitchen's alone
+  (`requireLoc(req, KITCHEN)` - the store keeper holds Adjustments too and gets the ordinary 403), only for
+  a line `usedOnArrival` at the kitchen (a counted good is sent to the adjustment; anything else refused by
+  name), a positive quantity, and a note when the reason is Other. It takes the `wastage` id (`WST-`),
+  stores `cost` and `value` (`valueAtCost`) with the row, signs a trail row with the reason, and names
+  `wastage`. It reads and locks no balance, so it can never be refused for "more than is free".
+  `GET /reports/kitchen?days=` sums every positive move of a RAW/PACK line at the kitchen in the window
+  that is not the `production_consume` beside it (so the deploy's clearing moves are not "issued"),
+  valued at the item's current cost, and lists the window's records.
+- **`lib/batches.ts`'s `writeBatch`** is the one way a batch is written: `production.makeBatch` and a
+  counted product the kitchen adds with an opening figure (`createItem`, `prod` desk, `FG`) - the "how
+  many made now" becomes `BAT-…` with a best-before, never a bare `opening` move.
+- **On/off only** is `MTO` with `src: "kitchen"`. `createItem` gives a kitchen MTO that source, refuses it
+  an opening figure, and switches it off at the kitchen when `avail: false`. `patchItem`'s `onOff` is the
+  kitchen's (`ITEM_FIELD_FEATURES.onOff`), only for a kitchen finished good; moving to on/off only reads
+  `balancesOf`, `openTicketsOf` and `openOrdersOf` and refuses with `toOnOffRefusal` naming each, and
+  flips `type`/`src` in the same update the audit before already covers. `production`'s raise, batch,
+  distribute and dispatch refuse an on/off item with `onOffRefusal`. The availability toggle at the kitchen
+  takes any `isKitchenMade` item and says "every outlet that lists it" for an on/off one.
+- **`scopeStock` keeps the kitchen's switches** (`kitchen:<item>`) in a counter's cut `ovr`, so its till
+  previews what the sale refuses.
+- **Migration `0028_kitchen_wastage`** creates `wastage` and clears what the kitchen held of every raw and
+  packing line as used: one `production_consume` per positive balance (`ref_type 'migration'`), and the
+  balance moved by the same amount - exactly what `postMoves` would write. The move kind is the
+  existing `production_consume` (unused since `0015` dropped recipes) rather than a new enum value:
+  drizzle's migrator runs every pending migration in **one** transaction, and Postgres refuses a value
+  added by `alter type ... add value` in the transaction that added it - so a new kind could not be used
+  by the same deploy's data step.
 
 ## What a party is charged, and what they owe
 
@@ -433,7 +472,7 @@ role; `truncateAll` in the test harness keeps `roles` too.
   check is `if (!req.actor.wide) requireLoc(...)`**, never a test of the desk: that is how a counter role
   given Approvals approves and withdraws any outlet's request, and a manager-desk role without
   `all_outlets` is held to its own outlet's X. Only desk *mechanics* still read `req.user.role`: which
-  shelf `createItem` books to and which shelves `createAdjustment` may touch, the shift a counter's
+  shelf `createItem` books to (and that a kitchen's `MTO` is on/off only and its `FG` opening a batch) and which shelves `createAdjustment` may touch, the shift a counter's
   sign-in opens, the till `pay` rings on (always the session's), and the word in a location refusal.
 - **`modules/roles/`** serves `/admin/roles`. Each write locks the role `FOR UPDATE`, calls `auditBefore`,
   applies the rules (a name clash - `roles_name_uq` decides; `grantRefusal`; no desk change once

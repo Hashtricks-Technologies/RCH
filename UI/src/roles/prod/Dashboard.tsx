@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { useSees } from "../../nav";
-import { availOf, canHandOver, hasLeft, isTicketOpen, madeItems, qty } from "../../lib/selectors";
+import { availOf, canHandOver, hasLeft, isTicketOpen, madeItems, onOffItems, qty } from "../../lib/selectors";
 import { fq, isToday, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, Pill, StatusPill, TableFoot,
@@ -20,6 +20,8 @@ export default function Dashboard() {
 
   // The kitchen's own products, off the master rather than a literal - see `madeItems()`.
   const PRODS = useMemo(() => { void s.catalogVersion; return madeItems(); }, [s.catalogVersion]);
+  // The on/off-only ones hold nothing to count, but the kitchen's switch on them is every outlet's.
+  const SWITCHED = useMemo(() => { void s.catalogVersion; return onOffItems(); }, [s.catalogVersion]);
 
   const newOrders = useMemo(() => pord.filter((o) => o.st === "New"), [pord]);
   const working = useMemo(
@@ -41,8 +43,8 @@ export default function Dashboard() {
   // at the top rather than trimmed off the dependency array, so the array names every value the
   // memo uses and `react-hooks/exhaustive-deps` can check it instead of being argued with.
   const off = useMemo(
-    () => PRODS.map((k) => ({ k, a: availOf({ stock, rsv, ovr }, "kitchen", k) })).filter((x) => !x.a.ok),
-    [PRODS, stock, rsv, ovr],
+    () => [...PRODS, ...SWITCHED].map((k) => ({ k, a: availOf({ stock, rsv, ovr }, "kitchen", k) })).filter((x) => !x.a.ok),
+    [PRODS, SWITCHED, stock, rsv, ovr],
   );
 
   // "Today" is the hospital's own IST day, not everything `GET /batches` returned: the batch log

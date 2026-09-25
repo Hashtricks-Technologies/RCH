@@ -22,7 +22,8 @@
 // lock, which is safe only because it is creating the order and can never afterwards reach for
 // an existing one. No cycle exists as long as nothing else does that.
 import { sql } from "drizzle-orm";
-import { round3 } from "@rch/domain";
+import type { ItemType } from "@rch/contract";
+import { round3, usedOnArrival } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import { stockBalances, stockMoves } from "../db/schema/index.js";
 import type { Tx } from "./db.js";
@@ -33,6 +34,21 @@ export type MoveKind = (typeof stockMoves.$inferInsert)["kind"];
  *  append-only (migration 0002 says so in the database), so an undo is another move, and this
  *  is the column that says which one it answers. Every other kind of move leaves it unset. */
 export type Move = { loc: string; it: string; qty: number; kind: MoveKind; refType: string; refId: string; by?: string; at?: Date; reverses?: number };
+
+/**
+ * The kitchen's raw materials and packaging are used the moment they land (`usedOnArrival`,
+ * @rch/domain): every positive move that lands one at the kitchen is followed by an equal
+ * `production_consume` move under the same document, so the kitchen's balance of the line never
+ * moves off zero while the ledger still says what was issued, when and on what. Every write that
+ * can land stock - a ticket received, a count-up, a new product's opening figure - hands its
+ * moves through this before `postMoves`, and both halves post in the one call, under one lock.
+ */
+export function withUseOnArrival(items: Readonly<Record<string, { t: ItemType }>>, moves: readonly Move[]): Move[] {
+  return moves.flatMap((m) => {
+    const item = items[m.it];
+    return item && m.qty > 0 && usedOnArrival(item.t, m.loc) ? [m, { ...m, qty: -m.qty, kind: "production_consume" as const }] : [m];
+  });
+}
 
 /**
  * Take the balance row locks for these (loc, item) pairs, creating a zero row where none

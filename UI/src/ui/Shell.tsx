@@ -8,7 +8,7 @@ import { canSee, navFor } from "../nav";
 import { useApp, type AppState } from "../store";
 import { isToday, money0 } from "../lib/fmt";
 import {
-  activeItems, availOf, isTicketOpen, locName, menuOf, openOutlets, procurementList, qty, userCan, userReadsWide,
+  activeItems, availOf, isTicketOpen, locName, menuOf, onOffItems, openOutlets, procurementList, qty, userCan, userReadsWide,
 } from "../lib/selectors";
 import type { LocKey, Role, User } from "../types";
 import type { ScreenKey } from "../screens";
@@ -443,7 +443,7 @@ function navQueues(s: AppState): Record<string, string[]> {
   if (u.r === "counter") { if (sees("pos")) c.avail = offItems(s, u.loc); }
   else if (sees("avail")) {
     c.avail = u.r === "prod"
-      ? Object.keys(s.stock.kitchen).filter((k) => IT[k]?.t === "FG" && !availOf(s, "kitchen", k).ok)
+      ? [...Object.keys(s.stock.kitchen).filter((k) => IT[k]?.t === "FG"), ...onOffItems()].filter((k) => !availOf(s, "kitchen", k).ok)
       : openOutlets().flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
   }
   if (sees("approvals")) c.approvals = ids(s.req.filter((r) => r.st === "Request sent"));

@@ -28,12 +28,14 @@ import { can } from "./permissions.js";
  * bring it back. The counter is in neither list and so is in none of them - a till sells the
  * master, it does not edit it.
  */
-export type ItemField = "n" | "dn" | "mrp" | "cost" | "gst" | "hsn" | "rl" | "grp" | "sl" | "active" | "src";
+export type ItemField = "n" | "dn" | "mrp" | "cost" | "gst" | "hsn" | "rl" | "grp" | "sl" | "active" | "src" | "onOff";
 
 /**
  * The split in permissions: the commercial half needs `items_stock` at edit (the seeded Outlet
  * Manager's), the operational half `item_master` at edit (the seeded Store Keeper's, Procurement
- * Officer's and Kitchen In-charge's), and `active` either.
+ * Officer's and Kitchen In-charge's), and `active` either. Whether a kitchen finished good is
+ * counted or on/off only (`onOff`) is the kitchen's alone: `make_distribute` at edit, the seeded
+ * Kitchen In-charge's - the desk that decides whether it counts what it cooks.
  */
 export const ITEM_FIELD_FEATURES: Readonly<Record<ItemField, readonly Feature[]>> = {
   mrp: ["items_stock"],
@@ -46,6 +48,7 @@ export const ITEM_FIELD_FEATURES: Readonly<Record<ItemField, readonly Feature[]>
   grp: ["item_master"],
   sl: ["item_master"],
   src: ["item_master"],
+  onOff: ["make_distribute"],
   active: ["items_stock", "item_master"],
 };
 

@@ -76,6 +76,8 @@ const LEGACY_ACCESS: Record<string, readonly Role[]> = {
   removeItemImage: ["manager", "counter"],
   voidBill: ["manager"],
   createAdjustment: ["store", "prod"],
+  createWastage: ["store", "prod"],
+  kitchenReport: ["prod"],
   createAdjustmentRequest: ["counter"],
   cancelAdjustmentRequest: ["counter", "manager"],
   approveAdjustmentRequest: ["manager"],

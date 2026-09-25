@@ -19,9 +19,10 @@ import { createAuditSlice, type AuditSlice } from "./audit";
 import { createReceivablesSlice, type ReceivablesSlice } from "./receivables";
 import { createShiftsSlice, type ShiftsSlice } from "./shifts";
 import { createQrOrdersSlice, type QrOrdersSlice } from "./qrOrders";
+import { createKitchenSlice, type KitchenSlice } from "./kitchen";
 import { activeBill, createTillSlice, tillOf, withoutBill, type TillSlice } from "./till";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice, ShiftsSlice, QrOrdersSlice, TillSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice, ShiftsSlice, QrOrdersSlice, KitchenSlice, TillSlice {
   user: User | null;
   /** Every counter this account may stand at, from the sign-in response. One entry is the
    *  ordinary case and means no picker is ever shown. `user.loc` is the one it is standing at. */
@@ -362,7 +363,7 @@ export const useApp = create<AppState>((set, get) => ({
     closeSessionChannel();
     // The open bills go too: each is one operator's sale at one counter, and a held bill carries
     // a walk-in customer's name and phone the next person at this keyboard has no business with.
-    set({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false, tills: {} });
+    set({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false, tills: {}, kitchenReport: null });
   },
   changePassword: async (current, next) => {
     set({ authError: null });
@@ -851,6 +852,7 @@ export const useApp = create<AppState>((set, get) => ({
   ...createReceivablesSlice(set, get),
   ...createShiftsSlice(set, get),
   ...createQrOrdersSlice(set, get),
+  ...createKitchenSlice(set, get),
   ...createTillSlice(set, get),
 }));
 

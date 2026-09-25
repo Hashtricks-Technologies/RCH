@@ -3,7 +3,7 @@ import { gstForHsn, isPurchased, nextItemCode } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { money } from "../lib/fmt";
-import { Alert, Btn, BtnRow, Field, FormRow, HsnField, Section } from "./kit";
+import { Alert, Btn, BtnRow, Field, FormRow, HsnField, Section, Switch } from "./kit";
 import { DrawerFrame } from "./Drawer";
 import { permissionRefusal } from "@rch/domain";
 import type { ItemType, LocKey } from "../types";
@@ -42,11 +42,14 @@ const TRADED: ScopeSpec["types"] = [
 ];
 /** Procurement buys goods; it does not invent what the kitchen or the counter makes. */
 const PURCHASED: ScopeSpec["types"] = TRADED.filter((x) => isPurchased(x.t));
-/** The kitchen makes and holds. It never invents an MRP good - those are bought in by
- *  procurement and priced off a printed MRP the kitchen has no sight of. */
+/** The kitchen makes and uses. It never invents an MRP good - those are bought in by
+ *  procurement and priced off a printed MRP the kitchen has no sight of. What it makes is one of
+ *  two kinds, and the form asks which in so many words: counted (`FG`, batched and held) or on/off
+ *  only (`MTO` with the kitchen as its source - cooked for service, never counted). */
 const KITCHEN_TYPES: ScopeSpec["types"] = [
-  { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and sent out to the outlets" },
-  { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and used in the kitchen" },
+  { t: "FG", label: "Counted", hint: "Puffs, sandwiches - batched onto the rack, dispatched to the outlets and sold down" },
+  { t: "MTO", label: "On/off only", hint: "Meals, dosa - cooked for service and never counted; the kitchen's switch turns it on and off at every outlet" },
+  { t: "RAW", label: "Raw material", hint: "Bought in and used in the kitchen - used as it arrives, never held there" },
 ];
 const ALL_UNITS = ["nos", "kg", "g", "L", "ml", "pkt", "box"];
 
@@ -126,6 +129,8 @@ function NewProductBody({ scope, title, sub, intro, initialName, onCreated }: {
   const [mrp, setMrp] = useState("");
   const [shelf, setShelf] = useState("");
   const [opening, setOpening] = useState("");
+  // ---- an on/off-only kitchen product: whether it starts switched on.
+  const [availNow, setAvailNow] = useState(true);
   const [busy, setBusy] = useState(false);
   const groupList = useId();
   /** The groups already on the master, offered so the same group is not typed two ways. */
@@ -137,6 +142,13 @@ function NewProductBody({ scope, title, sub, intro, initialName, onCreated }: {
   const openingN = Number(opening) || 0;
   const isMrp = type === "MRP";
   const offersMrp = spec.types.some((x) => x.t === "MRP");
+  // The kitchen's three kinds each ask their own question: a counted good how many were made now
+  // (a batch), an on/off one whether it is available now (a switch), a raw line nothing - it is
+  // used as it arrives, so there is no shelf to open.
+  const kitchen = scope === "kitchen";
+  const onOff = kitchen && type === "MTO";
+  const asksOpening = spec.has.opening && !(kitchen && type !== "FG");
+  const asksShelfLife = spec.has.shelfLife && !onOff;
 
   // One validator, not three. A pre-check gives the operator the sentence; the server's own
   // `items_name_ci_uq` is still the arbiter that catches the race.
@@ -164,8 +176,9 @@ function NewProductBody({ scope, title, sub, intro, initialName, onCreated }: {
       reorder: Number(reorder) || 0,
       cost: costN,
       ...(isMrp && mrpN > 0 ? { mrp: mrpN } : {}),
-      ...(spec.has.shelfLife && Number(shelf) > 0 ? { shelfLife: Number(shelf) } : {}),
-    }, spec.loc, spec.has.opening ? openingN : 0);
+      ...(asksShelfLife && Number(shelf) > 0 ? { shelfLife: Number(shelf) } : {}),
+      ...(onOff ? { avail: availNow } : {}),
+    }, spec.loc, asksOpening ? openingN : 0);
     if (!key) { setBusy(false); return; }   // refused, and the server already said why
     const done = onCreated ? await onCreated(key) : true;
     setBusy(false);
@@ -203,11 +216,24 @@ function NewProductBody({ scope, title, sub, intro, initialName, onCreated }: {
         )}
       </FormRow>
       <FormRow cols={spec.has.group ? "f2" : undefined}>
-        <Field label="Type" tip={spec.types.find((x) => x.t === type)?.hint}>
-          <select value={type} onChange={(e) => setType(e.target.value as ItemType)}>
-            {spec.types.map((x) => <option key={x.t} value={x.t}>{x.label}</option>)}
-          </select>
-        </Field>
+        {kitchen ? (
+          <Field label="Kind" tip={spec.types.find((x) => x.t === type)?.hint}>
+            <div className="seg" role="group" aria-label="Kind of product">
+              {spec.types.map((x) => (
+                <button type="button" key={x.t} className={type === x.t ? "on" : undefined} aria-pressed={type === x.t}
+                  onClick={() => setType(x.t)}>
+                  {x.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+        ) : (
+          <Field label="Type" tip={spec.types.find((x) => x.t === type)?.hint}>
+            <select value={type} onChange={(e) => setType(e.target.value as ItemType)}>
+              {spec.types.map((x) => <option key={x.t} value={x.t}>{x.label}</option>)}
+            </select>
+          </Field>
+        )}
         {spec.has.group && (
           <Field label="Group" tip="Groups the picker and the stock tables by.">
             <input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="Grocery"
@@ -267,19 +293,31 @@ function NewProductBody({ scope, title, sub, intro, initialName, onCreated }: {
               style={mrpErr ? critBox : undefined} placeholder="0.00" />
           </Field>
         )}
-        {spec.has.shelfLife && (
+        {asksShelfLife && (
           <Field label="Shelf life (hours)" tip="Blank if it does not carry a best-before.">
             <input type="number" min={0} step={1} value={shelf} onChange={(e) => setShelf(e.target.value)} />
           </Field>
         )}
       </FormRow>
 
-      {spec.has.opening && (
+      {asksOpening && (kitchen ? (
+        <Field label="How many made now"
+          tip="Booked as a batch on the kitchen's rack, best before its shelf life from now. Leave at zero and the first batch is made from Make & Distribute."
+          hint={openingN > 0 ? <>{openingN} {unit} will be booked as a batch straight away.</> : undefined}>
+          <input type="number" min={0} step="any" value={opening}
+            onChange={(e) => setOpening(e.target.value)} placeholder="0" />
+        </Field>
+      ) : (
         <Field label={`Opening stock at ${LOC[spec.loc]?.n ?? spec.loc}`}
           tip="Leave at zero and the product joins the catalogue with nothing on the shelf yet."
           hint={openingN > 0 ? <>{openingN} {unit} will be booked onto the shelf straight away.</> : undefined}>
           <input type="number" min={0} step="any" value={opening}
             onChange={(e) => setOpening(e.target.value)} placeholder="0" />
+        </Field>
+      ))}
+      {onOff && (
+        <Field label="Available now?" tip="Switched off, no counter can sell it until the kitchen turns it on from Product On / Off.">
+          <Switch on={availNow} onChange={() => setAvailNow((v) => !v)} label="Available now" />
         </Field>
       )}
 
@@ -288,11 +326,17 @@ function NewProductBody({ scope, title, sub, intro, initialName, onCreated }: {
         <Alert tone="c" label="CHECK">{firstErr}.</Alert>
       ) : (
         <Alert tone="g" label="READY">
-          {trimmed} will join the catalogue as {type}, costed at {money(costN)} per {unit}
+          {trimmed} will join the catalogue as {kitchen ? spec.types.find((x) => x.t === type)?.label.toLowerCase() : type}, costed at {money(costN)} per {unit}
           {isMrp ? `, MRP ${money(mrpN)}` : ""}.
-          {spec.has.opening && openingN > 0
-            ? ` ${openingN} ${unit} books onto ${LOC[spec.loc]?.n ?? spec.loc} straight away.`
-            : " Stock arrives the normal way, through a purchase order."}
+          {onOff
+            ? (availNow ? " It is switched on at every outlet that lists it." : " It stays switched off until the kitchen turns it on.")
+            : kitchen && type === "RAW"
+              ? " It is used as it arrives from the store - the kitchen holds none."
+              : asksOpening && openingN > 0
+                ? kitchen
+                  ? ` ${openingN} ${unit} books onto ${LOC[spec.loc]?.n ?? spec.loc} as a batch straight away.`
+                  : ` ${openingN} ${unit} books onto ${LOC[spec.loc]?.n ?? spec.loc} straight away.`
+                : " Stock arrives the normal way, through a purchase order."}
         </Alert>
       )}
 

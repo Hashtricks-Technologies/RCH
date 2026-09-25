@@ -105,6 +105,14 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   `qrRefundFailed` - events the system writes with no request behind them. The order's secret travels as
   `secret` in bodies and results (so `SECRET_KEYS` masks it) and as `k` on the status read's query.
   `RAZORPAY_WEBHOOK_PATH` is the gateway's webhook, kept out of the manifest like `EVENTS_PATH`.
+- **Kitchen wastage**: `createWastage` (`POST /wastage`, `need("adjustments", "edit")`, held to the kitchen
+  by its handler) takes `CreateWastageBodySchema` - one item, a quantity, a `WastageReason` (the four
+  loss reasons of `AdjustReason`: wastage, breakage, expired, other) and a note - and answers a
+  `WastageSchema` record, whose `cost` and `value` are stored. `kitchenReport` (`GET /reports/kitchen`,
+  `need("kitchen_stock", "view")`, `days` defaulting to 1) answers what was issued to the kitchen per raw
+  and packing line at cost, and the window's wastage records. A record names the `wastage` collection.
+  `CreateItemBodySchema.avail` starts an on/off-only kitchen product switched off; `PatchItemBodySchema.onOff`
+  moves a kitchen finished good between counted (`FG`) and on/off only (`MTO`, `src: "kitchen"`).
 - **`voidBill`'s path parameter is percent-encoded.** Bill numbers contain a slash (`CF/1188` → `CF%2F1188`).
 
 ## Schema rules

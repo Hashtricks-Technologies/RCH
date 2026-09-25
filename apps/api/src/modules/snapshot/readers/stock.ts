@@ -1,16 +1,21 @@
-import { isNull, sql } from "drizzle-orm";
+import { eq, isNull, sql } from "drizzle-orm";
 import type { StockLoc } from "@rch/contract";
-import { availabilityOverrides, locations, reservations, stockBalances } from "../../../db/schema/index.js";
+import { usedOnArrival } from "@rch/domain";
+import { availabilityOverrides, items, locations, reservations, stockBalances } from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
 
 /** One map per location row, quarantine included - a store keeper has to see what a goods receipt
  *  rejected - so a location with nothing on its shelves, an outlet opened this morning, reads as
- *  empty rather than missing. Every balance names a row (a foreign key), so none is dropped. */
+ *  empty rather than missing. Every balance names a row (a foreign key), so none is dropped -
+ *  except the kitchen's raw and packing lines, which are not stocked there at all
+ *  (`usedOnArrival`): the row a landing leaves behind at zero is not a shelf, and no screen - the
+ *  kitchen's, the store's reports, the manager's stock grid - may read one as "carried, empty". */
 export async function readStock(db: Reader): Promise<Record<StockLoc, Record<string, number>>> {
   const locs = await db.select({ key: locations.key }).from(locations);
-  const rows = await db.select().from(stockBalances);
+  const rows = await db.select({ loc: stockBalances.loc, itemKey: stockBalances.itemKey, onHand: stockBalances.onHand, type: items.type })
+    .from(stockBalances).innerJoin(items, eq(items.key, stockBalances.itemKey));
   const out: Record<StockLoc, Record<string, number>> = Object.fromEntries(locs.map((l) => [l.key, {}]));
-  for (const r of rows) (out[r.loc] ??= {})[r.itemKey] = r.onHand;
+  for (const r of rows) if (!usedOnArrival(r.type, r.loc)) (out[r.loc] ??= {})[r.itemKey] = r.onHand;
   return out;
 }
 /** "loc:item" -> quantity held by open tickets, the UI's `rsv` map. */

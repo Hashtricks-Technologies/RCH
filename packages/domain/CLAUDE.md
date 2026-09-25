@@ -87,6 +87,14 @@ need more context than their names give:
   half needs `items_stock` at edit, the operational half `item_master` at edit, `active` either.
   `mayEditItemField`, `unauthorisedItemFields` and `mayEditItemImage` take a role's permissions -
   never a desk; a caller with only a desk reads `DESK_DEFAULTS[desk].perms`.
+- `kitchen.ts` is the kitchen's two rules. `usedOnArrival(t, loc)` - a raw or packing line landing at the
+  kitchen is used as it lands, so the server posts a `production_consume` beside the landing and the
+  kitchen never holds a balance of one. `isOnOff` (MTO with `src: "kitchen"`) and `isKitchenMade` (that or
+  `FG`) split a kitchen finished good into on/off only and counted; `availOf` reads `KITCHEN_OFF_REASON`
+  for an on/off item the kitchen has switched off, at every location. The sentences - `onOffRefusal`,
+  `toOnOffRefusal` (every place still holding or carrying a counted good), `notStockedAtKitchenMessage` -
+  and the wastage record's `WASTAGE_REASONS` and `valueAtCost` are here so both sides print them alike.
+  `ITEM_FIELD_FEATURES.onOff` is `make_distribute`: counted versus on/off only is the kitchen's alone.
 - `items.ts`'s photo section is the one place the 700 KB limit, the three accepted types and every photo
   refusal sentence are written. `mayEditItemImage` is `item_photos` at edit (the seeded manager and counter) - not an `ItemField`,
   because a photo has a door of its own (`PUT /items/:it/image`), not one of the patch's nine boxes.

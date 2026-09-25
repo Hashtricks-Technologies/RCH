@@ -22,7 +22,9 @@ export type IdKind =
   | "role"
   // ---- QR ordering: a customer's order, numbered from the moment it is placed so the phone and
   // the counter name the same one; and a code the super admin places, numbered like a vendor.
-  | "qr_order" | "qr_code";
+  | "qr_order" | "qr_code"
+  // ---- kitchen wastage: a loss the kitchen records against raw lines it holds no stock of.
+  | "wastage";
 
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
 const ymd = (d: Date) => {
@@ -68,6 +70,8 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
     // ---- QR ordering. The order padded to four for the same reason as `adj`.
     case "qr_order":    return `QO-${year(at)}-${pad(n, 4)}`;
     case "qr_code":     return `QR-${pad(n, 3)}`;
+    // ---- kitchen wastage. Padded to four for the same reason as `adj`.
+    case "wastage":     return `WST-${year(at)}-${pad(n, 4)}`;
   }
 }
 
@@ -139,4 +143,6 @@ export const SEQUENCE_START: Record<IdKind, number> = {
   // ---- QR ordering: no order was ever placed and no code ever printed, so both start at one.
   qr_order: 1,
   qr_code: 1,
+  // ---- kitchen wastage: nothing was ever recorded, so the series starts at one.
+  wastage: 1,
 };

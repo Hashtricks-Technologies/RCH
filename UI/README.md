@@ -196,12 +196,21 @@ the grid says what the till will charge instead - but every sale is capped at th
 clear it either: an item that carries a printed MRP keeps one, and an emptied box on the edit form
 means "leave it as it is", not "take the cap away".
 
-**What a sale takes off the shelf.** Traded goods and finished goods made in the kitchen deduct by
-the unit. A made-to-order drink is made at the counter and holds no stock, so selling one moves
-nothing.
+**What a sale takes off the shelf.** Traded goods and counted finished goods made in the kitchen
+deduct by the unit. A made-to-order drink is made at the counter and holds no stock, so selling one
+moves nothing - and neither does an on/off-only kitchen product (meals, dosa).
 
-**Availability is computed.** Traded and finished goods switch off at zero; a made-to-order
-item stays on until someone switches it off. The toggle is a manual override on top.
+**Availability is computed.** Traded and counted finished goods switch off at zero; a made-to-order
+item stays on until someone switches it off. The toggle is a manual override on top. An on/off-only
+kitchen product is off at every counter while the kitchen has it switched off - the tile says
+"switched off by the kitchen" - and a counter can still switch it off for itself alone.
+
+**The kitchen holds finished goods only.** Raw materials and packaging are used as they arrive, so
+Kitchen Stock shows what was issued to the kitchen over today, a week or a month (quantity and value
+at cost, with a Request button per line) and the wastage recorded over the same window, instead of an
+on-hand figure, a par or a low alert. Record wastage takes an item, a quantity, a reason and a note;
+it moves no stock. The kitchen's New product asks Counted (how many made now - booked as a batch) or
+On/off only (available now?), and its item drawer moves a finished good between the two.
 
 ## Recent capabilities
 
@@ -249,7 +258,8 @@ switch is the manager's one on/off: the separate Product On / Off screen is hidd
 
 **Correcting a shelf is a document.** A write-off or a stock count is raised from the shelf it
 corrects - the store keeper's Adjustments screen for any location including quarantine, and an
-Adjust stock drawer on the kitchen's own stock screen. It carries a reason (wastage, breakage,
+Adjust stock drawer on the kitchen's own stock screen (for what is on its rack - a raw line there was
+used as it arrived, so its loss is a wastage record instead). It carries a reason (wastage, breakage,
 expired, stock count, returned to vendor, other), a note, a signature and any number of signed
 lines: negative writes off, positive counts up, and a positive line is how a location that has
 never carried an item comes to carry one without a delivery. A write-off may not take stock a
@@ -520,7 +530,7 @@ procurement buys (RAW, PACK, MRP) and with no opening stock. Stock arrives the n
 through a purchase order, not as an opening balance typed in on the spot. Server-backed since
 Phase 5 (`POST /product-requests`, answered by `POST /product-requests/:id/answer`), and the
 store keeper and the kitchen can each add a product directly too - the kitchen for its own raw
-materials and finished goods, the store keeper at the central store.
+materials and its finished goods, counted or on/off only, the store keeper at the central store.
 
 **Shop-to-shop transfer.** When one outlet needs an MRP product another is holding, the stock
 moves directly between them: reserved at the source, released against an OTP, received at the

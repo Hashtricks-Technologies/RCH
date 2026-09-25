@@ -17,6 +17,9 @@ describe("fixtures", () => {
     for (const o of seedPo) for (const l of o.lines) expect(items.has(l.it)).toBe(true);
     for (const b of seedBills) { expect(locs.has(b.loc)).toBe(true); for (const l of b.lines) expect(items.has(l.it)).toBe(true); }
   });
+  it("the kitchen holds finished goods only - its raw materials and packaging are used on landing", () => {
+    expect(Object.keys(seedStock.kitchen).filter((k) => IT[k]?.t !== "FG")).toEqual([]);
+  });
   it("users are unique by id, employee number and display name", () => {
     expect(new Set(USERS.map((u) => u.id)).size).toBe(USERS.length);
     expect(new Set(USERS.map((u) => u.emp)).size).toBe(USERS.length);

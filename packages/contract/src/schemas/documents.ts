@@ -213,6 +213,21 @@ export const AdjustmentSchema = z.object({
   by: z.string(), at: IsoTime, lines: z.array(AdjustmentLineSchema),
 });
 
+// ---- kitchen wastage. The kitchen's raw materials and packaging are not stocked there: what
+// lands at the kitchen counts as used the moment it lands (a `production_consume` move beside
+// the one that landed it), so there is no kitchen balance for a write-off to take down. What
+// the kitchen threw away is recorded instead - a `WST-` document that touches no stock, kept
+// so the loss is still reported, at cost, with a reason and a signature.
+/** The adjustment reasons that describe a loss; a physical count and a return to the vendor
+ *  have nothing to say about something already used. */
+export const WastageReasonSchema = AdjustReasonSchema.extract(["wastage", "breakage", "expired", "other"]);
+/** `cost` is the item's standard cost when the record was written and `value` is `qty × cost`,
+ *  both stored: a cost the manager moves next month must not rewrite what was lost this one. */
+export const WastageSchema = z.object({
+  id: z.string(), it: z.string(), qty: Qty, reason: WastageReasonSchema, note: z.string(),
+  cost: Money, value: Money, by: z.string(), at: IsoTime,
+});
+
 // ---- adjustment requests (the counter raises, the outlet manager decides)
 /** A counter's ask to correct its own shelf, decided by the outlet manager rather than acted on
  *  by the counter directly - the same authorise/act split every other movement keeps, except

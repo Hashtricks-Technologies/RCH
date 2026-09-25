@@ -3,7 +3,7 @@ import { useState } from "react";
 // places an operator works - and this form has to reach the sixth, the rejected-goods shelf,
 // because that is the one shelf nothing else in the system can ever take stock off again. So
 // the same domain function the selector delegates to is called here directly, unnarrowed.
-import { avail as freeAt, permissionRefusal, REASON_LABEL } from "@rch/domain";
+import { avail as freeAt, permissionRefusal, REASON_LABEL, usedOnArrival } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { activeItems, useCan } from "../lib/selectors";
@@ -71,7 +71,9 @@ export default function AdjustmentForm({ locs, fixedLoc, mode = "direct" }: {
   // offering to correct a shelf for a product the hospital stopped carrying, and that this
   // location has never held, is offering work the server would refuse.
   const held = Object.keys(s.stock[at] ?? {}).filter((k) => IT[k]).sort((a, b) => IT[a].n.localeCompare(IT[b].n));
-  const rest = activeItems().filter((k) => !(k in (s.stock[at] ?? {}))).sort((a, b) => IT[a].n.localeCompare(IT[b].n));
+  // At the kitchen a raw or packing line has no shelf - it was used as it arrived - so a loss of
+  // one is a wastage record (`kwaste`), not a line here; the server refuses it the same way.
+  const rest = activeItems().filter((k) => !(k in (s.stock[at] ?? {})) && !usedOnArrival(IT[k].t, at)).sort((a, b) => IT[a].n.localeCompare(IT[b].n));
   const free = (it: string) => freeAt(s.stock, s.rsv, at, it);
 
   const setLine = (i: number, patch: Partial<Line>) =>

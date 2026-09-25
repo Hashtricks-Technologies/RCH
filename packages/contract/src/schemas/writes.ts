@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListIdSchema, SourceSchema, StockLocSchema, TillTenderSchema } from "./common.js";
-import { AdjustmentRequestSchema, AdjustmentSchema, AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
+import { AdjustmentRequestSchema, AdjustmentSchema, AdjustReasonSchema, WastageReasonSchema, WastageSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
@@ -17,7 +17,7 @@ import { AdjustmentRequestSchema, AdjustmentSchema, AdjustReasonSchema, GrnSchem
  *  counter operators' closed shifts - the manager's Shift reports card and bell. `"qrOrders"` is
  *  the counter's QR queue and each outlet's pause switch; `"qrCodes"` the super admin's codes and
  *  ordering hours. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "payers", "terms", "receivables", "adjustments", "adjReq", "accounts", "audit", "shifts", "roles", "qrOrders", "qrCodes"]);
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "payers", "terms", "receivables", "adjustments", "adjReq", "wastage", "accounts", "audit", "shifts", "roles", "qrOrders", "qrCodes"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
@@ -230,6 +230,9 @@ export const CreateItemBodySchema = z.strictObject({
   hsn: z.string().max(12).default(""), gst: z.number().min(0).max(100).default(5),
   reorder: QtySchema.default(0), cost: RateSchema, mrp: RateSchema.optional(), sl: z.number().int().min(0).max(100000).optional(),
   loc: LocKeySchema, opening: QtySchema.default(0), src: SourceSchema.optional(),
+  /** An on/off-only kitchen product (`MTO` with `src: "kitchen"`) is created switched on unless
+   *  this says `false`. Meaningless for anything else, and ignored there. */
+  avail: z.boolean().optional(),
 });
 
 // ---- new-product requests
@@ -252,11 +255,11 @@ export const ReceiptResultSchema = z.strictObject({ po: PurchaseOrderSchema, grn
 export const ItemResultSchema = z.strictObject({ key: z.string(), item: ItemSchema });
 
 // ---- item patch ----
-/** The item master is editable (`PATCH /items/:it`). Which of these eleven fields a role may
+/** The item master is editable (`PATCH /items/:it`). Which of these twelve fields a role may
  *  actually move is `ITEM_FIELD_FEATURES` in `@rch/domain` - a sentence, not a 400 - so the schema
- *  takes all eleven from anyone and the service refuses in the operator's own words. No
+ *  takes all twelve from anyone and the service refuses in the operator's own words. No
  *  `.default()` anywhere: `parse({})` must stay empty, or "Nothing to change" is unreachable
- *  and a patch of one field silently resets the other ten. */
+ *  and a patch of one field silently resets the other eleven. */
 export const ItemKeyParamsSchema = z.strictObject({ it: z.string().min(1).max(64) });
 export const PatchItemBodySchema = z.strictObject({
   n: z.string().max(120).optional(),
@@ -271,6 +274,10 @@ export const PatchItemBodySchema = z.strictObject({
   sl: z.number().int().min(0).max(100000).optional(),
   active: z.boolean().optional(),
   src: SourceSchema.optional(),
+  /** A kitchen finished good: `true` makes it on/off only (`MTO` with `src: "kitchen"`), `false`
+   *  counted (`FG`). The kitchen's field (`ITEM_FIELD_FEATURES`); the service refuses the move to
+   *  on/off while anything still holds or carries the item. */
+  onOff: z.boolean().optional(),
 });
 
 // ---- item photos ----
@@ -331,6 +338,16 @@ export const CreateAdjustmentBodySchema = z.strictObject({
   reason: AdjustReasonSchema,
   note: z.string().max(500).default(""),
   lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: SignedQtySchema })).min(1).max(100),
+});
+// ---- kitchen wastage
+/** One thing the kitchen threw away. No location: it is always the kitchen's, and the route
+ *  holds the caller to it. Positivity is the service's sentence, like every other quantity. */
+export const WastageResultSchema = WastageSchema;
+export const CreateWastageBodySchema = z.strictObject({
+  it: z.string().min(1).max(64),
+  qty: QtySchema,
+  reason: WastageReasonSchema,
+  note: z.string().max(500).default(""),
 });
 // ---- prod-order raise ----
 /** An outlet (or the manager, on its behalf) asking the Central Kitchen to make something.

@@ -33,7 +33,7 @@ given it.
 | Counter Operator | Kavitha Raman | Point of Sale | Billing (up to ten bills open at once) and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets, closing their own shift |
 | Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, deciding a counter's adjustment requests, prices and what each till sells across all shops, every outlet's bills and the same-day void, an item's commercial figures, and what each party is charged - the rate card, who owes what, and taking the money |
 | Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at any shelf, requisitions to procurement |
-| Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters |
+| Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters, switching on/off-only products for every outlet, recording wastage |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
 
 The store keeper, the buyer and the kitchen share the operational half of the item master - a
@@ -76,6 +76,15 @@ Read the two figures the browser could never assemble on its own: a location's s
 over a window, and what a payer still owes - every bill ever charged to them less every
 settlement against it. Nothing runs in the browser's own
 store any more - every mutation in the app is a server call, and `UI/src/data/seed.ts` is gone.
+
+**The kitchen counts only what it makes.** Raw materials and packaging issued to the kitchen are used
+as they arrive: receiving them posts the landing and its use together, so the kitchen never holds a
+balance of flour or cups, and its stock screen reports what it was issued (today, a week, a month, at
+cost) instead of a shelf with a par. A spoiled sack is a wastage record (`WST-`) with a reason and its
+value at cost - it moves nothing. Finished goods are either **counted** (puffs, sandwiches: batched,
+held, dispatched and sold down) or **on/off only** (meals, dosa: never counted; the kitchen's switch turns
+one on or off at every counter at once, and each counter can still switch it off for itself). The demo
+hospital's Veg meals is one.
 
 **And the four doors the audit wave added on 11 September 2026** - the only new capability since
 the six phases closed. Write off nine puffs that did not sell, or book in the four extra tins a
