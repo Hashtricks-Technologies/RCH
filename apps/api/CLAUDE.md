@@ -433,7 +433,8 @@ role; `truncateAll` in the test harness keeps `roles` too.
   check is `if (!req.actor.wide) requireLoc(...)`**, never a test of the desk: that is how a counter role
   given Approvals approves and withdraws any outlet's request, and a manager-desk role without
   `all_outlets` is held to its own outlet's X. Only desk *mechanics* still read `req.user.role`: which
-  shelf `createItem` books to and which shelves `createAdjustment` may touch, the shift a counter's
+  shelf `createItem` books to and which types it may add (`mayCreateType`), which shelves
+  `createAdjustment` may touch (store: `STORE` and `QUARANTINE`; prod: the kitchen), the shift a counter's
   sign-in opens, the till `pay` rings on (always the session's), and the word in a location refusal.
 - **`modules/roles/`** serves `/admin/roles`. Each write locks the role `FOR UPDATE`, calls `auditBefore`,
   applies the rules (a name clash - `roles_name_uq` decides; `grantRefusal`; no desk change once

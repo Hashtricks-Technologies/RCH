@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { gstForHsn, isPurchased, nextItemCode } from "@rch/domain";
+import { gstForHsn, mayCreateType, MRP_MISSING_REFUSAL, nextItemCode } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { money } from "../lib/fmt";
@@ -40,20 +40,22 @@ const TRADED: ScopeSpec["types"] = [
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and held as stock" },
   { t: "MTO", label: "Made to order (MTO)", hint: "Made at the counter when it is sold, never held as stock" },
 ];
-/** Procurement buys goods; it does not invent what the kitchen or the counter makes. */
-const PURCHASED: ScopeSpec["types"] = TRADED.filter((x) => isPurchased(x.t));
+/** Which types each desk offers is `mayCreateType` (`@rch/domain`), the table the server refuses
+ *  with. Procurement buys goods; it does not invent what the kitchen or the counter makes. */
+const PURCHASED: ScopeSpec["types"] = TRADED.filter((x) => mayCreateType("buyer", x.t));
+const STORE_TYPES: ScopeSpec["types"] = TRADED.filter((x) => mayCreateType("store", x.t));
 /** The kitchen makes and holds. It never invents an MRP good - those are bought in by
  *  procurement and priced off a printed MRP the kitchen has no sight of. */
-const KITCHEN_TYPES: ScopeSpec["types"] = [
+const KITCHEN_TYPES: ScopeSpec["types"] = ([
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and sent out to the outlets" },
   { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and used in the kitchen" },
-];
+] satisfies ScopeSpec["types"]).filter((x) => mayCreateType("prod", x.t));
 const ALL_UNITS = ["nos", "kg", "g", "L", "ml", "pkt", "box"];
 
 const SCOPES: Record<ProductScope, ScopeSpec> = {
   store: {
     loc: "store",
-    types: TRADED,
+    types: STORE_TYPES,
     units: ALL_UNITS,
     has: { code: true, group: true, tax: true, shelfLife: false, opening: true },
     defaults: { group: "Grocery", unit: "nos", hsn: "2106", gst: "5", type: "RAW" },
@@ -145,7 +147,7 @@ function NewProductBody({ scope, title, sub, intro, initialName, onCreated }: {
   const nameErr = !trimmed ? "Give the product a name" : duplicate ? `${trimmed} is already in the catalogue` : "";
   const costErr = !(costN > 0) ? "Cost must be above zero - stock value is read off it" : "";
   const mrpErr = !isMrp ? ""
-    : !(mrpN > 0) ? "An MRP item needs the price printed on its pack"
+    : !(mrpN > 0) ? MRP_MISSING_REFUSAL
       : mrpN < costN ? "The printed MRP is below cost - check the figures" : "";
   const firstErr = nameErr || costErr || mrpErr;
   const ok = !firstErr;

@@ -1,12 +1,13 @@
 // Price lists: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { items, locationItems, locations, priceListItems, priceLists } from "../../db/schema/index.js";
+import type { ItemType } from "@rch/contract";
 import type { Tx } from "../../lib/db.js";
 
 export type PriceListRow = typeof priceLists.$inferSelect;
 export type OutletRow = { key: string; name: string; type: string; priceListId: string | null };
 export type LockedOutletRow = typeof locations.$inferSelect;
-export type GridItemRow = { key: string; name: string; type: string; active: boolean };
+export type GridItemRow = { key: string; name: string; type: ItemType; active: boolean };
 
 export const pricelistsRepo = {
   async all(tx: Tx): Promise<PriceListRow[]> {

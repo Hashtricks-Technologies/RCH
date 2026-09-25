@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { documentHistory, locationItems, priceLists, stockBalances, stockMoves } from "../../db/schema/index.js";
+import { documentHistory, locationItems, locations, priceLists, stockBalances, stockMoves } from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -107,6 +107,38 @@ describe("catalog: menus", () => {
     const r = await post("/menus/coffee/items", await hdr("u2"), { it: "capp" });
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("Cappuccino is already listed at Coffee Shop");
+  });
+
+  it("refuses a raw material and a packing line in the price grid's own words", async () => {
+    const raw = await post("/menus/coffee/items", await hdr("u2"), { it: "milk" });
+    expect(raw.statusCode).toBe(422);
+    expect(raw.json().error.message).toBe("Refused - Milk 1L (toned) is a raw material and is never sold at a counter");
+    const pack = await post("/menus/coffee/items", await hdr("u2"), { it: "box" });
+    expect(pack.json().error.message).toBe("Refused - Snack box, kraft is packing and is never sold at a counter");
+    expect((await get("/menus")).coffee).not.toContain("milk");
+  });
+
+  it("refuses a product the outlet's list has no price for, and one at an outlet on no list", async () => {
+    const made = await post("/items", await hdr("u3"), { name: "Menu unpriced tea", unit: "nos", type: "MTO", cost: 5, loc: "store", opening: 0 });
+    const k = made.json().result.key as string;
+    const r = await post("/menus/coffee/items", await hdr("u2"), { it: k });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Refused - give Menu unpriced tea a price at Coffee Shop before selling it there");
+
+    // Priced on the kiosk's list, not the coffee shop's: the kiosk takes it, the coffee shop still refuses.
+    expect((await put(`/prices/PL-001/${k}`, await hdr("u2"), { price: 15 })).statusCode).toBe(200);
+    expect((await post("/menus/coffee/items", await hdr("u2"), { it: k })).statusCode).toBe(422);
+    expect((await post("/menus/kiosk/items", await hdr("u2"), { it: k })).statusCode).toBe(200);
+    await del(`/menus/kiosk/items/${k}`, await hdr("u2"));
+
+    await app.db.update(locations).set({ priceListId: null }).where(eq(locations.key, "kiosk"));
+    try {
+      const none = await post("/menus/kiosk/items", await hdr("u2"), { it: "sand" });
+      expect(none.statusCode).toBe(422);
+      expect(none.json().error.message).toBe("Refused - give Veg sandwich a price at Snack Kiosk before selling it there");
+    } finally {
+      await app.db.update(locations).set({ priceListId: "PL-001" }).where(eq(locations.key, "kiosk"));
+    }
   });
 
   it("422s removing an item that is not listed", async () => {
@@ -246,13 +278,43 @@ describe("catalog: a new product on the master", () => {
     expect(Number(pack2.result.item.c.slice(3))).toBe(Number(pack.result.item.c.slice(3)) + 1);
   });
 
+  it("refuses an MRP item with no printed price, in the new-product form's own words", async () => {
+    for (const mrp of [undefined, 0]) {
+      const r = await post("/items", await hdr("u3"), { ...base, name: "No MRP given", type: "MRP", ...(mrp === undefined ? {} : { mrp }) });
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe("An MRP item needs the price printed on its pack");
+    }
+    const ok = await post("/items", await hdr("u3"), { ...base, name: "MRP given", type: "MRP", mrp: 400 });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json().result.item.mrp).toBe(400);
+  });
+
+  it("lets each desk add only the types its new-product form offers", async () => {
+    const add = async (u: string, type: string, loc = "store") =>
+      post("/items", await hdr(u), { ...base, name: `Desk type ${u} ${type}`, type, loc, ...(type === "MRP" ? { mrp: 400 } : {}) });
+    for (const t of ["RAW", "PACK", "MRP", "FG", "MTO"]) expect((await add("u3", t)).statusCode).toBe(200);
+    for (const t of ["FG", "RAW"]) expect((await add("u4", t, "kitchen")).statusCode).toBe(200);
+    for (const t of ["RAW", "PACK", "MRP"]) expect((await add("u5", t)).statusCode).toBe(200);
+
+    const kitchenMrp = await add("u4", "MRP", "kitchen");
+    expect(kitchenMrp.statusCode).toBe(422);
+    expect(kitchenMrp.json().error.message)
+      .toBe("Refused - the kitchen does not add printed-price (MRP) goods to the item master, only finished goods and raw materials");
+    for (const t of ["PACK", "MTO"]) expect((await add("u4", t, "kitchen")).statusCode).toBe(422);
+    const buyerFg = await add("u5", "FG");
+    expect(buyerFg.json().error.message)
+      .toBe("Refused - procurement does not add finished goods to the item master, only raw materials, packaging and printed-price (MRP) goods");
+    expect((await add("u5", "MTO")).statusCode).toBe(422);
+    expect(Object.values(await get("/items") as Record<string, { n: string }>).filter((i) => i.n === "Desk type u5 FG")).toHaveLength(0);
+  });
+
   it("gives two products of one type created at once two different codes", async () => {
     // Both read the same highest code unless the series lock makes the second wait for the first.
     await warmPool(app.testDb!, 2);
     const [h1, h2] = await Promise.all([hdr("u3"), hdr("u5")]);
     const both = await Promise.all([
-      post("/items", h1, { ...base, name: "Race code one", type: "MTO" }),
-      post("/items", h2, { ...base, name: "Race code two", type: "MTO" }),
+      post("/items", h1, { ...base, name: "Race code one", type: "PACK" }),
+      post("/items", h2, { ...base, name: "Race code two", type: "PACK" }),
     ]);
     expect(both.map((r) => r.statusCode), both.map((r) => r.body).join(" | ")).toEqual([200, 200]);
     const got = both.map((r) => r.json().result.item.c as string);
@@ -270,7 +332,7 @@ describe("catalog: a new product on the master", () => {
 
 // ---- item patch ----
 describe("PATCH /items/:it", () => {
-  const base = { unit: "nos", type: "MRP" as const, cost: 10, loc: "store" as const, opening: 0 };
+  const base = { unit: "nos", type: "MRP" as const, cost: 10, mrp: 12, loc: "store" as const, opening: 0 };
   /** A fresh line on the master for each case - this file seeds once and never resets, so a
    *  case that reused a name would be testing the previous case's leftovers. */
   const make = async (name: string, over: Record<string, unknown> = {}): Promise<string> => {
@@ -453,6 +515,7 @@ describe("PATCH /items/:it", () => {
 
   it("refuses to retire an item still listed at an outlet, naming the outlets", async () => {
     const k = await make("Patch retire listed");
+    for (const list of ["PL-001", "PL-002"]) await put(`/prices/${list}/${k}`, await hdr("u2"), { price: 12 });
     await post("/menus/coffee/items", await hdr("u2"), { it: k });
     await post("/menus/kiosk/items", await hdr("u2"), { it: k });
     const r = await patch(`/items/${k}`, await hdr("u3"), { active: false });

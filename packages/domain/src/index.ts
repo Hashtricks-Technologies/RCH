@@ -27,6 +27,8 @@ export { ledgerRow, type LedgerRow } from "./reports.js";
 export {
   ITEM_FIELD_FEATURES, mayEditItemField, unauthorisedItemFields, type ItemField,
   counterName, itemCodePrefix, nextItemCode,
+  // ---- which desk adds which type, and selling at a counter ----
+  createTypeRefusal, isSellable, mayCreateType, MRP_MISSING_REFUSAL, neverSoldRefusal, unpricedRefusal,
   // ---- item photos ----
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO, checkPhoto, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,
   mayEditItemImage, sniffImageType, type ImageType, type PhotoCheck,

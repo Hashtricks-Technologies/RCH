@@ -32,7 +32,7 @@ given it.
 |---|---|---|---|
 | Counter Operator | Kavitha Raman | Point of Sale | Billing (up to ten bills open at once) and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets, closing their own shift |
 | Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, deciding a counter's adjustment requests, prices and what each till sells across all shops, every outlet's bills and the same-day void, an item's commercial figures, and what each party is charged - the rate card, who owes what, and taking the money |
-| Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at any shelf, requisitions to procurement |
+| Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at the central store and quarantine, requisitions to procurement |
 | Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
 

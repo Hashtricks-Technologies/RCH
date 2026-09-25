@@ -87,6 +87,11 @@ need more context than their names give:
   half needs `items_stock` at edit, the operational half `item_master` at edit, `active` either.
   `mayEditItemField`, `unauthorisedItemFields` and `mayEditItemImage` take a role's permissions -
   never a desk; a caller with only a desk reads `DESK_DEFAULTS[desk].perms`.
+- `items.ts` also holds which desk adds which item type (`mayCreateType`, `createTypeRefusal` - read by
+  `POST /items` and by the new-product form's type list; this one takes a desk, because it is desk
+  mechanics like the shelf a new item books to), `MRP_MISSING_REFUSAL`, and what a till sells:
+  `isSellable` (MRP, FG, MTO) with `neverSoldRefusal` / `unpricedRefusal`, the sentences both the price
+  grid and `POST /menus/:loc/items` refuse with.
 - `items.ts`'s photo section is the one place the 700 KB limit, the three accepted types and every photo
   refusal sentence are written. `mayEditItemImage` is `item_photos` at edit (the seeded manager and counter) - not an `ItemField`,
   because a photo has a door of its own (`PUT /items/:it/image`), not one of the patch's nine boxes.

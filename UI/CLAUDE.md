@@ -113,8 +113,9 @@ names the feature of the tab on screen, and the balances are read only with `set
 drawer is `stmt`, where a payment is recorded with `settlements` at edit; Void is `void_settlement`.
 
 **Menu Management** (`menu`) carries all four of a menu's operations for the picked outlet: the whole till as a
-sortable, filterable table, Remove behind a second press on each row, the multi-select add, and the
-new-product request. **Prices** (`prices`) is `roles/manager/CounterPrices.tsx`: every sellable item against
+sortable, filterable table, Remove behind a second press on each row, the multi-select add (offering only
+sellable products the outlet's list prices - the rest are counted in a NOT PRICED warning, since
+`POST /menus/:loc/items` refuses them with `unpricedRefusal`'s sentence), and the new-product request. **Prices** (`prices`) is `roles/manager/CounterPrices.tsx`: every sellable item against
 every open outlet, each cell a `Switch` (sold at that till) and a price box. Edits are staged in component
 state (changed cells highlighted, old → new under them), a sticky bar offers **Save N changes**, and its
 `Modal` lists every change and enables Confirm only once `CONFIRM` is typed; Cancel keeps the staged edits.

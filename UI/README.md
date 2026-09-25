@@ -230,7 +230,8 @@ outlet's till - every product it sells, with its type, its group and what it is 
 outlet's own price list - searchable, filterable by type and sortable on every column. Remove sits
 on each row behind a second press, and takes the product off that till alone; every other outlet
 keeps it, and the catalogue is untouched, so it can be added straight back. Under the table, the
-picker that adds several catalogue products at once and the form that asks the central store for
+picker that adds several catalogue products at once - only what that outlet's list already prices; the
+rest are counted in a warning above it, since the server refuses to list an unpriced product - and the form that asks the central store for
 something the item master does not carry yet. Two warnings stay visible rather than hiding in a
 tooltip: an outlet on no price list at all, and the count of listed products with no price on the
 list it is on - a till refuses a sale at nothing, so that is a figure the manager has to see.
@@ -248,7 +249,8 @@ switch is the manager's one on/off: the separate Product On / Off screen is hidd
 `AVAILABILITY_SCREEN_ENABLED` in `src/screens.ts`.
 
 **Correcting a shelf is a document.** A write-off or a stock count is raised from the shelf it
-corrects - the store keeper's Adjustments screen for any location including quarantine, and an
+corrects - the store keeper's Adjustments screen for the central store and quarantine (the only two
+the server lets it touch), and an
 Adjust stock drawer on the kitchen's own stock screen. It carries a reason (wastage, breakage,
 expired, stock count, returned to vendor, other), a note, a signature and any number of signed
 lines: negative writes off, positive counts up, and a positive line is how a location that has
