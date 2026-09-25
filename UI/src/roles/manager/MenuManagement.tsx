@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { isSellable } from "@rch/domain";
 import { activeItems, isRetired, menuOf, openOutlets, useCan } from "../../lib/selectors";
 import { money } from "../../lib/fmt";
 import {
@@ -60,12 +61,15 @@ export default function MenuManagement() {
   const [busy, setBusy] = useState(false);
 
   const listed = shop ? menuOf(s, shop) : [];
-  // A retired line stays in `IT` so past bills still name it; it must not be offerable on a till,
-  // and neither is a raw material or a packing line - a till sells finished goods, not what a
-  // kitchen buys to make them with.
-  const listable = activeItems().filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
   const list = shop ? listFor(shop) : "";
   const priceOnList = (k: string) => (list ? s.prices[list]?.[k] : undefined);
+  // A retired line stays in `IT` so past bills still name it; it must not be offerable on a till,
+  // and neither is a raw material or a packing line - a till sells finished goods, not what a
+  // kitchen buys to make them with. Nor is a product this outlet's list has no price for: the
+  // server refuses to list one (`unpricedRefusal`), so it is counted below rather than offered.
+  const sellable = activeItems().filter((k) => !listed.includes(k) && isSellable(IT[k].t));
+  const listable = sellable.filter((k) => priceOnList(k) != null);
+  const unpricedHere = sellable.length - listable.length;
 
   const toggle = (k: string) => setPicked((set) => {
     const next = new Set(set);
@@ -253,10 +257,18 @@ export default function MenuManagement() {
                   </Alert>
                 </div>
               )}
+              {unpricedHere > 0 && (
+                <div style={{ padding: "0 16px" }}>
+                  <Alert tone="w" label="NOT PRICED">
+                    {unpricedHere} more product{unpricedHere === 1 ? " has" : "s have"} no price on list {nameOfList(list)} -
+                    price {unpricedHere === 1 ? "it" : "them"} on the Prices screen before adding {unpricedHere === 1 ? "it" : "them"} here.
+                  </Alert>
+                </div>
+              )}
               {listable.length === 0 ? (
                 <div className="empty">
-                  <b>Every catalogue product is already on this till</b>
-                  <p>Nothing left in the catalogue to add here.</p>
+                  <b>{unpricedHere > 0 ? "Nothing priced is left to add" : "Every catalogue product is already on this till"}</b>
+                  <p>{unpricedHere > 0 ? `Only what list ${nameOfList(list)} prices can join this till.` : "Nothing left in the catalogue to add here."}</p>
                 </div>
               ) : (
                 <>
@@ -285,7 +297,7 @@ export default function MenuManagement() {
                               aria-label={`Select ${IT[k].n}`} />,
                             IT[k].n,
                             <Tag>{IT[k].t}</Tag>,
-                            price == null ? <span className="dim">not priced</span> : money(price),
+                            money(price ?? 0),
                           ],
                         };
                       })}

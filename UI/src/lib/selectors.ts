@@ -83,6 +83,11 @@ export function partyRate(payer: { kind: PayerKind; id: string } | null | undefi
 export const madeItems = (): string[] =>
   Object.keys(IT).filter((k) => IT[k]?.t === "FG" && !isRetired(k));
 
+/** The kitchen's on/off-only products (`isOnOff`): cooked for service, never counted, switched on
+ *  and off by the kitchen for every outlet. Retired lines are out, as in `madeItems()`. */
+export const onOffItems = (): string[] =>
+  Object.keys(IT).filter((k) => D.isOnOff(IT[k]) && !isRetired(k));
+
 /** Reorder level for this item at this location (M11). */
 export const parOf = (l: LocKey, it: string) => {
   const base = IT[it]?.rl ?? 0;

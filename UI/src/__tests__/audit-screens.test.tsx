@@ -10,6 +10,7 @@ import {
 } from "../lib/selectors";
 import StoreDashboard from "../roles/store/Dashboard";
 import StoreRequisitions from "../roles/store/Requisitions";
+import StoreAdjustments from "../roles/store/Adjustments";
 import MenuManagement from "../roles/manager/MenuManagement";
 import MakeDistribute from "../roles/prod/MakeDistribute";
 import Drawer from "../ui/Drawer";
@@ -417,6 +418,37 @@ describe("menu management shows the whole menu and takes a product off it", () =
     expect(S().toast).toBe("Real Juice 200ml removed from Coffee Shop");
     // And the refetched menu is what the table redraws from, so the row is gone.
     expect(menuRows(ui.host).some((r) => (r.textContent ?? "").includes("Real Juice 200ml"))).toBe(false);
+    ui.unmount();
+  });
+});
+
+describe("the store keeper's adjustments", () => {
+  it("offers only the central store and quarantine - the two shelves the server lets it adjust", () => {
+    as("store");
+    const ui = mountNode(StoreAdjustments);
+    const options = [...ui.host.querySelector("select")!.querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toEqual(["Central Store", "Quarantine"]);
+    ui.unmount();
+  });
+});
+
+describe("menu management offers only what the outlet's list prices", () => {
+  it("leaves an unpriced product off the picker and says how many are waiting on a price", () => {
+    as("manager");
+    const { salad: _gone, ...rest } = S().prices["PL-002"];
+    void _gone;
+    useApp.setState({ prices: { ...S().prices, "PL-002": rest } });
+    serve({ "GET /api/v1/menus": () => json(FX.MENU) });
+    const ui = mountNode(MenuManagement);
+    act(() => { pick(ui.host.querySelector("select")!, "coffee"); });
+
+    // The server refuses to list a product at no price, so the picker does not offer one.
+    expect(ui.host.querySelector('input[aria-label="Select Garden salad"]')).toBeNull();
+    expect(ui.host.querySelector('input[aria-label="Select Veg sandwich"]')).not.toBeNull();
+    // Garden salad (its price taken away above) and Veg meals (priced on the Restaurant's list only).
+    expect(ui.text()).toContain("2 more products have no price on list");
+    // Raw materials and packing are never offered at all.
+    expect(ui.host.querySelector('input[aria-label="Select Milk 1L (toned)"]')).toBeNull();
     ui.unmount();
   });
 });

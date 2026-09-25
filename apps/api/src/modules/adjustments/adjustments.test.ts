@@ -178,16 +178,28 @@ describe("POST /adjustments", () => {
     expect(kitchen.statusCode).toBe(403);
   });
 
+  it("keeps the store keeper to the central store and quarantine - never the kitchen or an outlet", async () => {
+    for (const loc of ["kitchen", "rest", "coffee", "kiosk"]) {
+      const before = await balance(loc, "milk");
+      const r = await post("u3", { loc, reason: "wastage", lines: [{ it: "milk", qty: 1 }] });
+      expect(r.statusCode, loc).toBe(403);
+      expect(r.json().error.message).toBe("You can only do this for the Central Store or quarantine.");
+      expect(await balance(loc, "milk")).toBe(before);
+    }
+    expect(await app.testDb!.db.select().from(adjustments)).toHaveLength(0);
+  });
+
   it("is absent for the manager - an outlet's shelf is only corrected through an adjustment request", async () => {
     const r = await post("u2", { loc: "kiosk", reason: "breakage", lines: [{ it: "water", qty: -2 }] });
     expect(r.statusCode).toBe(404);
   });
 
   it("lets the kitchen adjust the kitchen and nowhere else", async () => {
-    const before = await balance("kitchen", "maida");
-    const ok = await post("u4", { loc: "kitchen", reason: "expired", lines: [{ it: "maida", qty: -1 }] });
+    // A counted finished good on the rack - the kitchen holds no raw line to write off.
+    const before = await balance("kitchen", "puff");
+    const ok = await post("u4", { loc: "kitchen", reason: "expired", lines: [{ it: "puff", qty: -1 }] });
     expect(ok.statusCode, ok.body).toBe(200);
-    expect(await balance("kitchen", "maida")).toBe(before! - 1);
+    expect(await balance("kitchen", "puff")).toBe(before! - 1);
 
     const outlet = await post("u4", { loc: "rest", reason: "expired", lines: [{ it: "milk", qty: -1 }] });
     expect(outlet.statusCode).toBe(403);
@@ -236,27 +248,27 @@ describe("POST /adjustments", () => {
 
   it("two write-offs of the last unit: one lands, the other is refused", async () => {
     await warmPool(app.testDb!, 2);
-    // 1.2 kg of butter in the kitchen. Two write-offs of 1 kg, in flight together.
+    // 5 garden salads on the kitchen's rack. Two write-offs of 3, in flight together.
     //
     // What this pins is the pair of balance guards together - `lockBalances` before the cover
     // check, and the post-lock re-read after `postMoves` - not either one alone. Measured, not
     // assumed: deleting the `lockBalances` call on its own leaves the case green, because
     // `postMoves` takes the same row locks itself and the re-read then refuses the second
     // writer with the very same sentence. Disarm **both** and the case goes red with
-    // `[200, 200]` and a kitchen shelf at −0.8 kg, which is the failure it exists to catch.
+    // `[200, 200]` and a kitchen rack at −1, which is the failure it exists to catch.
     //
     // It only has that much teeth because `allocateId` is taken late. While the id was the
     // first statement of the transaction, the second POST blocked on the `adj` sequence row
     // before it ever read a balance - and this case passed with both balance guards deleted,
     // which is a race test proving nothing at all.
     const both = await Promise.all([
-      post("u4", { loc: "kitchen", reason: "wastage", lines: [{ it: "butter", qty: -1 }] }),
-      post("u4", { loc: "kitchen", reason: "wastage", lines: [{ it: "butter", qty: -1 }] }),
+      post("u4", { loc: "kitchen", reason: "wastage", lines: [{ it: "salad", qty: -3 }] }),
+      post("u4", { loc: "kitchen", reason: "wastage", lines: [{ it: "salad", qty: -3 }] }),
     ]);
     const codes = both.map((r) => r.statusCode).sort();
     expect(codes).toEqual([200, 422]);
     expect(both.find((r) => r.statusCode === 422)!.json().error.message)
-      .toBe("Cannot write off 1.000 kg of Butter, salted - Central Kitchen has only 0.200 kg free");
-    expect(await balance("kitchen", "butter")).toBe(0.2);
+      .toBe("Cannot write off 3 nos of Garden salad - Central Kitchen has only 2 nos free");
+    expect(await balance("kitchen", "salad")).toBe(2);
   });
 });

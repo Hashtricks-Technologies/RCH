@@ -5,20 +5,20 @@
 // rack, with the batch row as the document the new stock stands on.
 import type { z } from "zod";
 import type { Batch, CreateProdOrderBodySchema, DistributeBodySchema, MakeBatchBodySchema, PordStatus, ProdOrder, Ticket, WriteResponse } from "@rch/contract";
-import { bestBeforeAt, bestBeforeText, canTransition, dmy, fq, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
+import { bestBeforeText, canTransition, dmy, fq, isOnOff, onOffRefusal, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
-import { allocateId, allocateNumber } from "../../lib/ids.js";
-import { lockBalances, postMoves } from "../../lib/ledger.js";
+import { writeBatch } from "../../lib/batches.js";
+import { allocateId } from "../../lib/ids.js";
+import { lockBalances } from "../../lib/ledger.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
 import { allocateTicket, writeTicket } from "../../lib/tickets.js";
-import { iso } from "../../lib/time.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { productionRepo } from "./repo.js";
 
@@ -84,6 +84,9 @@ export function createProductionService(db: Db) {
           // has nothing to cover the line with. An order for one would sit on the board until
           // somebody declined it, so it is refused here, at the door, in the words the kitchen's
           // own two refusals already use.
+          // An on/off-only kitchen product is cooked for service and switched, never counted -
+          // there is no tray of it for an order to be filled from.
+          assertRule(!isOnOff(item), onOffRefusal(item.n, "ordered from the kitchen"));
           assertRule(item.t !== "MTO", `${item.n} is made to order at the counter - it is not ordered from the kitchen`);
           // Everything else on an outlet's menu is bought in and comes off the central store's
           // shelf - a request, not an order, and the sentence says which door to use.
@@ -146,6 +149,11 @@ export function createProductionService(db: Db) {
         for (const l of await productionRepo.lines(tx, id)) folded.set(l.it, round3((folded.get(l.it) ?? 0) + l.qty));
         const lines = [...folded].map(([it, qty]) => ({ it, qty }));
         assertRule(lines.length > 0, `${id} has no items on it`);
+        // An order raised for a counted good that has since become on/off only has nothing to
+        // be dispatched from: `patchItem` refuses the switch while an open order carries it, so
+        // this is the belt to that brace, in the same words.
+        const onOff = lines.find((l) => isOnOff(master.items[l.it]));
+        if (onOff) assertRule(false, onOffRefusal(master.items[onOff.it]!.n, "dispatched"));
 
         const at = new Date();
         const no = await allocateTicket(tx, at);
@@ -236,30 +244,14 @@ export function createProductionService(db: Db) {
         assertRule(!off, `${item.n} is switched off in the kitchen`);
         // A made-to-order item is made at the till when it is sold, not stocked ahead of a sale
         // (C2); it carries a menu listing, so it is the case worth naming in its own words.
+        assertRule(!isOnOff(item), onOffRefusal(item.n, "batched"));
         assertRule(item.t !== "MTO", `${item.n} is made to order at the counter - it is not batched`);
         assertRule(item.t === "FG", `${item.n} is not a finished good - only a finished good is batched`);
 
         const at = new Date();
-        const no = await allocateNumber(tx, "batch", at);
-        // A yield of nothing is not a movement. The batch row records the lost tray, and the
-        // kitchen's shelf list is left exactly as it was - no row is created for a line the
-        // kitchen has never carried.
-        if (made > 0) {
-          await postMoves(tx, [{ loc: KITCHEN, it: body.it, qty: made, kind: "production_yield", refType: "batch", refId: no.id, by: claims.sub, at }]);
-        }
-
-        const bb = bestBeforeAt(at, item.sl);
-        const row = await productionRepo.insertBatch(tx, {
-          id: no.id, itemKey: body.it, startedQty: started, madeQty: made, at, bestBefore: bb,
-          note: body.note ?? null, byUser: claims.sub,
-        });
-        // The shape readers/documents.ts's readBatches produces, for the one batch just written -
-        // including its treatment of the column: a null note has nothing to show and is left off,
-        // but a note written as "" is still a note the kitchen typed, so it stays on the wire.
-        const result: Batch = {
-          id: row.id, it: row.itemKey, qty: row.startedQty, made: row.madeQty,
-          at: iso(row.at), bb: iso(row.bestBefore), ...(row.note !== null ? { note: row.note } : {}),
-        };
+        // A yield of nothing is not a movement: `writeBatch` records the lost tray and posts
+        // nothing, so no row is created for a line the kitchen has never carried.
+        const { batch: result, bb } = await writeBatch(tx, { it: body.it, item, started, made, note: body.note, by: claims.sub, at });
 
         const text = bestBeforeText(bb, at);
         const changed = ["batch", "stock"] as const;
@@ -268,8 +260,8 @@ export function createProductionService(db: Db) {
           result,
           changed: [...changed],
           message: made === started
-            ? `${no.id} - ${started} ${item.n} made, best before ${text}`
-            : `${no.id} - ${made} of ${started} ${item.n} yielded (${(((made - started) / started) * 100).toFixed(1)}%), best before ${text}`,
+            ? `${result.id} - ${started} ${item.n} made, best before ${text}`
+            : `${result.id} - ${made} of ${started} ${item.n} yielded (${(((made - started) / started) * 100).toFixed(1)}%), best before ${text}`,
         };
       });
     },
@@ -287,6 +279,7 @@ export function createProductionService(db: Db) {
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
         // A made-to-order item has nothing sitting on a kitchen shelf to send anywhere - it is
         // made at the till the moment it is sold (C2).
+        assertRule(!isOnOff(item), onOffRefusal(item.n, "distributed"));
         assertRule(item.t !== "MTO", `${item.n} is made to order at the counter - it is not distributed`);
         // The destination is the caller's word, so it is looked up rather than assumed - a key
         // the schema accepts but the master no longer carries is a 404 the kitchen can read,

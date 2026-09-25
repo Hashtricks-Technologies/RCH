@@ -94,6 +94,7 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   answerShopAsk:          { label: "Sent stock for another outlet's ask", group: "stock" },
   declineShopAsk:         { label: "Declined another outlet's ask", group: "stock" },
   createAdjustment:       { label: "Posted a stock adjustment", group: "stock" },
+  createWastage:          { label: "Recorded kitchen wastage", group: "production" },
   createAdjustmentRequest:  { label: "Raised an adjustment request", group: "stock" },
   cancelAdjustmentRequest:  { label: "Cancelled an adjustment request", group: "stock" },
   approveAdjustmentRequest: { label: "Approved an adjustment request", group: "stock" },

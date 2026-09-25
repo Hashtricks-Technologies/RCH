@@ -64,6 +64,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   voidBill: { reason: "Wrong tender - customer paid cash" },
   // ---- adjustments
   createAdjustment: { loc: "store", reason: "wastage", note: "Dropped tray", lines: [{ it: "milk", qty: -2 }] },
+  createWastage: { it: "milk", qty: 2, reason: "expired", note: "Turned overnight" },
   // ---- adjustment requests
   createAdjustmentRequest: { reason: "wastage", note: "Fridge failed overnight", lines: [{ it: "cup", qty: -20 }] },
   rejectAdjustmentRequest: { note: "Count it again before writing it off" },

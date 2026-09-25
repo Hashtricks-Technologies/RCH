@@ -143,7 +143,6 @@ describe("an outlet opened after release", () => {
     const { key } = await open();
     const hire = (await admin("POST", "/admin/users", { name: "Arun P", email: "arun.p@royalcare.in", roleId: "ROLE-001", loc: key })).json().result;
     await app.db.update(users).set({ mustChangePassword: false }).where(eq(users.id, hire.id));
-    expect((await as("u2", "POST", `/menus/${key}/items`, { it: "juice" })).statusCode).toBe(200);
     // The outlet manager no longer adjusts a shelf directly - the counter raises the count and
     // the manager decides it, which is the one door onto this outlet's stock now.
     const adjReq = await as(hire.id, "POST", "/adjustment-requests", { reason: "count", lines: [{ it: "juice", qty: 5 }] });
@@ -151,9 +150,12 @@ describe("an outlet opened after release", () => {
     expect((await as("u2", "POST", `/adjustment-requests/${adjReq.json().result.id}/approve`)).statusCode).toBe(200);
     // The outlet opened on no price list at all (I1) - clone one from a counter that already
     // prices juice and attach it, the way the manager's own Settings drawer would, before the
-    // till can sell anything.
+    // till can list or sell anything.
+    const unpriced = await as("u2", "POST", `/menus/${key}/items`, { it: "juice" });
+    expect(unpriced.json().error.message).toBe("Refused - give Real Juice 200ml a price at Juice Bar before selling it there");
     const listId = (await as("u2", "POST", "/price-lists", { name: "Juice Bar prices", cloneFrom: "coffee" })).json().result.id;
     expect((await as("u2", "PUT", `/outlets/${key}/price-list`, { listId })).statusCode).toBe(200);
+    expect((await as("u2", "POST", `/menus/${key}/items`, { it: "juice" })).statusCode).toBe(200);
     const sale = await as(hire.id, "POST", "/bills", { loc: key, tender: "Cash", lines: [{ it: "juice", qty: 2 }] });
     expect(sale.statusCode, sale.body).toBe(200);
     const manager = (await as("u2", "GET", "/snapshot")).json();

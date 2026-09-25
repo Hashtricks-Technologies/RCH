@@ -3,6 +3,7 @@
 // QR bill is exactly the bill a till would have printed: same prices, same cover checks, same
 // register session, same GST split. The arithmetic is `planBill` in packages/domain.
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { KITCHEN } from "@rch/contract";
 import type { Bill, BillSource, Changed, Item, PayerKind, Tender, WriteResponse } from "@rch/contract";
 import { avail, availOf, breachesCredit, creditBreachMessage, fq, money as inr, normalizePhone, partyOf, phoneRefusal, payerKindForTender, PARTY_LABEL, planBill, priceOf, round3, type Master, type OvrMap, type Prices, type RsvMap, type StockMap } from "@rch/domain";
 import { availabilityOverrides, billLines, bills, locationItems, payers, priceListItems, reservations, stockBalances, users } from "../db/schema/index.js";
@@ -48,7 +49,9 @@ export async function sellableAt(db: Reader, loc: string): Promise<Sellable> {
   // Open reservations only: a released one is stock the counter may sell again.
   const held = await db.select({ itemKey: reservations.itemKey, qty: sql<string>`round(sum(${reservations.qty}), 3)` })
     .from(reservations).where(and(eq(reservations.loc, loc), isNull(reservations.releasedAt))).groupBy(reservations.itemKey);
-  const off = await db.select().from(availabilityOverrides).where(eq(availabilityOverrides.loc, loc));
+  // The outlet's own switches and the kitchen's: the kitchen switching an on/off-only product off
+  // takes it off every till (`availOf`), so the sale has to see that switch too.
+  const off = await db.select().from(availabilityOverrides).where(inArray(availabilityOverrides.loc, [loc, KITCHEN]));
   // Every list: which one a location charges from is the master's business (`priceOf`).
   const prices: Prices = {};
   for (const r of await db.select().from(priceListItems)) (prices[r.listId] ??= {})[r.itemKey] = r.price;
@@ -56,7 +59,7 @@ export async function sellableAt(db: Reader, loc: string): Promise<Sellable> {
     loc, locName: master.locations[loc]?.n ?? loc, master, menu,
     stock: { [loc]: byItem },
     rsv: Object.fromEntries(held.map((r) => [`${loc}:${r.itemKey}`, Number(r.qty)])),
-    ovr: Object.fromEntries(off.map((r) => [`${loc}:${r.itemKey}`, r.reason])),
+    ovr: Object.fromEntries(off.map((r) => [`${r.loc}:${r.itemKey}`, r.reason])),
     prices,
   };
 }

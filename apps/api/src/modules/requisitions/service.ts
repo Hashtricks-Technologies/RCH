@@ -9,14 +9,14 @@ import type {
   AddToProcurementListBodySchema, ApproveRequisitionBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema,
   Requisition, WriteResponse,
 } from "@rch/contract";
-import { isPurchased, planPrqApproval, REQUISITION_TRANSITIONS, round3 } from "@rch/domain";
+import { isPurchased, planPrqApproval, REQUISITION_TRANSITIONS, round3, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
-import { withTransaction } from "../../lib/db.js";
+import { withTransaction, type Tx } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
-import { loadMaster } from "../../lib/master.js";
+import { loadMaster, retiredItemName } from "../../lib/master.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { requisitionsRepo } from "./repo.js";
@@ -28,13 +28,23 @@ export type AddToProcurementListBody = z.infer<typeof AddToProcurementListBodySc
 
 const REASON = "Give a reason - the store keeper sees it on the requisition";
 
+/** Every line names an item on the master: a retired one is refused by name, an unknown one is a 404. */
+async function assertKnownItems(tx: Tx, master: Master, lines: readonly { it: string }[]): Promise<void> {
+  for (const l of lines) {
+    if (master.items[l.it]) continue;
+    const retired = await retiredItemName(tx, l.it);
+    assertRule(retired === null, `Refused - ${retired} is retired and is no longer bought`);
+    throw new NotFoundError(`There is no item ${l.it}.`);
+  }
+}
+
 export function createRequisitionsService(db: Db) {
   return {
     /** The central store's ask, in one transaction. */
     async create(claims: AccessClaims, body: CreateRequisitionBody): Promise<WriteResponse<Requisition>> {
       return withTransaction(db, async (tx) => {
         const master = await loadMaster(tx);
-        for (const l of body.lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
+        await assertKnownItems(tx, master, body.lines);
         assertRule(body.lines.every((l) => l.qty > 0), "Add at least one line before sending");
         // One item, one line - the same rule `POST /requests` keeps, and for the same reason:
         // two lines of one item would be decided twice, claimed twice and received twice, and
@@ -70,7 +80,7 @@ export function createRequisitionsService(db: Db) {
     async addDirect(claims: AccessClaims, body: AddToProcurementListBody): Promise<WriteResponse<Requisition>> {
       return withTransaction(db, async (tx) => {
         const master = await loadMaster(tx);
-        for (const l of body.lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
+        await assertKnownItems(tx, master, body.lines);
         assertRule(body.lines.every((l) => l.qty > 0), "Enter a quantity on every line");
         const repeated = body.lines.find((l, i) => body.lines.findIndex((x) => x.it === l.it) !== i);
         if (repeated) assertRule(false, `Combine the ${master.items[repeated.it]!.n} lines into one`);

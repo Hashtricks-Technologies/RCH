@@ -139,6 +139,8 @@ export function resetStore() {
     adminQrCodes: [], adminOrderHours: [],
     // ---- QR orders: the counter's queue, empty until a test serves one.
     qrOrders: [], qrPaused: {}, qrHours: [], qrOrdersFailed: false,
+    // ---- the kitchen's report: unread until a test serves one.
+    kitchenReport: null, kitchenReportFailed: false, kitchenDays: 1,
     // ---- audit log: the tab's list, filter and pill count, back to a first visit's.
     audit: initialAudit(),
   });

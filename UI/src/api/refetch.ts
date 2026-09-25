@@ -110,6 +110,12 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- adjustment requests
   adjReq: () => call(routes.adjustmentRequests).then(applyAdjustmentRequests),
+  // ---- kitchen wastage: the kitchen's report (what it was issued, what it threw away), for
+  // whoever holds Kitchen stock. A wastage record announces to every open browser; any other tab
+  // would be answered 404, so it reads nothing.
+  wastage: () => operatorCan("kitchen_stock")
+    ? useApp.getState().loadKitchenReport().then(() => undefined)
+    : Promise.resolve(),
   // ---- admin: account management
   accounts: () => call(routes.adminUsers).then(applyAccounts),
   // ---- outlets. One change, read two ways: an operational session pulls back the location master

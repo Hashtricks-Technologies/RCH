@@ -2,6 +2,7 @@
 // apps/api/src/lib/; domain rules belong in packages/domain. See modules/_template/service.ts.
 import type { z } from "zod";
 import type { ToggleAvailBodySchema, ToggleResultSchema, WriteResponse } from "@rch/contract";
+import { isKitchenMade, isOnOff } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { auditBefore } from "../../lib/audit.js";
@@ -49,9 +50,10 @@ export function createAvailabilityService(db: Db) {
         if (actor.wide) assertRule(loc.type === "Outlet", `${loc.name} is not an outlet`);
         if (loc.type === "Outlet") assertOpen(loc);
         // A kitchen has no menu - what it can switch off is what it can make, so "listed"
-        // there means the item is a finished good. Everywhere else it is the location's menu.
+        // there means the item is one of its finished goods, counted or on/off only. Everywhere
+        // else it is the location's menu.
         const listed = loc.type === "Kitchen"
-          ? item.t === "FG"
+          ? isKitchenMade(item)
           : await availabilityRepo.isListed(tx, body.loc, body.it);
         assertRule(listed, loc.type === "Kitchen" ? `${item.n} is not made at ${loc.name}` : `${item.n} is not listed at ${loc.name}`);
 
@@ -69,13 +71,16 @@ export function createAvailabilityService(db: Db) {
         auditBefore(existing
           ? { loc: body.loc, it: body.it, off: true, reason: existing.reason }
           : { loc: body.loc, it: body.it, off: false });
+        // The kitchen's switch on an on/off-only product is every outlet's (`availOf`), so the
+        // sentence says where it reaches.
+        const where = loc.type === "Kitchen" && isOnOff(item) ? "every outlet that lists it" : loc.name;
         if (existing) {
           await availabilityRepo.remove(tx, body.loc, body.it);
           await emitChanged(tx, changed);
           return {
             result: { loc: body.loc, it: body.it, off: false },
             changed: [...changed],
-            message: `${item.n} switched on at ${loc.name}`,
+            message: `${item.n} switched on at ${where}`,
           };
         }
         await availabilityRepo.insert(tx, body.loc, body.it, REASON, actor.sub);
@@ -83,7 +88,7 @@ export function createAvailabilityService(db: Db) {
         return {
           result: { loc: body.loc, it: body.it, off: true, reason: REASON },
           changed: [...changed],
-          message: `${item.n} switched off at ${loc.name}`,
+          message: `${item.n} switched off at ${where}`,
         };
       });
     },

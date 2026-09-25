@@ -1134,7 +1134,12 @@ select * from stock_moves where ref_type = 'batch' and ref_id = 'BAT-20260904-01
 
 A batch posts one row, the `production_yield` for what was *made*. It draws no raw materials
 down; a batch written before recipes were removed may also carry negative `production_consume`
-rows, one per ingredient. A batch that yielded nothing (a tray dropped, `made = 0`) posts no row
+rows, one per ingredient. `production_consume` now has one other use: a raw or packing line landing
+at the kitchen is used as it lands, so a ticket received there (`ref_type = 'ticket'`), a kitchen
+count-up (`'adjustment'`) or a kitchen raw line's opening figure (`'item'`) posts one beside its
+landing move, and migration `0028_kitchen_wastage` cleared what the kitchen held at deploy with one
+per line (`ref_type = 'migration'`, `ref_id = '0028_kitchen_wastage'`). A kitchen wastage record
+(`WST-`, table `wastage`) posts no move at all. A batch that yielded nothing (a tray dropped, `made = 0`) posts no row
 at all, so there is no move for it and no "carried at zero" row on the finished item either (M12). The
 batch's own row (`select * from batches where id = 'BAT-20260904-01'`) is what records a lost
 tray - `started_qty` and `made_qty` disagree, and `note` usually says why.

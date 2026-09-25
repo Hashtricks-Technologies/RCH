@@ -1,4 +1,6 @@
+import { KITCHEN } from "@rch/contract";
 import type { Availability } from "@rch/contract";
+import { isOnOff, KITCHEN_OFF_REASON } from "./kitchen.js";
 import { avail } from "./master.js";
 import type { Master, OvrMap, RsvMap, StockMap } from "./master.js";
 
@@ -14,11 +16,16 @@ export const fq = (v: number, unit: string): string => {
 };
 
 /**
- * Whether an item can be sold at a location right now: a manual override wins
- * outright; a made-to-order item holds no stock, so the switch is the only thing
- * that turns it off; a stocked item is off at zero.
+ * Whether an item can be sold at a location right now: an on/off-only kitchen product the
+ * kitchen has switched off is off everywhere, whatever the outlet's own switch says; otherwise
+ * the location's manual override wins outright; a made-to-order item holds no stock, so the
+ * switch is the only thing that turns it off; a stocked item is off at zero.
+ *
+ * `ovr` must carry the kitchen's switches (`kitchen:<item>`) as well as the location's own for
+ * the first rule to see them - the server's sale reads both, and every snapshot carries them.
  */
 export function availOf(m: Master, stock: StockMap, rsv: RsvMap, ovr: OvrMap, l: string, it: string): Availability {
+  if (isOnOff(m.items[it]) && ovr[`${KITCHEN}:${it}`]) return { ok: false, mode: "Manual", why: KITCHEN_OFF_REASON };
   const o = ovr[`${l}:${it}`];
   if (o) return { ok: false, mode: "Manual", why: o };
   if (m.items[it]?.t === "MTO") return { ok: true, mode: "Manual" };

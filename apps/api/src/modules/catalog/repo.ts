@@ -1,8 +1,8 @@
 // Catalog: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
-import { and, asc, eq, like, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, like, ne, sql } from "drizzle-orm";
 import type { LocKey } from "@rch/contract";
 import { isUniqueViolation, type Reader, type Tx } from "../../lib/db.js";
-import { items, locationItems, priceListItems, priceLists, stockBalances } from "../../db/schema/index.js";
+import { items, locationItems, priceListItems, priceLists, prodOrderLines, prodOrders, stockBalances, ticketLines, tickets } from "../../db/schema/index.js";
 
 export type ItemRow = typeof items.$inferSelect;
 export type NewItemRow = typeof items.$inferInsert;
@@ -16,6 +16,9 @@ export type ItemPatch = Partial<{
   name: string; displayName: string | null; grp: string; hsn: string; gst: number;
   reorderLevel: number; cost: number; mrp: number; shelfLifeHours: number | null; active: boolean;
   src: "store" | "kitchen";
+  // ---- counted vs on/off only: a kitchen finished good moves between `FG` and `MTO` (with
+  // `src: "kitchen"`), and only that way.
+  type: "FG" | "MTO";
 }>;
 
 export const catalogRepo = {
@@ -138,6 +141,25 @@ export const catalogRepo = {
       .where(and(eq(stockBalances.itemKey, key), ne(stockBalances.onHand, 0)))
       .orderBy(asc(stockBalances.loc));
     return rows.map((r) => r.loc);
+  },
+
+  // ---- counted vs on/off only
+  /** The tickets still carrying the item - issued and not yet collected, or in transit. */
+  async openTicketsOf(tx: Tx, key: string): Promise<string[]> {
+    const rows = await tx.selectDistinct({ id: tickets.id }).from(tickets)
+      .innerJoin(ticketLines, eq(ticketLines.ticketId, tickets.id))
+      .where(and(eq(ticketLines.itemKey, key), inArray(tickets.status, ["Issued", "Collected"])))
+      .orderBy(asc(tickets.id));
+    return rows.map((r) => r.id);
+  },
+
+  /** The kitchen orders still carrying the item - anywhere on the board before they went out. */
+  async openOrdersOf(tx: Tx, key: string): Promise<string[]> {
+    const rows = await tx.selectDistinct({ id: prodOrders.id }).from(prodOrders)
+      .innerJoin(prodOrderLines, eq(prodOrderLines.orderId, prodOrders.id))
+      .where(and(eq(prodOrderLines.itemKey, key), inArray(prodOrders.status, ["New", "Accepted", "In kitchen", "Ready"])))
+      .orderBy(asc(prodOrders.id));
+    return rows.map((r) => r.id);
   },
 
   /** `undefined` means what it means for `insertItem`: the row this would have produced already

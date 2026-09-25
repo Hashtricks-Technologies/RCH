@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { IsoTime, Money, Qty, StockLocSchema } from "./common.js";
-import { PayerKindSchema } from "./documents.js";
+import { PayerKindSchema, WastageSchema } from "./documents.js";
 
 export const StockLedgerQuerySchema = z.strictObject({
   /** Defaulted, and not because a caller should omit it: `apps/api/src/contract.test.ts` probes
@@ -17,6 +17,24 @@ export const StockLedgerResponseSchema = z.strictObject({
   /** `from` and `to` come back so the report's foot can print what it actually measured rather
    *  than what the screen asked for. */
   loc: StockLocSchema, from: IsoTime, to: IsoTime, rows: z.array(StockLedgerRowSchema),
+});
+
+// ---- the kitchen's raw materials and packaging. Not stocked there - what lands is used on
+// landing - so the kitchen's screen reports what it was issued and what it threw away instead of
+// an on-hand figure.
+export const KitchenReportQuerySchema = z.strictObject({
+  /** Today (1), the last week or the last month - the three windows the screen offers. Defaulted
+   *  for the same reason `StockLedgerQuerySchema.days` is: `contract.test.ts` probes it bare. */
+  days: z.coerce.number().int().min(1).max(90).default(1),
+});
+/** One raw or packing line issued to the kitchen over the window: what landed, and its value at
+ *  the item's standard cost. */
+export const KitchenIssuedRowSchema = z.object({ it: z.string(), qty: Qty, value: Money });
+export const KitchenReportSchema = z.strictObject({
+  from: IsoTime, to: IsoTime,
+  issued: z.array(KitchenIssuedRowSchema),
+  /** Newest first. */
+  wastage: z.array(WastageSchema),
 });
 
 export const CreditParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(64) });

@@ -91,6 +91,8 @@ export async function resetDocuments(db: Db): Promise<void> {
     "register_sessions",
     // ---- shifts: nothing points at a shift, so no cascade reaches it either.
     "shifts",
+    // ---- kitchen wastage: points only at items and users, which stay.
+    "wastage",
   ];
   await db.execute(sql.raw(`truncate table ${names.map((n) => `"${n}"`).join(", ")} restart identity cascade`));
   await withTransaction(db, async (tx) => { await seedDocuments(tx); });

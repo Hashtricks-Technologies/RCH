@@ -10,9 +10,9 @@ import { withTransaction, type Tx } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
-import { lockBalances, postMoves } from "../../lib/ledger.js";
+import { lockBalances, postMoves, withUseOnArrival } from "../../lib/ledger.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
-import { loadItems, loadLocations } from "../../lib/master.js";
+import { loadItems, loadItemTypes, loadLocations } from "../../lib/master.js";
 import { releaseForTicket, reservedAt } from "../../lib/reservations.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
 import { allocateTicket, readTicket, voidTicket, writeTicket } from "../../lib/tickets.js";
@@ -175,7 +175,13 @@ export function createTicketsService(db: Db) {
         const toName = locations[t.to]?.n ?? t.to;
         // Booking stock in cannot drive a balance below zero, so this is the one movement with
         // no post-lock re-read behind it - the only asymmetry between the two ends of a ticket.
-        await postMoves(tx, t.lines.map((l) => ({ loc: t.to, it: l.it, qty: l.qty, kind: "ticket_in" as const, refType: "ticket", refId: id, by: claims.sub, at })));
+        // Raw materials and packaging landing at the kitchen are used as they land: each gets its
+        // `production_consume` beside its `ticket_in`, in the same call (`withUseOnArrival`).
+        const types = await loadItemTypes(tx);
+        const landed = t.lines.map((l) => ({ loc: t.to, it: l.it, qty: l.qty, kind: "ticket_in" as const, refType: "ticket", refId: id, by: claims.sub, at }));
+        const moves = withUseOnArrival(types, landed);
+        await postMoves(tx, moves);
+        const used = moves.length > landed.length;
         await ticketsRepo.setStatus(tx, id, { status: "Received", receivedAt: at });
 
         const who = await ticketsRepo.userName(tx, claims.sub);
@@ -189,7 +195,10 @@ export function createTicketsService(db: Db) {
 
         const changed = ["tkt", "req", "stock"] as const;
         await emitChanged(tx, changed);
-        return { result: await reread(tx, id), changed: [...changed], message: `Received at ${toName} - stock is on the shelf` };
+        return {
+          result: await reread(tx, id), changed: [...changed],
+          message: used ? `Received at ${toName} - issued to the kitchen for use` : `Received at ${toName} - stock is on the shelf`,
+        };
       });
     },
 

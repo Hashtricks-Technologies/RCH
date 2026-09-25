@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { IT, LOC, PL, PRICE_LISTS } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, menuOf, openOutlets, priceOf, useCan } from "../../lib/selectors";
+import { isSellable } from "@rch/domain";
+import { costOf, isRetired, menuOf, openOutlets, priceOf, useCan } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import { Modal } from "../../ui/Modal";
 import {
@@ -294,7 +295,9 @@ export default function Prices() {
               : k === "margin" ? marginOf(pr.p, costOf(it))
                 : (IT[it]?.n ?? it);
   });
-  const missing = Object.keys(s.prices[list] ?? {}).filter((it) => !listed.includes(it));
+  // What the server would list: priced here, still on the master, and a line a till sells.
+  const missing = Object.keys(s.prices[list] ?? {})
+    .filter((it) => !listed.includes(it) && IT[it] && !isRetired(it) && isSellable(IT[it].t));
   /** The product staged on the Add row, when the list prices it above its printed MRP. The
    *  manager is one press from putting it on a till that will charge the lower figure - the cap
    *  is applied at read time by `priceOf`, never stored - so the gap is said on the page rather

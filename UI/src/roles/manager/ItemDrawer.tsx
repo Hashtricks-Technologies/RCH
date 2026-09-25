@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { defaultSourceFor, gstForHsn, mayEditItemField, mayEditItemImage, type ItemField } from "@rch/domain";
+import { defaultSourceFor, gstForHsn, isKitchenMade, isOnOff, mayEditItemField, mayEditItemImage, type ItemField } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { money } from "../../lib/fmt";
@@ -41,6 +41,8 @@ function ItemDrawer({ id }: { id: string }) {
   const [mrp, setMrp] = useState(item?.mrp == null ? "" : String(item.mrp));
   const [sl, setSl] = useState(item?.sl == null ? "" : String(item.sl));
   const [src, setSrc] = useState<Source>(item?.src ?? defaultSourceFor(item?.t ?? "RAW"));
+  // ---- counted vs on/off only: a kitchen finished good's kind, the kitchen's to choose.
+  const [onOff, setOnOff] = useState(isOnOff(item));
   const [busy, setBusy] = useState(false);
 
   if (!user || !item) {
@@ -96,6 +98,7 @@ function ItemDrawer({ id }: { id: string }) {
     // MRP, there is no hazard in clearing it: the domain default (8 hours) is a safe fallback.
     if (may("sl") && (Number(sl) || 0) !== (item.sl ?? 0)) p.sl = Number(sl) || 0;
     if (may("src") && item.t !== "MTO" && src !== (item.src ?? defaultSourceFor(item.t))) p.src = src;
+    if (may("onOff") && isKitchenMade(item) && onOff !== isOnOff(item)) p.onOff = onOff;
     return p;
   };
   const patch = changes();
@@ -208,6 +211,27 @@ function ItemDrawer({ id }: { id: string }) {
             onChange={(e) => setSl(e.target.value)} placeholder="none" />
         </Field>
       </FormRow>
+
+      {isKitchenMade(item) && (
+        <>
+          <Section title="Counted or on/off only"
+            tip="Counted: batched onto the kitchen's rack, dispatched and sold down (puffs, sandwiches). On/off only: cooked for service and never counted - the kitchen's switch turns it on and off at every outlet (meals, dosa)." />
+          <FormRow>
+            <Field label="Kind" tip={may("onOff")
+              ? "Becoming on/off only is refused while any location holds it or an open ticket or kitchen order carries it. Becoming counted starts it at zero."
+              : "The kitchen decides this."}>
+              <div className="seg" role="group" aria-label="Counted or on/off only">
+                {([[false, "Counted"], [true, "On/off only"]] as const).map(([v, word]) => (
+                  <button type="button" key={word} className={onOff === v ? "on" : undefined} aria-pressed={onOff === v}
+                    disabled={!may("onOff")} onClick={() => setOnOff(v)}>
+                    {word}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </FormRow>
+        </>
+      )}
 
       {item.t !== "MTO" && (
         <>

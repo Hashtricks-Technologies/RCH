@@ -2,8 +2,9 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, isReqOpen, qty, useCan } from "../../lib/selectors";
-import { fq, sum, U, unitTotal } from "../../lib/fmt";
+import { valueAtCost } from "@rch/domain";
+import { activeItems, isReqOpen, useCan } from "../../lib/selectors";
+import { money, sum, U, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterSelect, FormRow, PageHead,
   Section, StatusPill, TableFoot, Toolbar, useLineKeys,
@@ -134,7 +135,7 @@ export default function Requests() {
                 <th style={{ width: "40%" }}>Item</th>
                 <th style={{ width: "16%" }}>Quantity</th>
                 <th style={{ width: "10%" }}>Unit</th>
-                <th style={{ width: "20%" }}>In the kitchen now</th>
+                <th style={{ width: "20%" }}>Value at cost</th>
                 <th style={{ width: "14%" }} className="r">Remove</th>
               </tr>
             </thead>
@@ -181,8 +182,10 @@ export default function Requests() {
                       </div>
                     </td>
                     <td className="mini">{l.it ? U(l.it) : "-"}</td>
+                    {/* The kitchen holds none of what it asks for - each line is used as it arrives -
+                        so the line says what it is worth rather than what is on a shelf. */}
                     <td className="mini">
-                      {l.it ? <>{fq(qty(s, "kitchen", l.it), l.it)} {U(l.it)}</> : <span className="dim">-</span>}
+                      {l.it && l.qty > 0 ? money(valueAtCost(l.qty, IT[l.it].cost)) : <span className="dim">-</span>}
                     </td>
                     <td className="rt">
                       <Btn size="xs" variant="gh" onClick={() => removeLine(i)}>Remove</Btn>

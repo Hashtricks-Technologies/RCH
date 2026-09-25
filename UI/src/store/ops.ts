@@ -17,6 +17,8 @@ export interface NewItemInput {
   key: string; name: string; unit: string; type: ItemType;
   group: string; hsn: string; gst: number; reorder: number; cost: number;
   mrp?: number; shelfLife?: number;
+  /** An on/off-only kitchen product only: whether it starts switched on. */
+  avail?: boolean;
 }
 
 // ---- item patch ----
@@ -26,6 +28,8 @@ export interface NewItemInput {
 export interface ItemFieldPatch {
   n?: string; dn?: string; mrp?: number; cost?: number; gst?: number;
   hsn?: string; rl?: number; grp?: string; sl?: number; active?: boolean; src?: Source;
+  /** A kitchen finished good: on/off only (`true`) or counted (`false`). The kitchen's field. */
+  onOff?: boolean;
 }
 
 export interface OpsSlice {
@@ -257,6 +261,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
           unit: input.unit, type: input.type, grp: input.group, hsn: input.hsn,
           gst: input.gst, reorder: input.reorder, cost: input.cost,
           mrp: input.mrp, sl: input.shelfLife, loc, opening,
+          ...(input.avail !== undefined ? { avail: input.avail } : {}),
         },
       });
       get().notify(r.message);

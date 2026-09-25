@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ITEM_FIELD_FEATURES, mayEditItemField, unauthorisedItemFields, type ItemField, counterName, itemCodePrefix, nextItemCode,
+  createTypeRefusal, isSellable, mayCreateType, MRP_MISSING_REFUSAL, neverSoldRefusal, unpricedRefusal,
   // ---- item photos ----
   mayEditItemImage, sniffImageType, checkPhoto, imageRetiredMessage, imageOffMenuMessage, imageNoneMessage,
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO,
@@ -16,6 +17,8 @@ const LEGACY_FIELD_DESKS: Readonly<Record<ItemField, readonly Role[]>> = {
   n: ["store", "buyer", "prod"], hsn: ["store", "buyer", "prod"], rl: ["store", "buyer", "prod"],
   grp: ["store", "buyer", "prod"], sl: ["store", "buyer", "prod"], src: ["store", "buyer", "prod"],
   active: ["manager", "store", "buyer", "prod"],
+  // Came after roles: whether a kitchen finished good is counted or on/off only is the kitchen's.
+  onOff: ["prod"],
 };
 /** A seeded desk's permissions. */
 const P = (d: Role) => DESK_DEFAULTS[d].perms;
@@ -76,6 +79,12 @@ describe("the item master's split, read from permissions", () => {
     expect(ITEM_FIELD_FEATURES.hsn).toEqual(["item_master"]);
     expect(ITEM_FIELD_FEATURES.src).toEqual(["item_master"]);
     expect(ITEM_FIELD_FEATURES.active).toEqual(["items_stock", "item_master"]);
+  });
+
+  it("gives counted versus on/off only to the kitchen alone", () => {
+    expect(ITEM_FIELD_FEATURES.onOff).toEqual(["make_distribute"]);
+    expect(mayEditItemField(P("prod"), "onOff")).toBe(true);
+    for (const d of ["counter", "manager", "store", "buyer"] as const) expect(mayEditItemField(P(d), "onOff")).toBe(false);
   });
 
   it("answers for a role's permissions, needing edit rather than view", () => {
@@ -181,5 +190,33 @@ describe("the next item code", () => {
   it("skips a code typed in another shape, and a low one never pulls the series back", () => {
     expect(nextItemCode("RAW", ["RM-10a", "rm-9000", "CHAI", "RM-12", "RM-1003"])).toBe("RM-1004");
     expect(nextItemCode("FG", ["FG-9999"])).toBe("FG-10000");
+  });
+});
+
+describe("which desk adds which type to the master", () => {
+  it("gives the store keeper all five, the kitchen what it makes and uses, procurement what it buys", () => {
+    const types = ["RAW", "PACK", "MRP", "FG", "MTO"] as const;
+    const of = (d: Role) => types.filter((t) => mayCreateType(d, t));
+    expect(of("store")).toEqual(["RAW", "PACK", "MRP", "FG", "MTO"]);
+    expect(of("prod")).toEqual(["RAW", "FG", "MTO"]);
+    expect(of("buyer")).toEqual(["RAW", "PACK", "MRP"]);
+    expect(of("manager")).toEqual([]);
+    expect(of("counter")).toEqual([]);
+  });
+
+  it("names what the desk may add instead", () => {
+    expect(createTypeRefusal("prod", "MRP")).toBe("Refused - the kitchen does not add printed-price (MRP) goods to the item master, only finished goods, made-to-order items and raw materials");
+    expect(createTypeRefusal("buyer", "FG")).toBe("Refused - procurement does not add finished goods to the item master, only raw materials, packaging and printed-price (MRP) goods");
+    expect(createTypeRefusal("manager", "RAW")).toBe("Refused - the outlet manager does not add raw materials to the item master, only nothing");
+    expect(MRP_MISSING_REFUSAL).toBe("An MRP item needs the price printed on its pack");
+  });
+});
+
+describe("what a counter sells", () => {
+  it("sells MRP, FG and MTO lines and never a raw material or packing", () => {
+    expect(["MRP", "FG", "MTO", "RAW", "PACK"].map((t) => isSellable(t as never))).toEqual([true, true, true, false, false]);
+    expect(neverSoldRefusal("Milk", "RAW")).toBe("Refused - Milk is a raw material and is never sold at a counter");
+    expect(neverSoldRefusal("Cup", "PACK")).toBe("Refused - Cup is packing and is never sold at a counter");
+    expect(unpricedRefusal("Tea", "Restaurant")).toBe("Refused - give Tea a price at Restaurant before selling it there");
   });
 });

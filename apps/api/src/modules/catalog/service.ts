@@ -3,9 +3,11 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import type { Changed, CreateItemBodySchema, Item, LocKey, PatchItemBodySchema } from "@rch/contract";
+import { KITCHEN } from "@rch/contract";
 import {
-  checkPhoto, fq, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,
-  itemCodePrefix, nextItemCode, round3, unauthorisedItemFields, type ItemField,
+  bestBeforeText, checkPhoto, createTypeRefusal, fq, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage, isSellable,
+  itemCodePrefix, mayCreateType, MRP_MISSING_REFUSAL, neverSoldRefusal, nextItemCode, onOffRefusal, round3, toOnOffRefusal,
+  unauthorisedItemFields, unpricedRefusal, usedOnArrival, type ItemField,
 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { isForeignKeyViolation, withTransaction } from "../../lib/db.js";
@@ -15,12 +17,14 @@ import { ForbiddenError, NotFoundError, NotReadyError, RuleError } from "../../l
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { imageKey, type ImageStore, type StoredImage } from "../../lib/images.js";
-import { postMoves } from "../../lib/ledger.js";
+import { writeBatch } from "../../lib/batches.js";
+import { postMoves, withUseOnArrival } from "../../lib/ledger.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadItems, loadLocations } from "../../lib/master.js";
 import { toWireItem } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import type { Actor } from "../../plugins/rbac.js";
+import { availabilityRepo } from "../availability/repo.js";
 import { catalogRepo, type ItemPatch } from "./repo.js";
 
 export type CreateItemBody = z.infer<typeof CreateItemBodySchema>;
@@ -36,6 +40,8 @@ type Write<T> = { result: T; changed: Changed[]; message: string };
 const COMMERCIAL_REFUSAL = "Only the outlet manager changes an item's price, cost or GST - ask them to make that change";
 const DISPLAY_NAME_REFUSAL = "Only the outlet manager sets the name the counters read on the till - ask them to make that change";
 const OPERATIONAL_REFUSAL = "The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level, shelf life and stock-request source - ask one of them";
+/** Counted versus on/off only is the kitchen's call alone (`onOff: ["make_distribute"]`). */
+const ON_OFF_REFUSAL = "Only the kitchen decides whether a finished good is counted or on/off only - ask the kitchen";
 /** `active` is the one field every desk but the counter owns, so it never lands in a refusal;
  *  everything else is the manager's or the three desks', and nothing is in neither. The display
  *  name is the manager's too, but it is not a figure, so it has a sentence of its own. */
@@ -71,6 +77,10 @@ export function createCatalogService(db: Db, images: ImageStore) {
         const name = body.name.trim();
         assertRule(name.length > 0, "Give the product a name");
         assertRule(body.cost > 0, "Cost must be more than zero");
+        // Which types a desk may add is desk mechanics, like the shelf below: the same table the
+        // new-product form offers its type list from.
+        assertRule(mayCreateType(claims.role, body.type), createTypeRefusal(claims.role, body.type));
+        assertRule(body.type !== "MRP" || (body.mrp ?? 0) > 0, MRP_MISSING_REFUSAL);
         // Location decides which rows. The kitchen books what it makes at the kitchen;
         // the store keeper and the buyer book at the central store. Derived from the caller's
         // role, not their loc - the two happen to agree today (see the task brief).
@@ -91,6 +101,16 @@ export function createCatalogService(db: Db, images: ImageStore) {
         await catalogRepo.lockCodeSeries(tx, prefix);
         const code = nextItemCode(body.type, await catalogRepo.codesLike(tx, prefix));
 
+        // ---- counted vs on/off only. A made-to-order product the kitchen adds is one of its own
+        // on/off-only products (`src: "kitchen"`), switched on unless the form said not yet; it holds
+        // no stock, so it takes no opening figure. A counted one it adds (`FG`) books "how many made
+        // now" as a batch below, not as a bare opening move.
+        const src = claims.role === "prod" && body.type === "MTO" ? "kitchen" : body.src ?? null;
+        const onOff = body.type === "MTO" && src === "kitchen";
+        const opening = round3(body.opening);
+        if (onOff) assertRule(opening === 0, onOffRefusal(name, "given opening stock"));
+        const asBatch = claims.role === "prod" && body.type === "FG";
+
         const at = new Date();
         const row = await catalogRepo.insertItem(tx, {
           key, code, name, unit: body.unit || "nos",
@@ -98,26 +118,42 @@ export function createCatalogService(db: Db, images: ImageStore) {
           gst: body.gst, reorderLevel: round3(body.reorder), cost: body.cost,
           mrp: body.mrp && body.mrp > 0 ? body.mrp : null,
           shelfLifeHours: body.sl && body.sl > 0 ? body.sl : null,
-          src: body.src ?? null,
+          src,
           active: true, createdAt: at, updatedAt: at,
         });
         assertRule(row, `${name} is already in the catalogue`);
-
-        const opening = round3(body.opening);
-        // A move of zero is not a movement, and a balance row's presence means "this location
-        // carries the line" (M12) - a product nobody has bought yet carries nowhere.
-        if (opening > 0) {
-          await postMoves(tx, [{ loc: body.loc, it: key, qty: opening, kind: "opening", refType: "item", refId: key, by: claims.sub, at }]);
-        }
-        const changed = (opening > 0 ? ["items", "stock"] : ["items"]) as Changed[];
-        await emitChanged(tx, changed);
         const item = toWireItem(row);
-        return {
-          result: { key, item }, changed,
-          message: opening > 0
-            ? `${name} added to the catalogue as ${code} with ${fq(opening, item.u)} ${item.u} at ${locations[body.loc]?.n ?? body.loc}`
-            : `${name} added to the catalogue as ${code}`,
-        };
+        const place = locations[body.loc]?.n ?? body.loc;
+
+        const changed: Changed[] = ["items"];
+        let message = `${name} added to the catalogue as ${code}`;
+        if (asBatch) {
+          // Made now, on the kitchen's rack: a batch, with a best-before from the shelf life. Zero
+          // made is still a product - it simply has no batch yet.
+          if (opening > 0) {
+            const { batch, bb } = await writeBatch(tx, { it: key, item, started: opening, made: opening, by: claims.sub, at });
+            changed.push("batch", "stock");
+            message = `${name} added to the catalogue as ${code} - ${batch.id}, ${fq(opening, item.u)} ${item.u} made, best before ${bestBeforeText(bb, at)}`;
+          }
+        } else if (opening > 0) {
+          // A move of zero is not a movement, and a balance row's presence means "this location
+          // carries the line" (M12) - a product nobody has bought yet carries nowhere. A raw or
+          // packing line opened at the kitchen is used as it lands (`withUseOnArrival`).
+          await postMoves(tx, withUseOnArrival({ [key]: item }, [{ loc: body.loc, it: key, qty: opening, kind: "opening", refType: "item", refId: key, by: claims.sub, at }]));
+          changed.push("stock");
+          message = usedOnArrival(item.t, body.loc)
+            ? `${name} added to the catalogue as ${code} with ${fq(opening, item.u)} ${item.u} issued to ${place} for use`
+            : `${name} added to the catalogue as ${code} with ${fq(opening, item.u)} ${item.u} at ${place}`;
+        }
+        if (onOff && body.avail === false) {
+          await availabilityRepo.insert(tx, KITCHEN, key, "switched off manually", claims.sub);
+          changed.push("ovr");
+          message = `${name} added to the catalogue as ${code} - switched off until the kitchen turns it on`;
+        } else if (onOff) {
+          message = `${name} added to the catalogue as ${code} - on/off only, switched on at every outlet that lists it`;
+        }
+        await emitChanged(tx, changed);
+        return { result: { key, item }, changed, message };
       });
     },
 
@@ -157,7 +193,8 @@ export function createCatalogService(db: Db, images: ImageStore) {
         assertRule(
           notYours.length === 0,
           notYours.some((f) => COMMERCIAL.includes(f)) ? COMMERCIAL_REFUSAL
-            : notYours.includes("dn") ? DISPLAY_NAME_REFUSAL : OPERATIONAL_REFUSAL,
+            : notYours.includes("dn") ? DISPLAY_NAME_REFUSAL
+              : notYours.includes("onOff") ? ON_OFF_REFUSAL : OPERATIONAL_REFUSAL,
         );
 
         const patch: ItemPatch = {};
@@ -204,6 +241,31 @@ export function createCatalogService(db: Db, images: ImageStore) {
         if (body.sl !== undefined) patch.shelfLifeHours = body.sl > 0 ? body.sl : null;
         if (body.src !== undefined) patch.src = body.src;
 
+        // ---- counted vs on/off only. Only a kitchen finished good has the choice. Becoming on/off
+        // only means the item is never counted again, so nothing may still hold it or carry it -
+        // the refusal names every place that does. Becoming counted starts from zero: an on/off
+        // item never held anything, and a batch is what first stocks it.
+        const wasOnOff = row.type === "MTO" && row.src === "kitchen";
+        let turned: "on/off" | "counted" | null = null;
+        if (body.onOff !== undefined) {
+          assertRule(row.type === "FG" || wasOnOff, `${name} is not made in the kitchen - only a kitchen finished good is counted or on/off only`);
+          if (body.onOff && !wasOnOff) {
+            const locations = await loadLocations(tx);
+            const refusal = toOnOffRefusal(name, {
+              held: (await catalogRepo.balancesOf(tx, it)).map((l) => locations[l]?.n ?? l),
+              tickets: await catalogRepo.openTicketsOf(tx, it),
+              orders: await catalogRepo.openOrdersOf(tx, it),
+            });
+            if (refusal) assertRule(false, refusal);
+            patch.type = "MTO";
+            patch.src = "kitchen";
+            turned = "on/off";
+          } else if (!body.onOff && wasOnOff) {
+            patch.type = "FG";
+            turned = "counted";
+          }
+        }
+
         // Only a line actually **crossing** off the catalogue has to be clear of stock and
         // menus; asking it again of one already retired would refuse a no-op over stock that
         // arrived after it left, which is a question for whoever booked that stock in.
@@ -239,7 +301,11 @@ export function createCatalogService(db: Db, images: ImageStore) {
             ? `${updated.name} retired - it stays on past documents and cannot be sold or ordered again`
             : word === "Restored"
               ? `${updated.name} is back in the catalogue`
-              : `${updated.name} updated`,
+              : turned === "on/off"
+                ? `${updated.name} is now on/off only - the kitchen's switch turns it on and off at every outlet`
+                : turned === "counted"
+                  ? `${updated.name} is now counted - it starts at zero until the kitchen makes a batch`
+                  : `${updated.name} updated`,
         };
       });
     },
@@ -352,6 +418,12 @@ export function createCatalogService(db: Db, images: ImageStore) {
         auditBefore({ loc, items: await catalogRepo.menuItems(tx, loc) });
         const listed = await catalogRepo.isListed(tx, loc, it);
         assertRule(!listed, `${item.n} is already listed at ${location.name}`);
+        // The price grid's own two refusals, word for word: a till never sells a raw material or a
+        // packing line, and refuses a sale at no price - so neither may be put on one.
+        assertRule(isSellable(item.t), neverSoldRefusal(item.n, item.t));
+        const priced = location.priceListId !== null
+          && (await catalogRepo.pricesOf(tx, it)).some((p) => p.list === location.priceListId);
+        assertRule(priced, unpricedRefusal(item.n, location.name));
         // That check read before the insert took its lock, so two managers adding the same item
         // can both find it unlisted. The insert is the arbiter: it hands the loser no row back,
         // and the loser reads the same refusal the check would have given it a moment later.

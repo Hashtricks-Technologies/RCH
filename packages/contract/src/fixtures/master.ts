@@ -36,12 +36,15 @@ export const IT: Record<string, Item> = {
   salad:  { c: "FG-4003", n: "Garden salad",          u: "nos", t: "FG",     g: "Prepared",  hsn: "2106", gst: 5,  rl: 0,   cost: 32.5, sl: 6 },
   capp:   { c: "MT-5001", n: "Cappuccino",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 18.3 },
   chai:   { c: "MT-5002", n: "Masala tea",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 10.7 },
+  // On/off only: the kitchen cooks it for service and switches it on and off - it is never
+  // counted, batched or dispatched, and selling it moves no stock.
+  meals:  { c: "MT-5003", n: "Veg meals",             u: "nos", t: "MTO",    g: "Meals",     hsn: "2106", gst: 5,  rl: 0,   cost: 48, src: "kitchen" },
 };
 /** Ids match what `allocateId(tx, "price_list")` would format for the first two rows a fresh
  *  database seeds - `formatId("price_list", 1) === "PL-001"` - so a bare seed's list ids agree
  *  with these fixtures used across every test. */
 export const PL: Record<string, Record<string, number>> = {
-  "PL-001": { capp: 60, chai: 20, puff: 25, sand: 45, salad: 55, juice: 18, water: 18, bisc: 28, chips: 18 },
+  "PL-001": { capp: 60, chai: 20, meals: 90, puff: 25, sand: 45, salad: 55, juice: 18, water: 18, bisc: 28, chips: 18 },
   "PL-002": { capp: 75, chai: 25, puff: 30, sand: 55, salad: 65, juice: 20, water: 20, bisc: 30, chips: 20 },
 };
 /** The two lists themselves, named - `outlets` mirrors `LOC`'s own `list` tags above, in key
@@ -51,7 +54,7 @@ export const PRICE_LISTS: PriceList[] = [
   { id: "PL-002", name: "List B", outlets: ["coffee"] },
 ];
 export const MENU: Record<string, string[]> = {
-  rest:   ["capp", "chai", "puff", "sand", "salad", "juice", "water", "chips"],
+  rest:   ["capp", "chai", "meals", "puff", "sand", "salad", "juice", "water", "chips"],
   coffee: ["capp", "chai", "juice", "water", "bisc", "chips"],
   kiosk:  ["juice", "water", "bisc", "chips", "puff"],
 };

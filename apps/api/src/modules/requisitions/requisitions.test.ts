@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { items } from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -52,6 +54,19 @@ describe("POST /requisitions", () => {
       .toBe("There is no item totally-fake.");
     for (const u of ["u1", "u2", "u4", "u5"]) {
       expect((await post(u, "/requisitions", { lines: [{ it: "milk", qty: 1 }] })).statusCode).toBe(404);
+    }
+  });
+
+  it("refuses a retired item by name, on the ask and on the buyer's direct add alike", async () => {
+    await app.db.update(items).set({ active: false }).where(eq(items.key, "butter"));
+    try {
+      for (const [u, url, extra] of [["u3", "/requisitions", {}], ["u5", "/requisitions/direct", { note: "Festival week" }]] as const) {
+        const r = await post(u, url, { lines: [{ it: "milk", qty: 1 }, { it: "butter", qty: 1 }], ...extra });
+        expect(r.statusCode).toBe(422);
+        expect(r.json().error.message).toBe("Refused - Butter, salted is retired and is no longer bought");
+      }
+    } finally {
+      await app.db.update(items).set({ active: true }).where(eq(items.key, "butter"));
     }
   });
 });

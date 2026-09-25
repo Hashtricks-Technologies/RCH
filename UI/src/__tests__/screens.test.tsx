@@ -140,6 +140,8 @@ describe("drawers render", () => {
     // placeholder - the drawer never reads it.
     phist: ["all", "prod"],
     pnew: ["new", "prod"],
+    // ---- kitchen wastage: the record form opens empty.
+    kwaste: ["new", "prod"],
     pord: ["PRD-2026-029", "prod"],
     ptkt: ["TKT-0440", "prod"],
     // ---- party billing: a statement is keyed `<kind>:<id>`, and the read behind it is not

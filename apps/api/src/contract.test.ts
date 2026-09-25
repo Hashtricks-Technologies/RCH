@@ -19,14 +19,16 @@ describe("every GET in the manifest answers with a body its own schema accepts",
   // the seeded counter; the register's Z list, which no seeded role holds (the Z is the super
   // admin's), is probed as u7, the seeded super admin, naming the outlet it wants as it must; and
   // the `access: "admin"` routes are left out: `modules/admin/admin.test.ts` gives them the same
-  // "response matches its own schema" proof against a caller its own test flags for them.
+  // "response matches its own schema" proof against a caller its own test flags for them. The
+  // kitchen's report (`kitchenReport`, Kitchen stock at view) is the kitchen's alone, so it is
+  // probed as u4, the seeded kitchen.
   const gets = Object.entries(routes).filter(([, r]) => r.method === "GET" && r.access !== "admin" && !r.params && (!r.query || r.query.safeParse({}).success));
   // A plain loop rather than it.each, so each route is its own named case in the report. Every
   // manifest GET is implemented as of Phase 2, so there is no skip left: a route that regresses
   // to a 404 - dropped from a module, or renamed out from under the manifest - fails here.
   for (const [name, r] of gets) {
     it(name, async () => {
-      const who = r.admitAdmin ? "u7" : typeof r.access !== "string" && "desk" in r.access && !r.access.desk.includes("manager") ? "u1" : "u2";
+      const who = r.admitAdmin ? "u7" : name === "kitchenReport" ? "u4" : typeof r.access !== "string" && "desk" in r.access && !r.access.desk.includes("manager") ? "u1" : "u2";
       const headers = r.access === "public" ? {} : await authHeaders(app, who);
       const res = await app.inject({ method: "GET", url: API_PREFIX + r.path + (r.admitAdmin ? "?loc=coffee" : ""), headers });
       expect(res.statusCode, res.body).toBe(200);

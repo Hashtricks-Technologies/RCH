@@ -291,7 +291,9 @@ back where it stood.
   (`{ changes: [{ loc, it, price?, listed? }] }`, at most 500), behind a dialog that lists every change and
   wants `CONFIRM` typed. The batch is all or nothing: a price of zero, a counter switched on with no price
   there, a closed outlet, a retired item or a raw/packing item refuses the whole of it. A price above the
-  printed MRP is **not** refused; the cell says what the till will charge instead. The grid's switch is the
+  printed MRP is **not** refused; the cell says what the till will charge instead. `POST /menus/:loc/items`
+  (Menu Management's picker) refuses a raw/packing item and one the outlet's active list has no price for, in
+  the grid's own sentences (`neverSoldRefusal` / `unpricedRefusal` in `@rch/domain`). The grid's switch is the
   Prices holder's one on/off: the manager's Product On / Off screen (`avail`) is hidden behind
   `AVAILABILITY_SCREEN_ENABLED` in `UI/src/screens.ts`. The counter's and the kitchen's own switches stay.
 - **A price list is still the storage, but no screen shows one.** Each outlet charges from its active list
@@ -415,18 +417,40 @@ The code enforces these and tests pin them. Breaking one is a bug.
   Manager) - badged, never erased, so the bills it closed
   reopen and the balance comes back.
 - **Nothing is created or destroyed without a document.**
-  - A batch books what the kitchen made onto its rack. It draws nothing down; kitchen raw stock is cleared
-    with an `ADJ-` document.
+  - A batch books what the kitchen made onto its rack. It draws nothing down. A counted product the kitchen
+    adds with "how many made now" is booked as a batch too, never as a bare opening figure.
+  - **The kitchen's raw materials and packaging are not stocked there.** Whatever lands at the kitchen - a
+    ticket received, a count-up, an opening figure - counts as used on landing: the landing move and an
+    equal `production_consume` move post in the same transaction (`withUseOnArrival` in
+    `apps/api/src/lib/ledger.ts`, `usedOnArrival` in `@rch/domain`), so the kitchen's balance of every raw
+    and packing line is always zero while the ledger still says what was issued. No stock read, par, low
+    alert or report shows a kitchen raw balance. A loss there is a **wastage record** (`WST-`, `POST
+    /wastage`): item, quantity, reason, note and value at cost - it moves no stock and is never refused for
+    "more than is free". A write-off of a kitchen raw line is refused towards it. Migration
+    `0028_kitchen_wastage` cleared what the kitchen held at deploy the same way, as used.
   - A write-off or a stock count is an `ADJ-` document with a reason, and it may not take stock a ticket is
     holding. A role holding Adjustments (`adjustments`, grantable to the store and kitchen desks only) writes
-    one directly against its own shelf; an outlet's is the one exception - nobody adjusts it directly, only a
+    one directly against its own shelves - the store desk the central store and `quarantine`, the kitchen desk
+    the kitchen; any other location is a 403. An outlet's is the one exception - nobody adjusts it directly, only a
     role holding Approvals (the seeded Outlet Manager) by approving a counter's adjustment request,
     which writes the `ADJ-` document as the one and only step of deciding it (there is no ticket stage after,
     the way a stock request has one - a write-off has nothing to hand over).
   - A goods receipt posts accepted goods to the central store and rejected goods to `quarantine`.
-    `quarantine` is a location where stock is recorded; no operator can act there.
-- **Made-to-order (MTO) items are made at the counter and hold no stock.** Selling one moves no stock, and
-  only the manual switch turns one off. MTO items are never batched, distributed, or ordered from the kitchen.
+    `quarantine` is a location where stock is recorded; no operator moves stock there, and only the store
+    desk's adjustment takes stock off it.
+- **Made-to-order (MTO) items hold no stock.** Selling one moves no stock, and only a switch turns one off.
+  MTO items are never batched, distributed, dispatched or ordered from the kitchen.
+  - A counter's own (Cappuccino, Masala tea - no `src`) is made at the counter and switched by each outlet.
+  - **An on/off-only kitchen product** (meals, dosa) is MTO with `src: "kitchen"` (`isOnOff`). The
+    kitchen's switch on it reaches every outlet: switched off there, no till can sell it and every tile
+    reads "switched off by the kitchen" (`availOf`, which the sale and the till both read - the sale reads
+    the kitchen's switches beside the outlet's, and every stock read carries them). Each outlet may still
+    switch it off for itself; it cannot switch the kitchen's off back on. The kitchen's doors refuse one by
+    name (`onOffRefusal`).
+  - **Counted or on/off only is the kitchen's call** (`onOff`, `make_distribute` at edit). A counted good
+    (`FG`) becomes on/off only only while nothing holds it and no open ticket or kitchen order carries it -
+    the refusal names every place (`toOnOffRefusal`); back to counted it starts at zero. The item keeps its
+    code.
 - **The business day is Z-to-Z, not midnight-to-midnight.** Each outlet has at most one open
   `register_sessions` row (a partial unique index holds it), opened by its first sale and closed by
   a Z-report. A bill belongs to a session by foreign key, decided inside the sale's own
@@ -465,6 +489,10 @@ The code enforces these and tests pin them. Breaking one is a bug.
   packing, `MR-3xxx` MRP, `FG-4xxx` finished, `MT-5xxx` made-to-order), one past the highest code with
   that prefix, retired items included, under a per-series advisory lock. The new-product form previews
   it read-only; the server decides.
+- **Each desk adds only its own kinds of item** (`mayCreateType` in `@rch/domain`, read by the server and by
+  the new-product form's type list): the store desk all five types, the kitchen desk FG, MTO (its on/off-only products) and RAW, the buyer
+  desk RAW, PACK and MRP. Anything else is refused with `createTypeRefusal`'s sentence. An MRP item must
+  carry its printed price (`MRP_MISSING_REFUSAL`, the form's own sentence).
 - **An item has at most one display name**, set only by a role holding `items_stock` at edit (`dn` in
   `ITEM_FIELD_FEATURES`; the seeded Outlet Manager), in
   the item drawer; a blank clears it. It replaces the real name **only on the counter's own screens**

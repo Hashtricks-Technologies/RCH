@@ -198,6 +198,8 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   await seedLocations(tx);
   await tx.insert(s.items).values(Object.entries(FX.IT).map(([key, i]) => ({
     key, code: i.c, name: i.n, unit: i.u, type: i.t, grp: i.g, hsn: i.hsn, gst: i.gst, reorderLevel: i.rl, cost: i.cost, mrp: i.mrp ?? null, shelfLifeHours: i.sl ?? null,
+    // An on/off-only kitchen product (`meals`) is told apart from a counter's drink by its source.
+    src: i.src ?? null,
   })));
   await tx.insert(s.locationItems).values(Object.entries(FX.MENU).flatMap(([loc, keys]) => keys.map((itemKey, seq) => ({ loc, itemKey, seq }))));
   await tx.insert(s.priceLists).values(FX.PRICE_LISTS.map((pl) => ({ id: pl.id, name: pl.name })));

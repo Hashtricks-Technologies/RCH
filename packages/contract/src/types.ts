@@ -66,11 +66,17 @@ export type ProductRequest = z.infer<typeof D.ProductRequestSchema>;
 export type RateContract = z.infer<typeof D.RateContractSchema>;
 export type RateChange = z.infer<typeof D.RateChangeSchema>;
 export type ShopAsk = z.infer<typeof D.ShopAskSchema>;
+// ---- kitchen wastage
+export type WastageReason = z.infer<typeof D.WastageReasonSchema>;
+export type Wastage = z.infer<typeof D.WastageSchema>;
 
 /** The two reports: the store's stock ledger and what a payer still owes - the two figures a
  *  caller cannot compute from its own snapshot. */
 export type StockLedgerQuery = z.infer<typeof R.StockLedgerQuerySchema>;
 export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;
+export type KitchenReportQuery = z.infer<typeof R.KitchenReportQuerySchema>;
+export type KitchenIssuedRow = z.infer<typeof R.KitchenIssuedRowSchema>;
+export type KitchenReport = z.infer<typeof R.KitchenReportSchema>;
 // ---- the register
 export type RegisterReport = z.infer<typeof R.RegisterReportSchema>;
 export type RegisterTotals = z.infer<typeof R.RegisterTotalsSchema>;

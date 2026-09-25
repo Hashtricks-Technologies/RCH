@@ -1,6 +1,7 @@
-import { index, integer, pgTable, primaryKey, smallint, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, pgTable, primaryKey, smallint, text } from "drizzle-orm/pg-core";
 import { adjReqStatusEnum, adjustReasonEnum } from "./enums.js";
-import { items, locations, qty, ts, users } from "./master.js";
+import { items, locations, money, qty, ts, users } from "./master.js";
 
 /**
  * A write-off or a count-up, as a document.
@@ -73,3 +74,29 @@ export const adjustmentRequestLines = pgTable("adjustment_request_lines", {
   itemKey: text("item_key").notNull().references(() => items.key),
   qty: qty("qty").notNull(),
 }, (t) => [primaryKey({ columns: [t.requestId, t.lineNo] })]);
+
+/**
+ * Kitchen wastage: a loss recorded against a raw or packing line the kitchen holds no stock of.
+ *
+ * What lands at the kitchen is used the moment it lands (`usedOnArrival`, @rch/domain), so a
+ * spoiled sack of maida has no shelf to come off - an `ADJ-` document would be a write-off of
+ * nothing, refused as more than is free. This is the record instead: one item, how much, why,
+ * and what it was worth at the standard cost of the day. It posts no move and reads no balance.
+ * `cost` and `value` are stored so a cost moved next month leaves this month's loss as it was.
+ */
+export const wastage = pgTable("wastage", {
+  id: text("id").primaryKey(),
+  itemKey: text("item_key").notNull().references(() => items.key),
+  qty: qty("qty").notNull(),
+  reason: adjustReasonEnum("reason").notNull(),
+  note: text("note").notNull().default(""),
+  cost: money("cost").notNull(),
+  value: money("value").notNull(),
+  byUser: text("by_user").notNull().references(() => users.id),
+  at: ts("at").notNull().defaultNow(),
+}, (t) => [
+  index("wastage_at_idx").on(t.at),
+  check("wastage_qty_ck", sql`${t.qty} > 0`),
+  // A count and a return to the vendor are corrections to a shelf; the kitchen has none here.
+  check("wastage_reason_ck", sql`${t.reason} in ('wastage', 'breakage', 'expired', 'other')`),
+]);
