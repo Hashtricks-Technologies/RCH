@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { breachesCredit, counterName, creditBreachMessage, discountOn, isAccountTender, normalizePhone, PARTY_LABEL, payerKindForTender, TILL_TENDERS } from "@rch/domain";
 import { DEPTS, DOCTORS, IT, LOC, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { activeBill, MAX_OPEN_BILLS, tillOf, type OpenBill } from "../../store/till";
-import { availOf, menuOf, partyRate, priceOf } from "../../lib/selectors";
+import { availOf, itemMatches, menuOf, partyRate, priceOf } from "../../lib/selectors";
 import { money, money0 } from "../../lib/fmt";
-import { Alert, Avatar, Btn, Card, Field, FormRow, Grid, ItemImage, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
+import { Alert, Avatar, Btn, Card, Field, FilterSelect, FormRow, Grid, ItemImage, PageHead, SearchIcon, Tag, TileMenu, Tip } from "../../ui/kit";
 import type { CreditResponse, ItemType, LocKey, Payer, PayerKind, Tender } from "../../types";
 
 /** The buttons are the till's own list - every tender but Online, which only a QR order's capture
@@ -23,6 +23,10 @@ const REGISTER: Record<PayerKind, Payer[]> = {
 const PICKER_LABEL: Record<PayerKind, string> = {
   staff: "Staff member", dept: "Department", doctor: "Doctor",
 };
+
+/** Whether a "/" pressed here is someone typing rather than asking for the product search. */
+const typing = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 export function TypeTag({ t }: { t: ItemType }) {
   if (t === "MRP") return <Tag kind="tr">MRP</Tag>;
@@ -75,6 +79,30 @@ export default function Pos() {
   const busy = paying.has(bill.id);
 
   const menu = menuOf(s, loc);
+  // The product search. Every word typed must find the item by its display name, its real name
+  // or its code, in any order, so "chips tap" finds Masala Tapioca Chips. A till carries a few
+  // hundred tiles, so the cut is memoised on what it reads; `catalogVersion` stands for `IT`.
+  const catalogVersion = useApp((x) => x.catalogVersion);
+  const find = useRef<HTMLInputElement>(null);
+  const [q, setQ] = useState("");
+  const [group, setGroup] = useState("All");
+  const [hi, setHi] = useState(0);
+  const [findOn, setFindOn] = useState(false);
+  const groups = useMemo(() => {
+    void catalogVersion;
+    return Array.from(new Set(menu.filter((it) => IT[it]).map((it) => IT[it].g))).sort();
+  }, [menu, catalogVersion]);
+  const g = groups.includes(group) ? group : "All";
+  const shown = useMemo(() => {
+    void catalogVersion;
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return menu.filter((it) => IT[it] && (g === "All" || IT[it].g === g) && words.every((w) => itemMatches(it, w)));
+  }, [menu, q, g, catalogVersion]);
+  const cur = shown.length ? Math.min(hi, shown.length - 1) : -1;
+  const hiIt = findOn && cur >= 0 ? shown[cur] : null;
+  useEffect(() => {
+    if (hiIt) document.getElementById(`pos-tile-${hiIt}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [hiIt]);
   // What this party is charged. A preview off the rate card the snapshot carries - the server
   // resolves it again inside the sale's own transaction and *that* is the rate the bill is
   // priced at (root CLAUDE.md, "Nothing is previewed as a decision"). A bill with no payer on it
@@ -170,6 +198,40 @@ export default function Pos() {
     if (ok) s.addToCart(loc, it, n - (bill.lines[it] ?? 0));
   };
 
+  useEffect(() => {
+    find.current?.focus();
+    const h = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || useApp.getState().drawer) return;
+      e.preventDefault();
+      find.current?.focus();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+  /** Enter on the highlighted tile does exactly what tapping it does - and refuses what it refuses. */
+  const addFound = (it: string) => {
+    const a = availOf(s, loc, it);
+    if (!a.ok) { s.notify(`${counterName(IT[it])} was not added to the bill - ${a.why ?? "unavailable"}.`); return; }
+    s.addToCart(loc, it, 1);
+    setQ(""); setHi(0);
+  };
+  const onFindKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!shown.length) return;
+      const d = e.key === "ArrowDown" ? 1 : -1;
+      setHi((cur + d + shown.length) % shown.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (cur >= 0) addFound(shown[cur]);
+    } else if (e.key === "Escape" && q) {
+      e.stopPropagation();
+      setQ(""); setHi(0);
+    }
+  };
+  const filtered = q.trim() !== "" || g !== "All";
+  const clearFind = () => { setQ(""); setGroup("All"); setHi(0); find.current?.focus(); };
+
   return (
     <>
       <PageHead
@@ -211,15 +273,35 @@ export default function Pos() {
         <span className="mini billbar-n">{till.bills.length} of {MAX_OPEN_BILLS} open</span>
       </div>
       <Grid cols="g21">
-        <Card title="Menu" sub={`${menu.length} products listed at ${L.n}`}>
+        <Card title="Menu" sub={`${menu.length} products listed at ${L.n}`}
+          tip="Type a name or code to find a product, or press / to jump to the search. Up and down move the highlight, Enter adds it to the bill on screen, Escape clears the box.">
+          {menu.length > 0 && (
+            <div className="tbar posfind">
+              <div className="sfield">
+                <SearchIcon />
+                <input ref={find} value={q} aria-label="Search this till's products" aria-keyshortcuts="/"
+                  placeholder="Search name or code…"
+                  onChange={(e) => { setQ(e.target.value); setHi(0); }}
+                  onKeyDown={onFindKey}
+                  onFocus={() => setFindOn(true)} onBlur={() => setFindOn(false)} />
+                {!q && <kbd>/</kbd>}
+              </div>
+              {groups.length > 1 && (
+                <FilterSelect label="Group" value={g} options={["All", ...groups]}
+                  onChange={(v) => { setGroup(v); setHi(0); }} />
+              )}
+              <div className="sp" />
+              <span className="mini"><b className="mono">{shown.length}</b> of <b className="mono">{menu.length}</b></span>
+            </div>
+          )}
           <div className="tilegrid">
-            {menu.map((it) => {
+            {shown.map((it) => {
               const item = IT[it];
               const a = availOf(s, loc, it);
               const { p, listed, capped } = priceOf(s, loc, it);
               const manualOff = Boolean(s.ovr[loc + ":" + it]);
               return (
-                <div key={it} className={`tile tile-pic${a.ok ? "" : " is-off"}`}>
+                <div key={it} id={`pos-tile-${it}`} className={`tile tile-pic${a.ok ? "" : " is-off"}${it === hiIt ? " is-hi" : ""}`}>
                   <button type="button" className="tile-pic-hit" disabled={!a.ok}
                     onClick={() => s.addToCart(loc, it, 1)}
                     aria-label={a.ok ? `Add ${counterName(item)}` : `${counterName(item)} - ${a.why ?? "unavailable"}`}
@@ -255,6 +337,12 @@ export default function Pos() {
           </div>
           {menu.length === 0 && (
             <p className="mini">No product is listed at this outlet. The outlet manager assigns the menu.</p>
+          )}
+          {menu.length > 0 && shown.length === 0 && filtered && (
+            <div className="empty">
+              <b>{q.trim() ? <>No product on this till matches “{q.trim()}”{g !== "All" && <> in {g}</>}</> : <>No product on this till in {g}</>}</b>
+              <Btn variant="gh" size="sm" onClick={clearFind}>Clear</Btn>
+            </div>
           )}
         </Card>
 

@@ -666,3 +666,7 @@ td.aud-two small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-
 .qr-card.qr-new{border-color:var(--warn-line);background:var(--warn-soft)}
 .qr-bill{background:none;border:0;padding:0;font:inherit;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline}
 .qr-done{width:auto;flex:none;background:none;border:0;padding:0}
+.tbar.posfind{padding:0 0 10px;margin-bottom:10px;background:none}
+.posfind .sfield{max-width:none}
+.posfind kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-4);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.tile-pic.is-hi{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
