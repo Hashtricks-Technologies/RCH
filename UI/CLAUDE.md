@@ -211,6 +211,12 @@ try {
   bill uses, and the till is never empty. `Pos.tsx` draws them as a strip of chips between the page head
   and the menu (`.billbar`), with + New bill and "N of 10 open"; only the chip on screen carries a ×, and
   discarding one with lines takes a second press. `logout` clears every till. None of it reaches the server or `localStorage`.
+- **The till's product search is `Pos.tsx`'s own state** (text, group, highlight), kept across bill
+  switches. Every whitespace-separated word must pass `itemMatches`; the cut is a `useMemo` on the menu,
+  the text, the group and `catalogVersion`. The box takes focus on mount and on a bare `/` pressed outside
+  a field with no drawer open (⌘/Ctrl+K stays the shell's palette). Arrows move the `.is-hi` tile, Enter
+  adds it through `addToCart` - or, for an unavailable one, toasts `availOf`'s reason and adds nothing -
+  and Escape clears the text.
 - **Single-press buttons with no form are fire-and-forget**: `handover`, `setOrderStatus`, `dispatchOrder`.
 - **`setItemImage(it, bytes)` and `removeItemImage(it)`** are the ordinary `Promise<boolean>` write shape
   above - the bytes arrive already shrunk and type-checked (`ui/PhotoPicker.tsx`, below), and the server checks
@@ -608,6 +614,9 @@ a background refresh and must not blank the screen.
 - **`open-bills.test.tsx`** drives the till's open bills: ten and no eleventh, each bill's fields kept
   apart, the numbering, discard, paying one while another is on screen, a refusal, sign-out, and the
   chips on the POS screen.
+- **`pos-search.test.tsx`** drives the till's product search: focus on mount, display name / real name /
+  code, words in any order, the group cut, arrows and Enter onto the bill on screen, an unavailable item
+  refused with its reason, Escape, the empty state's Clear and the `/` shortcut.
 - **`counter-names.test.tsx`** drives the walk-in customer (the body, the two boxes surviving a
   refusal and clearing on a sale, both Bills searches) and the display name (the till's tiles and
   cart, the counter's bill drawer against the manager's and the slip, the manager's item drawer).

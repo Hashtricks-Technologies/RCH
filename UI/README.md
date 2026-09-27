@@ -288,6 +288,13 @@ chip alone; the × on the selected chip throws that bill away, at a second press
 on it. Open
 bills live only in the browser: a reload loses them and signing out clears them.
 
+**The till finds a product as it is typed.** A search box heads the Menu card, focused as the Point of
+Sale opens and again on **/** (⌘K stays the global search). Every word typed must match the display
+name, the real name or the code, in any order, and a Group pick narrows it further; "12 of 94" says how
+much of the till is showing. Up and down move a highlight, Enter adds it to the bill on screen and
+clears the box for the next item, and Escape clears it. An unavailable product is still shown, and
+Enter on it adds nothing and says why.
+
 **A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen -
 every outlet's, over the seven days the server answers for - and a Void button on any bill still
 dated today. It needs a typed reason, puts every stocked line back on the shelf, returns a staff member's credit room for
