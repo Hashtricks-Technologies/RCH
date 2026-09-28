@@ -386,8 +386,8 @@ values before it.
 - **Browser-only state** is `tills` (each counter's open bills, at most `MAX_OPEN_BILLS` = 10, see
   `UI/src/store/till.ts`), `draft`, `prqDraft`, `poolVendor` (the buyer's vendor pick per
   procurement-list item), `drawer`, `toast`, `authError`, `shopFilter`, `theme` and `catalogVersion`. Only the
-  theme, a few UI preferences, the bell's read record and the public QR page's last order (`store/publicOrder.ts`,
-  its own store - a customer has no session) reach `localStorage`. Open bills do not: a reload
+  theme, a few UI preferences, the bell's read record, the till's last-picked category (per counter) and the public
+  QR page's last order (`store/publicOrder.ts`, its own store - a customer has no session) reach `localStorage`. Open bills do not: a reload
   loses them, and a sign-out clears them.
 
 ## Domain invariants

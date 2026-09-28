@@ -441,6 +441,22 @@ export const itemMatches = (it: string, t: string): boolean => {
   const i = IT[it];
   return !!i && (i.n.toLowerCase().includes(t) || (i.dn?.toLowerCase().includes(t) ?? false) || i.c.toLowerCase().includes(t));
 };
+/**
+ * The order the till's category rail lists an item's group (`IT[it].g`) in. The hospital is
+ * regrouping its live items into exactly these names; a group not named here follows them,
+ * alphabetically.
+ */
+export const POS_CATEGORY_ORDER: readonly string[] = [
+  "Breakfast", "Meals & Rice", "Biryani & Pulao", "Parotta & Chapathi", "Dinner", "Snacks",
+  "Non-Veg", "Juices", "Beverages", "Biscuits", "Packet Snacks", "Ice Creams",
+];
+/** Every group a menu lists something in, with how many of its items, in `POS_CATEGORY_ORDER`. */
+export const menuCategories = (menu: readonly string[]): { g: string; n: number }[] => {
+  const n = new Map<string, number>();
+  for (const it of menu) if (IT[it]) n.set(IT[it].g, (n.get(IT[it].g) ?? 0) + 1);
+  const rank = (g: string) => { const i = POS_CATEGORY_ORDER.indexOf(g); return i < 0 ? POS_CATEGORY_ORDER.length : i; };
+  return [...n].map(([g, c]) => ({ g, n: c })).sort((a, b) => rank(a.g) - rank(b.g) || a.g.localeCompare(b.g));
+};
 export const activeItems = (): string[] => Object.keys(IT).filter((k) => IT[k].active !== false);
 /** Whether this line has been retired - what the master list greys a row on, and the one
  *  condition under which it offers "Restore" instead of "Retire". */

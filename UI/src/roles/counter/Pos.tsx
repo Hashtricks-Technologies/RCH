@@ -3,9 +3,9 @@ import { breachesCredit, counterName, creditBreachMessage, discountOn, isAccount
 import { DEPTS, DOCTORS, IT, LOC, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { activeBill, MAX_OPEN_BILLS, tillOf, type OpenBill } from "../../store/till";
-import { availOf, itemMatches, menuOf, partyRate, priceOf } from "../../lib/selectors";
+import { availOf, itemMatches, menuCategories, menuOf, partyRate, priceOf } from "../../lib/selectors";
 import { money, money0 } from "../../lib/fmt";
-import { Alert, Avatar, Btn, Card, Field, FilterSelect, FormRow, Grid, ItemImage, PageHead, SearchIcon, Tag, TileMenu, Tip } from "../../ui/kit";
+import { Alert, Avatar, Btn, Card, Field, FormRow, Grid, ItemImage, PageHead, SearchIcon, Tag, TileMenu, Tip } from "../../ui/kit";
 import type { CreditResponse, ItemType, LocKey, Payer, PayerKind, Tender } from "../../types";
 
 /** The buttons are the till's own list - every tender but Online, which only a QR order's capture
@@ -27,6 +27,18 @@ const PICKER_LABEL: Record<PayerKind, string> = {
 /** Whether a "/" pressed here is someone typing rather than asking for the product search. */
 const typing = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+
+/** The category rail's last pick, per counter and per browser - a convenience, so any storage
+ *  that refuses (a private window, blocked site data) just means the till opens on All. */
+const catKey = (loc: LocKey) => `rch-pos-cat:${loc}`;
+function readCat(loc: LocKey): string {
+  try { return localStorage.getItem(catKey(loc)) ?? "All"; } catch { return "All"; }
+}
+function storeCat(loc: LocKey, g: string) {
+  try {
+    if (g === "All") localStorage.removeItem(catKey(loc)); else localStorage.setItem(catKey(loc), g);
+  } catch { /* the pick still holds on this screen */ }
+}
 
 export function TypeTag({ t }: { t: ItemType }) {
   if (t === "MRP") return <Tag kind="tr">MRP</Tag>;
@@ -85,14 +97,17 @@ export default function Pos() {
   const catalogVersion = useApp((x) => x.catalogVersion);
   const find = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
-  const [group, setGroup] = useState("All");
+  // The category rail: every group this menu lists something in, and nothing else, so a
+  // remembered pick that has since emptied falls back to All.
+  const [cat, setCat] = useState(() => readCat(loc));
   const [hi, setHi] = useState(0);
   const [findOn, setFindOn] = useState(false);
-  const groups = useMemo(() => {
+  const cats = useMemo(() => {
     void catalogVersion;
-    return Array.from(new Set(menu.filter((it) => IT[it]).map((it) => IT[it].g))).sort();
+    return menuCategories(menu);
   }, [menu, catalogVersion]);
-  const g = groups.includes(group) ? group : "All";
+  const g = cats.some((c) => c.g === cat) ? cat : "All";
+  const pickCat = (v: string) => { setCat(v); storeCat(loc, v); setHi(0); };
   const shown = useMemo(() => {
     void catalogVersion;
     const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -229,8 +244,7 @@ export default function Pos() {
       setQ(""); setHi(0);
     }
   };
-  const filtered = q.trim() !== "" || g !== "All";
-  const clearFind = () => { setQ(""); setGroup("All"); setHi(0); find.current?.focus(); };
+  const clearFind = () => { setQ(""); pickCat("All"); find.current?.focus(); };
 
   return (
     <>
@@ -273,76 +287,90 @@ export default function Pos() {
         <span className="mini billbar-n">{till.bills.length} of {MAX_OPEN_BILLS} open</span>
       </div>
       <Grid cols="g21">
-        <Card title="Menu" sub={`${menu.length} products listed at ${L.n}`}
-          tip="Type a name or code to find a product, or press / to jump to the search. Up and down move the highlight, Enter adds it to the bill on screen, Escape clears the box.">
+        <Card title="Menu" sub={`${menu.length} products listed at ${L.n}`} className="posmenu-card"
+          tip="Pick a category to show only its products. Type a name or code to find one within it, or press / to jump to the search. Up and down move the highlight, Enter adds it to the bill on screen, Escape clears the box.">
           {menu.length > 0 && (
-            <div className="tbar posfind">
-              <div className="sfield">
-                <SearchIcon />
-                <input ref={find} value={q} aria-label="Search this till's products" aria-keyshortcuts="/"
-                  placeholder="Search name or code…"
-                  onChange={(e) => { setQ(e.target.value); setHi(0); }}
-                  onKeyDown={onFindKey}
-                  onFocus={() => setFindOn(true)} onBlur={() => setFindOn(false)} />
-                {!q && <kbd>/</kbd>}
+            <div className="posmenu">
+              <nav className="poscats" aria-label="Categories">
+                {[{ g: "All", n: cats.reduce((t, c) => t + c.n, 0) }, ...cats].map((c) => (
+                  <button key={c.g} type="button" className={`poscat${c.g === g ? " on" : ""}`} aria-pressed={c.g === g}
+                    onClick={() => pickCat(c.g)}>
+                    <span>{c.g}</span>
+                    <span className="mono poscat-n">{c.n}</span>
+                  </button>
+                ))}
+              </nav>
+              <div className="posmenu-main">
+                <div className="tbar posfind">
+                  <div className="sfield">
+                    <SearchIcon />
+                    <input ref={find} value={q} aria-label="Search this till's products" aria-keyshortcuts="/"
+                      placeholder="Search name or code…"
+                      onChange={(e) => { setQ(e.target.value); setHi(0); }}
+                      onKeyDown={onFindKey}
+                      onFocus={() => setFindOn(true)} onBlur={() => setFindOn(false)} />
+                    {!q && <kbd>/</kbd>}
+                  </div>
+                  {g !== "All" && (
+                    <span className="mini poscat-in">
+                      in <b>{g}</b> · <button type="button" className="poscat-wide" onClick={() => pickCat("All")}>show all</button>
+                    </span>
+                  )}
+                  <div className="sp" />
+                  <span className="mini"><b className="mono">{shown.length}</b> of <b className="mono">{menu.length}</b></span>
+                </div>
+                <div className="tilegrid">
+                  {shown.map((it) => {
+                    const item = IT[it];
+                    const a = availOf(s, loc, it);
+                    const { p, listed, capped } = priceOf(s, loc, it);
+                    const manualOff = Boolean(s.ovr[loc + ":" + it]);
+                    return (
+                      <div key={it} id={`pos-tile-${it}`} className={`tile tile-pic${a.ok ? "" : " is-off"}${it === hiIt ? " is-hi" : ""}`}>
+                        <button type="button" className="tile-pic-hit" disabled={!a.ok}
+                          onClick={() => s.addToCart(loc, it, 1)}
+                          aria-label={a.ok ? `Add ${counterName(item)}` : `${counterName(item)} - ${a.why ?? "unavailable"}`}
+                          title={a.ok ? `Add ${counterName(item)}` : `${counterName(item)} - ${a.why ?? "unavailable"}`} />
+                        <ItemImage it={it} size="card" />
+                        <TileMenu
+                          className="tile-pic-kebab"
+                          items={[
+                            { key: "cfg", label: "Configure", onClick: () => s.openDrawer("cconfig", it) },
+                            {
+                              key: "toggle",
+                              label: manualOff ? "Turn on" : "Turn off",
+                              onClick: () => s.toggleAvail(loc, it),
+                              tone: manualOff ? "default" : "danger",
+                            },
+                          ]}
+                        />
+                        <div className="tile-pic-body">
+                          <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{counterName(item)}</b>
+                          <span><TypeTag t={item.t} /></span>
+                          {a.ok
+                            ? <span className="mini">{a.left ? `${a.left} left` : "made to order"}</span>
+                            : <span className="mini" style={{ color: "var(--crit)" }}>{a.why ?? "unavailable"}</span>}
+                          <div className="sp" />
+                          <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>
+                            {capped ? <><s className="dim">{money(listed)}</s>{" "}{money(p)}</> : money(p)}
+                          </span>
+                          {capped && <span className="mini">capped at MRP {money(item.mrp ?? p)}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {shown.length === 0 && q.trim() !== "" && (
+                  <div className="empty">
+                    <b>No product on this till matches “{q.trim()}”{g !== "All" && <> in {g}</>}</b>
+                    <Btn variant="gh" size="sm" onClick={clearFind}>Clear</Btn>
+                  </div>
+                )}
               </div>
-              {groups.length > 1 && (
-                <FilterSelect label="Group" value={g} options={["All", ...groups]}
-                  onChange={(v) => { setGroup(v); setHi(0); }} />
-              )}
-              <div className="sp" />
-              <span className="mini"><b className="mono">{shown.length}</b> of <b className="mono">{menu.length}</b></span>
             </div>
           )}
-          <div className="tilegrid">
-            {shown.map((it) => {
-              const item = IT[it];
-              const a = availOf(s, loc, it);
-              const { p, listed, capped } = priceOf(s, loc, it);
-              const manualOff = Boolean(s.ovr[loc + ":" + it]);
-              return (
-                <div key={it} id={`pos-tile-${it}`} className={`tile tile-pic${a.ok ? "" : " is-off"}${it === hiIt ? " is-hi" : ""}`}>
-                  <button type="button" className="tile-pic-hit" disabled={!a.ok}
-                    onClick={() => s.addToCart(loc, it, 1)}
-                    aria-label={a.ok ? `Add ${counterName(item)}` : `${counterName(item)} - ${a.why ?? "unavailable"}`}
-                    title={a.ok ? `Add ${counterName(item)}` : `${counterName(item)} - ${a.why ?? "unavailable"}`} />
-                  <ItemImage it={it} size="card" />
-                  <TileMenu
-                    className="tile-pic-kebab"
-                    items={[
-                      { key: "cfg", label: "Configure", onClick: () => s.openDrawer("cconfig", it) },
-                      {
-                        key: "toggle",
-                        label: manualOff ? "Turn on" : "Turn off",
-                        onClick: () => s.toggleAvail(loc, it),
-                        tone: manualOff ? "default" : "danger",
-                      },
-                    ]}
-                  />
-                  <div className="tile-pic-body">
-                    <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{counterName(item)}</b>
-                    <span><TypeTag t={item.t} /></span>
-                    {a.ok
-                      ? <span className="mini">{a.left ? `${a.left} left` : "made to order"}</span>
-                      : <span className="mini" style={{ color: "var(--crit)" }}>{a.why ?? "unavailable"}</span>}
-                    <div className="sp" />
-                    <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>
-                      {capped ? <><s className="dim">{money(listed)}</s>{" "}{money(p)}</> : money(p)}
-                    </span>
-                    {capped && <span className="mini">capped at MRP {money(item.mrp ?? p)}</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
           {menu.length === 0 && (
             <p className="mini">No product is listed at this outlet. The outlet manager assigns the menu.</p>
-          )}
-          {menu.length > 0 && shown.length === 0 && filtered && (
-            <div className="empty">
-              <b>{q.trim() ? <>No product on this till matches “{q.trim()}”{g !== "All" && <> in {g}</>}</> : <>No product on this till in {g}</>}</b>
-              <Btn variant="gh" size="sm" onClick={clearFind}>Clear</Btn>
-            </div>
           )}
         </Card>
 
