@@ -290,8 +290,11 @@ bills live only in the browser: a reload loses them and signing out clears them.
 
 **The till finds a product as it is typed.** A search box heads the Menu card, focused as the Point of
 Sale opens and again on **/** (⌘K stays the global search). Every word typed must match the display
-name, the real name or the code, in any order, and a Group pick narrows it further; "12 of 94" says how
-much of the till is showing. Up and down move a highlight, Enter adds it to the bill on screen and
+name, the real name or the code, in any order; "12 of 94" says how much of the till is showing.
+A category rail beside the tiles - a row of chips on a narrow screen - lists All and every group this
+till sells something in, with its count, the hospital's own groups (Breakfast, Meals & Rice, … Ice
+Creams) first. Tapping one shows only its tiles and the search then looks within it, with "show all"
+to widen it again; the till remembers the last category picked on that counter. Up and down move a highlight, Enter adds it to the bill on screen and
 clears the box for the next item, and Escape clears it. An unavailable product is still shown, and
 Enter on it adds nothing and says why.
 
@@ -553,8 +556,8 @@ what has nothing on the server to be a client of: `tills` (each counter's open b
 vendor the buyer picked on each procurement-list row, kept until that item is ordered in full),
 `drawer`, `toast`, `shopFilter`, `theme`, `catalogVersion` (the signal that repaints a screen pinned to the
 catalogue after a live update) - plus the access token, held in memory and never in
-`localStorage`, and the theme and a couple of UI preferences, which do reach `localStorage`
-because there is nothing for the server to say about which theme a browser prefers.
+`localStorage`, and the theme, a couple of UI preferences and the till's last category, which do reach
+`localStorage` because there is nothing for the server to say about which theme a browser prefers.
 
 `@rch/domain`'s functions run client-side too, but as **previews only** - a cart total before
 paying, whether an item shows as available, the Dispatch cover check - computed with the same

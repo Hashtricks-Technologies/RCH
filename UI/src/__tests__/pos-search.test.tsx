@@ -9,7 +9,7 @@ import Pos from "../roles/counter/Pos";
 import { resetStore, S, as } from "./fixture";
 
 /**
- * The product search on the Point of Sale: what it finds, the group cut, and billing from the
+ * The product search on the Point of Sale: what it finds, the category cut, and billing from the
  * keyboard. The Coffee Shop's till is capp, chai, juice, water, bisc and chips.
  */
 
@@ -35,12 +35,9 @@ function type(el: HTMLInputElement, value: string) {
   const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
   act(() => { set.call(el, value); el.dispatchEvent(new Event("input", { bubbles: true })); });
 }
-function pick(el: HTMLSelectElement, value: string) {
-  const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!;
-  act(() => { set.call(el, value); el.dispatchEvent(new Event("change", { bubbles: true })); });
-}
 
 beforeEach(() => {
+  localStorage.clear();
   resetStore();
   as("counter");
   IT.chips = { ...IT.chips, dn: "Masala Tapioca Chips" };
@@ -79,15 +76,15 @@ describe("the POS product search", () => {
     m.unmount();
   });
 
-  it("cuts by group, together with the text", () => {
+  it("searches within the category picked on the rail, and show all widens it", () => {
     const m = mount();
-    const group = m.host.querySelector<HTMLSelectElement>('select[aria-label="Group"]')!;
-    expect([...group.options].map((o) => o.value)).toEqual(["All", "Beverage", "Snacks"]);
-    pick(group, "Snacks");
+    const snacks = [...m.host.querySelectorAll<HTMLButtonElement>(".poscats .poscat")].find((b) => b.textContent?.startsWith("Snacks"))!;
+    act(() => { snacks.click(); });
     expect(m.tiles()).toEqual(["bisc", "chips"]);
     type(m.box(), "masala");
     expect(m.tiles()).toEqual(["chips"]);
-    pick(group, "All");
+    const wide = m.host.querySelector<HTMLButtonElement>(".poscat-wide")!;
+    act(() => { wide.click(); });
     expect(m.tiles()).toEqual(["chai", "chips"]);
     m.unmount();
   });

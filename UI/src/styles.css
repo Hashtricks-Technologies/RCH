@@ -670,3 +670,21 @@ td.aud-two small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-
 .posfind .sfield{max-width:none}
 .posfind kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-4);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
 .tile-pic.is-hi{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+/* the till's category rail: a column beside the tiles, sticky under the top bar, and a row of
+   chips above them on a narrow screen. The card lets it stick, which its overflow would stop. */
+.card.posmenu-card{overflow:visible}
+.posmenu{display:grid;grid-template-columns:172px minmax(0,1fr);gap:14px;align-items:start}
+.posmenu-main{min-width:0}
+.poscats{position:sticky;top:63px;display:flex;flex-direction:column;gap:4px;max-height:calc(100vh - 80px);overflow-y:auto;scrollbar-width:thin}
+.poscat{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;min-height:44px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);text-align:left;font-size:12.5px;font-weight:600;line-height:1.25;color:var(--ink-2)}
+.poscat:hover{border-color:var(--accent-line)}
+.poscat.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.poscat-n{flex:none;font-size:11px;font-weight:500;color:var(--ink-3)}
+.poscat.on .poscat-n{color:var(--on-accent)}
+.poscat-in{white-space:nowrap}
+.poscat-wide{color:var(--accent);font-weight:600;text-decoration:underline}
+@media(max-width:899px){
+ .posmenu{grid-template-columns:minmax(0,1fr)}
+ .poscats{position:static;flex-direction:row;max-height:none;overflow-x:auto;overflow-y:hidden;padding-bottom:4px}
+ .poscat{border-radius:999px;white-space:nowrap}
+}
