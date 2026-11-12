@@ -23,28 +23,37 @@ type FeatureDef = {
 
 const ALL: readonly Role[] = ["counter", "manager", "store", "prod", "buyer"];
 const both = (desks: readonly Role[]) => ({ view: desks, edit: desks });
+/**
+ * The desks that sell (the counter) or sit over the outlets: the outlet manager, and the two
+ * central-store desks, so one person can be the store keeper or the buyer *and* run the outlets -
+ * an "F&B Lead". A central-store desk holds an outlet's own feature only working for every outlet
+ * (`grantRefusal`): it has no outlet of its own to hold it at.
+ */
+const OUTLETS: readonly Role[] = ["counter", "manager", "store", "buyer"];
+/** The desks that run the outlets without selling at one: the till's edit is the counter's alone. */
+const OVER_OUTLETS: readonly Role[] = ["manager", "store", "buyer"];
 
 /** Every feature, in the order the role editor lists them. */
 export const FEATURES: Readonly<Record<Feature, FeatureDef>> = {
   // ---- Sales. The till's edit is the counter's alone: its shift opens at sign-in there.
-  billing:            { label: "Bills", section: "Sales", scope: "local", levels: { view: ["counter", "manager"], edit: ["counter"] } },
-  x_report:           { label: "X reports", section: "Sales", scope: "local", levels: { view: ["counter", "manager"] } },
-  z_report:           { label: "Z reports", section: "Sales", scope: "local", levels: both(["counter", "manager"]) },
-  shift_reports:      { label: "Shift reports", section: "Sales", scope: "wide", levels: { view: ["counter", "manager"] } },
+  billing:            { label: "Bills", section: "Sales", scope: "local", levels: { view: OUTLETS, edit: ["counter"] } },
+  x_report:           { label: "X reports", section: "Sales", scope: "local", levels: { view: OUTLETS } },
+  z_report:           { label: "Z reports", section: "Sales", scope: "local", levels: both(OUTLETS) },
+  shift_reports:      { label: "Shift reports", section: "Sales", scope: "wide", levels: { view: OUTLETS } },
   // Two desks, not one: the rate card (who is given what off and how far they may run up credit) is
   // a commercial decision; taking a party's money and laying it over their open bills is cashiering.
   credit:             { label: "Discounts & credit limits", section: "Sales", scope: "wide", levels: both(ALL) },
   settlements:        { label: "Receivables & settlements", section: "Sales", scope: "wide", levels: both(ALL) },
   // The queue of orders customers placed from a QR code and paid online: the counter works it,
   // the manager watches it.
-  qr_orders:          { label: "QR orders", section: "Sales", scope: "local", levels: both(["counter", "manager"]) },
+  qr_orders:          { label: "QR orders", section: "Sales", scope: "local", levels: both(OUTLETS) },
   // ---- Outlets
   approvals:          { label: "Approvals", section: "Outlets", scope: "wide", levels: both(ALL) },
   items_stock:        { label: "Items & stock", section: "Outlets", scope: "wide", levels: both(ALL) },
   menu:               { label: "Menus", section: "Outlets", scope: "wide", levels: both(ALL) },
   prices:             { label: "Prices", section: "Outlets", scope: "wide", levels: both(ALL) },
-  availability:       { label: "Product on / off", section: "Outlets", scope: "local", levels: { edit: ["counter", "manager", "prod"] } },
-  item_photos:        { label: "Product photos", section: "Outlets", scope: "local", levels: { edit: ["counter", "manager"] } },
+  availability:       { label: "Product on / off", section: "Outlets", scope: "local", levels: { edit: [...OUTLETS, "prod"] } },
+  item_photos:        { label: "Product photos", section: "Outlets", scope: "local", levels: { edit: OUTLETS } },
   // ---- My counter
   outlet_stock:       { label: "Stock in hand", section: "My counter", scope: "local", levels: both(["counter"]) },
   outlet_requests:    { label: "Stock requests", section: "My counter", scope: "local", levels: both(["counter"]) },
@@ -96,7 +105,7 @@ export const ACTIONS: Readonly<Record<Action, ActionDef>> = {
     refusal: "You can see Receivables & settlements but not void a settlement - ask the administrator for the void permission.",
   },
   all_outlets: {
-    label: "Works for every outlet", desks: ["counter", "manager"],
+    label: "Works for every outlet", desks: OUTLETS,
     refusal: "You can only do this at your own outlet - ask the administrator for access to every outlet.",
   },
 };
@@ -175,6 +184,7 @@ const DESK_WORD: Readonly<Record<Role, string>> = {
  * every grant fits. The role editor disables what this would refuse; the server refuses with it.
  */
 export function grantRefusal(desk: Role, perms: Permissions): string | null {
+  const allOutlets = holds(perms, "all_outlets");
   for (const f of Object.keys(FEATURES) as Feature[]) {
     const l = perms.f[f];
     if (l === undefined) continue;
@@ -186,6 +196,13 @@ export function grantRefusal(desk: Role, perms: Permissions): string | null {
     const def = ACTIONS[a];
     if (def.desks && !def.desks.includes(desk)) return `The ${DESK_WORD[desk]} desk can't be given "${def.label}".`;
     if (def.parent && !can(perms, def.parent)) return `"${def.label}" needs at least view access to ${FEATURES[def.parent].label}.`;
+  }
+  // A central-store desk has no outlet of its own: an outlet's own (local) feature would act at
+  // the central store, where there is no till, no register and no menu. It runs across the outlets
+  // or not at all.
+  if (desk === "store" || desk === "buyer") {
+    const f = (Object.keys(perms.f) as Feature[]).find((x) => FEATURES[x].scope === "local" && OVER_OUTLETS.every((d) => grantable(d, x, perms.f[x]!)));
+    if (f && !allOutlets) return `The ${DESK_WORD[desk]} desk works at the central store, so ${FEATURES[f].label} needs "Works for every outlet" too.`;
   }
   return null;
 }

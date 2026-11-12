@@ -10,6 +10,12 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
  && pnpm --filter @rch/ui build
 
 FROM nginxinc/nginx-unprivileged:1.30-alpine-slim AS runtime
+# The base image can lag Alpine's own security fixes (musl and zlib, 2026-11-12), and the CI image
+# scan fails on any fixable HIGH or CRITICAL. Take every package's latest patch release at build
+# time, as root, then drop back to the image's own unprivileged user (nginx, uid 101).
+USER root
+RUN apk upgrade --no-cache
+USER 101
 ENV API_UPSTREAM=http://rch-api:3000
 # The audit service, for /api/v1/admin/audit (deploy/nginx/default.conf.template). Every variable
 # the template names needs a value: envsubst leaves an unset one in the rendered config as the

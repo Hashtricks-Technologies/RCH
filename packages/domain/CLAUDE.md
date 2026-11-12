@@ -76,7 +76,9 @@ need more context than their names give:
   may be given each level, and whether it reads hospital-wide), `ACTIONS`, `can`/`holds`,
   `DESK_DEFAULTS` (the five seeded roles, which reproduce each desk's access before roles were
   configurable, except that nobody holds `z_report`; `qr_orders` came after - the counter at edit, the
-  manager at view), `grantRefusal`, `admits` (a route's `Access`
+  manager at view), `grantRefusal` (which also holds a store or purchasing desk's outlet feature - Bills,
+  X/Z, QR orders, product on / off, photos - to `all_outlets`, since those desks sit at the central store;
+  both may be given everything the outlet manager desk may), `admits` (a route's `Access`
   against a desk and permissions: `{ ok, wide }` or a 404/403), `readsWide` (whether a desk and permissions read one
   collection - bills, stock, requests, tickets, shop asks, kitchen orders, adjustment requests, product
   requests - hospital-wide or at its own location), `readsBills` (whether they read the till roll at all) and
