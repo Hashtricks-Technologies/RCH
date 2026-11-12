@@ -239,6 +239,13 @@ excepted.
   permissions are read per request through a per-pod cache the `roles` change notice clears, so a change
   reaches its holders' next request; an account whose role or desk changed under its token gets a **401**
   and refreshes. `apps/api/CLAUDE.md` (*Roles and permissions*) has the details.
+- **One person may do several desks' jobs** through one role. The store and purchasing desks may be given
+  everything the outlet manager desk may (Bills at view, X and Z reports, shift reports, QR orders, product
+  on / off and photos, void a bill, "Works for every outlet") on top of their own, so an "F&B Lead" - the
+  store keeper's work, all of purchasing and running the outlets - is one role on the **store** desk (the
+  issue desk and the store's own screens are that desk's alone). A central-store desk has no outlet of its
+  own, so it holds an outlet's own (local) feature only together with `all_outlets`; `grantRefusal` refuses
+  it otherwise. The till's edit stays the counter's.
 - **Staff pick themselves at sign-in.** `GET /auth/directory` is public and lists active, non-admin accounts
   as number and name only. The super admin signs in through a typed id instead.
 - **A role with Product photos sets a photo only for items on its own outlet's menu** (403 otherwise), unless

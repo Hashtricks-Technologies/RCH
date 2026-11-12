@@ -66,14 +66,15 @@ function changesOf(role: AdminRole, name: string, desk: Role, perms: Permissions
 }
 
 /** The None / View / Edit control for one feature. A level the desk may not be given stays on
- *  the control, shut, with the sentence the server would refuse it with. */
-function LevelPicker({ f, desk, value, onChange }: {
-  f: Feature; desk: Role; value: Grant; onChange: (g: Grant) => void;
+ *  the control, shut, with the sentence the server would refuse it with. `allOutlets` is whether
+ *  the role works for every outlet: a central-store desk holds an outlet's own feature only then. */
+function LevelPicker({ f, desk, value, onChange, allOutlets }: {
+  f: Feature; desk: Role; value: Grant; onChange: (g: Grant) => void; allOutlets: boolean;
 }) {
   return (
     <div className="seg" role="group" aria-label={`${FEATURES[f].label} access`}>
       {levelsOf(f).map((g) => {
-        const refusal = g === "none" ? null : grantRefusal(desk, { f: { [f]: g }, a: [] });
+        const refusal = g === "none" ? null : grantRefusal(desk, { f: { [f]: g }, a: allOutlets ? ["all_outlets"] : [] });
         const button = (describedBy?: string) => (
           <button type="button" key={g} className={value === g ? "on" : undefined} aria-pressed={value === g}
             disabled={!!refusal} aria-describedby={describedBy} onClick={() => onChange(g)}>
@@ -167,11 +168,11 @@ function RoleBody({ role }: { role: AdminRole }) {
                 <tr key={f} data-feature={f}>
                   <td>{FEATURES[f].label} <ScopePill f={f} /></td>
                   <td style={{ textAlign: "right" }}>
-                    <LevelPicker f={f} desk={desk} value={grantOf(perms, f)} onChange={(g) => setGrant(f, g)} />
+                    <LevelPicker f={f} desk={desk} value={grantOf(perms, f)} onChange={(g) => setGrant(f, g)} allOutlets={perms.a.includes("all_outlets")} />
                   </td>
                 </tr>,
                 ...NESTED.filter((a) => ACTIONS[a].parent === f).map((a) => {
-                  const why = grantRefusal(desk, { f: perms.f, a: [a] });
+                  const why = grantRefusal(desk, { f: perms.f, a: perms.a.includes("all_outlets") ? [a, "all_outlets"] : [a] });
                   const box = (
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 18 }}>
                       <input type="checkbox" aria-label={ACTIONS[a].label} checked={perms.a.includes(a)} disabled={!!why}

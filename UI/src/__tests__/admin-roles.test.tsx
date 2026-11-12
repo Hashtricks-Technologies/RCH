@@ -240,7 +240,7 @@ describe("the Roles tab", () => {
     expect(row.previousElementSibling?.getAttribute("data-feature")).toBe("settlements");
   });
 
-  it("offers Works for every outlet on the counter and manager desks only", async () => {
+  it("offers Works for every outlet on every desk but the kitchen", async () => {
     serve({ "GET /api/v1/admin/roles": () => json(ROLES), "GET /api/v1/admin/actions": () => json([]) });
     page = await mountPage();
     const sw = () => page!.drawer().querySelector('button[aria-label="Works for every outlet"]');
@@ -248,10 +248,26 @@ describe("the Roles tab", () => {
     expect(sw()).toBeTruthy();
     await press(page.button("Edit", page.row("ROLE-002")));
     expect(sw()?.getAttribute("aria-pressed")).toBe("true");
-    for (const id of ["ROLE-003", "ROLE-004", "ROLE-005"]) {
+    // The store keeper and the buyer may run the outlets too (an "F&B Lead"); the kitchen never.
+    for (const id of ["ROLE-003", "ROLE-005"]) {
       await press(page.button("Edit", page.row(id)));
-      expect(sw(), id).toBeNull();
+      expect(sw(), id).toBeTruthy();
     }
+    await press(page.button("Edit", page.row("ROLE-004")));
+    expect(sw()).toBeNull();
+  });
+
+  it("opens an outlet's features to a store-desk role once it works for every outlet", async () => {
+    serve({ "GET /api/v1/admin/roles": () => json(ROLES), "GET /api/v1/admin/actions": () => json([]) });
+    page = await mountPage();
+    await press(page.button("Edit", page.row("ROLE-003")));
+    const view = () => [...page!.drawer().querySelectorAll<HTMLButtonElement>('[data-feature="billing"] button')].find((b) => b.textContent === "View")!;
+    expect(view().disabled).toBe(true);
+    expect(page.drawer().querySelector('[data-feature="billing"]')!.textContent).toContain(`The store desk works at the central store, so Bills needs "Works for every outlet" too.`);
+    await press(page.drawer().querySelector<HTMLButtonElement>('button[aria-label="Works for every outlet"]')!);
+    expect(view().disabled).toBe(false);
+    await press(view());
+    expect(page.drawer().textContent).toContain("Bills: None → View");
   });
 
   it("warns how many accounts a change reaches, and fixes the desk once the role was given", async () => {
@@ -268,6 +284,7 @@ describe("the Roles tab", () => {
     await setValue(desk, "store");
     expect(page.drawer().textContent).toContain("Desk: Counter → Store");
     expect(page.drawer().textContent).toContain("Bills: Edit → None");
+    await setValue(desk, "prod");
     expect(page.drawer().querySelector('button[aria-label="Works for every outlet"]')).toBeNull();
   });
 

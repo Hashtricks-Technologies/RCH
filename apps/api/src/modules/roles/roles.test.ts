@@ -176,3 +176,38 @@ describe("roles and accounts", () => {
       .toBe("Kitchen In-charge works at the Central Kitchen, not at Coffee Shop");
   });
 });
+
+// ---- one person, several desk jobs. Last in the file: it moves u3 onto a role of its own.
+describe("an F&B Lead: a store-desk role that also buys and runs the outlets", () => {
+  const manager = DESK_DEFAULTS.manager.perms;
+  const lead: Permissions = {
+    f: { ...DESK_DEFAULTS.store.perms.f, ...DESK_DEFAULTS.buyer.perms.f, ...manager.f },
+    a: [...manager.a],
+  };
+  const as = (method: InjectOptions["method"], url: string, payload?: Record<string, unknown>) => call(method, url, payload, "u3");
+
+  it("refuses an outlet's feature on the store desk without every outlet, in the domain's words", async () => {
+    const msg = await refused(422, "POST", "/admin/roles", { name: `Half Lead ${randomUUID().slice(0, 6)}`, desk: "store", perms: { f: { billing: "view" }, a: [] } });
+    expect(msg).toBe(`The store desk works at the central store, so Bills needs "Works for every outlet" too.`);
+  });
+
+  it("is saved on the store desk and lets its holder work the store, purchasing and every outlet", async () => {
+    const r = (await ok("POST", "/admin/roles", { name: "F&B Lead", desk: "store", perms: lead })).result;
+    expect(r).toMatchObject({ desk: "store", perms: { a: ["void_bill", "void_settlement", "all_outlets"] } });
+    const moved = await call("PATCH", "/admin/users/u3", { roleId: r.id, loc: "store" });
+    expect(moved.statusCode, moved.body).toBe(200);
+
+    // The outlets: any outlet's X report, every counter's bills with who they were charged to.
+    expect((await as("GET", "/register/x?loc=coffee")).statusCode).toBe(200);
+    const bills = await as("GET", "/bills");
+    expect(bills.statusCode, bills.body).toBe(200);
+    const snap = (await as("GET", "/snapshot")).json();
+    expect(snap.roster.staff.length).toBeGreaterThan(0);
+    // The store and purchasing doors answer with their own not-found, not the gate's.
+    const gate = (res: { json: () => { error?: { message: string } } }) => (res.json().error?.message ?? "").startsWith("There is nothing at");
+    expect(gate(await as("POST", "/requests/REQ-0000-0001/issue-ticket"))).toBe(false);
+    expect(gate(await as("POST", "/purchase-orders/PO-0000-0001/send"))).toBe(false);
+    // The till itself stays the counter's.
+    expect(gate(await as("POST", "/bills", { loc: "coffee", tender: "Cash", lines: [{ it: "SKU-1", qty: 1 }] }))).toBe(true);
+  });
+});

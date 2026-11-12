@@ -93,9 +93,10 @@ The role matrix is the `role` drawer (`pages/RoleDrawer.tsx`): features grouped 
 / Edit `seg` control each offering only the levels the feature has, a level the desk may not hold shut with
 `grantRefusal`'s sentence as its tip, a scope pill (hospital-wide or own location), Void a bill under Bills
 and Void a settlement under Receivables & settlements, each shut until its parent is held (dropped with it),
-the "Works for every outlet" `Switch` for counter and manager desks only (its tip: the Bills / X / Z /
+the "Works for every outlet" `Switch` on every desk but the kitchen (its tip: the Bills / X / Z /
 availability / photo doors at every outlet, and every outlet's documents read - without it the bills are the
-home outlet's alone), the rename, the desk (read-only once `everAssigned`; a
+home outlet's alone; on a store or purchasing desk an outlet's own feature stays shut, with the refusal as
+its tip, until the switch is on - `LevelPicker` and each action are checked with the switch's state), the rename, the desk (read-only once `everAssigned`; a
 move drops what the new desk may not hold), a "N accounts hold this role - changes apply at once." alert,
 and a "What changes" list before Save, which sends only the fields that changed. Its body is keyed on the
 role's `updatedAt`, so a save starts it again from what the server stored.
@@ -581,8 +582,8 @@ a background refresh and must not blank the screen.
 - **`admin-roles.test.tsx`** drives the Roles tab and its matrix drawer: the create body and the drawer
   opening on the new role, a refusal keeping the form, a level change reaching the "What changes" list and
   the PATCH sending only `perms`, the rename alone, shut non-grantable levels with the refusal sentence, an
-  action shut until its parent is held and dropped with it, "Works for every outlet" on counter and
-  manager desks only, the holders alert and the fixed desk, the deactivate refusal toasted verbatim, and
+  action shut until its parent is held and dropped with it, "Works for every outlet" on every desk but the
+  kitchen, a store-desk role's Bills shut until that switch is on, the holders alert and the fixed desk, the deactivate refusal toasted verbatim, and
   Delete only on a never-assigned role behind a second press. **`admin-registers.test.tsx`** drives the
   Registers tab: outlets only (closed ones labelled), every read naming `loc`, another pick, an X printed
   under the outlet's name, the Z with its counted cash reading no `bills` back, and a past Z printed.
