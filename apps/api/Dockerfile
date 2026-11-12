@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:24-bookworm-slim AS base
+FROM node:24-trixie-slim AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=true
 RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
 WORKDIR /repo
@@ -21,7 +21,7 @@ RUN pnpm --filter @rch/api build \
  && apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* \
  && curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o /rds-global-bundle.pem
 
-FROM gcr.io/distroless/nodejs24-debian12:nonroot AS runtime
+FROM gcr.io/distroless/nodejs24-debian13:nonroot AS runtime
 ENV NODE_ENV=production PORT=3000 PG_CA_BUNDLE=/etc/ssl/rds-global-bundle.pem
 WORKDIR /app
 COPY --from=build /out/node_modules ./node_modules
