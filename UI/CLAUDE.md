@@ -290,7 +290,14 @@ try {
 - **`postings` on the store is where the signed-in account may work**; `user.loc` is where it is
   standing, and it does not change for the life of the session - the shell names the counter and
   never offers to move it.
-- **Takings are windowed on the open register session, not on `isToday`.** Both dashboards read
+- **Takings are windowed on the open register session, not on `isToday`, and are the X's own
+  totals.** Billed, cash, bank, charged, bill count and average come off `totals`, never from summing
+  `s.bills`: the store holds only the last `BILL_DAYS` of bills, so a session left open longer lost
+  its oldest bills on the dashboard while the Register still counted them. Items sold, the top
+  sellers and the last five bills are not on the X and are still read off the stored bills; when
+  those are fewer than `totals.billCount` the counter's dashboard says which latest bills it covers.
+  The Register's Collected tile names the tenders that took money - the X lists all seven, used or
+  not. Both dashboards read
   `readXReport` as they mount - for a role holding X reports only - so a test that renders one must
   stub it - unstubbed it reaches `fetch`, and under `vi.useFakeTimers()` it never settles.
   `src/__tests__/time.test.tsx` stubs it once in `beforeEach`. A dashboard is shown to every role on

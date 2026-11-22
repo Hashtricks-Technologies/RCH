@@ -42,16 +42,16 @@ const NOW = "2026-09-11T05:00:00.000Z";
  * boundary these cases pin has moved from IST midnight to the last Z. The defect is the same one
  * either way: seven days of bills arriving from the server and every one of them counted.
  */
-const sessionSince = (openedAt: string) => ({
+const sessionSince = (openedAt: string, bills = 0, nett = 0) => ({
   kind: "X" as const, zNo: null, sessionId: "SES-coffee-01", loc: "coffee" as const,
   previousZNo: "Z-2026-0041", openedAt, closedAt: null,
   takenAt: openedAt, takenBy: "Kavitha Raman",
   totals: {
-    grossSales: 0, discount: 0, nettSales: 0, creditSales: 0, voidAmount: 0, voidBills: 0,
+    grossSales: nett, discount: 0, nettSales: nett, creditSales: 0, voidAmount: 0, voidBills: 0,
     tip: 0, parcelCharge: 0, deliveryCharge: 0, additionalCharge: 0,
     complimentary: 0, unCollected: 0, unCollectedDiscount: 0,
-    tenders: [], collected: 0, oldBills: [], oldBillsTotal: 0,
-    sgst: 0, cgst: 0, taxTotal: 0, billCount: 0,
+    tenders: bills ? [{ tender: "Cash", amount: nett, bills }] : [], collected: nett, oldBills: [], oldBillsTotal: 0,
+    sgst: 0, cgst: 0, taxTotal: 0, billCount: bills,
   },
 });
 const SESSION_OPENED = "2026-09-10T19:00:00.000Z";
@@ -151,7 +151,7 @@ describe("every 'today' figure at the till is today's", () => {
     act(() => {
       applySnapshot(twoDays() as unknown as Parameters<typeof applySnapshot>[0]);
       as("counter");
-      useApp.setState({ readXReport: async () => sessionSince(SESSION_OPENED) });
+      useApp.setState({ readXReport: async () => sessionSince(SESSION_OPENED, 1, 40) });
     });
 
     // ₹940 was what this tile read: seven days of takings under one heading.
@@ -174,7 +174,7 @@ describe("every 'today' figure at the till is today's", () => {
     act(() => { applySnapshot(twoDays() as unknown as Parameters<typeof applySnapshot>[0]); as("counter"); });
 
     // Last night's 23:30 beats this morning's 01:30 on a string comparison, and did.
-    act(() => { useApp.setState({ readXReport: async () => sessionSince(SESSION_OPENED) }); });
+    act(() => { useApp.setState({ readXReport: async () => sessionSince(SESSION_OPENED, 1, 40) }); });
     expect(kpi(await renderSettled(createElement(counter.dash)), "Bills raised")).toBe("1");
     expect(S().bills.map((b) => b.iso)).toEqual([TODAY_EARLY, YESTERDAY_LATE]);
   });

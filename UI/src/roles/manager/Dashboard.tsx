@@ -100,23 +100,18 @@ export default function Dashboard() {
 
   const outlets = openKeys.map((loc) => {
     const session = sessions?.[loc] ?? null;
-    const openedAt = session?.openedAt ?? null;
-    // ---- bill void: a voided bill was taken back - the money was never kept and the stock went
-    // back on the shelf - so it counts towards neither the outlet's bill count nor its takings.
-    // The server leaves it out of the `sales` columns below for the same reason (`readSales`).
-    // An outlet whose register did not answer contributes nothing rather than a zero, and the
-    // column says which of the two happened.
-    const bills = openedAt === null
-      ? []
-      : s.bills.filter((b) => b.loc === loc && (b.iso ?? "") >= openedAt && !b.voided);
-    const sales = sum(bills, (b) => b.tot);
+    // ---- the outlet's takings are its X's own totals, as its Register prints them. Summing the
+    // bills in the store instead lost every bill older than `BILL_DAYS` from a session left open
+    // that long. A voided bill counts towards neither figure - the X leaves it out. An outlet
+    // whose register did not answer contributes nothing rather than a zero, and the column says
+    // which of the two happened.
     return {
       loc,
       name: LOC[loc].n,
       floor: LOC[loc].floor,
       session,
-      bills: bills.length,
-      sales,
+      bills: session?.totals.billCount ?? 0,
+      sales: session?.totals.nettSales ?? 0,
       value: stockValue(s, loc),
       off: offAt(loc),
     };
