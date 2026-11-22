@@ -52,26 +52,34 @@ export default function Dashboard() {
   // No session, no takings: a register that could not be read is not a register that took
   // nothing, so the figures below print "-" rather than a zero somebody would act on.
   const openedAt = session?.sessionId ? session.openedAt : null;
-  // ---- bill void: a bill somebody took back is not takings and the items on it were not sold.
-  // It stays on the bill list, badged; every figure on this dashboard is drawn from `mine`.
+  // ---- the takings are the X's own totals, exactly what the Register prints. They used to be
+  // summed from the bills in the store, and the store holds only the last `BILL_DAYS` of them: a
+  // session left open longer than that - no Z for a week - lost its oldest bills here while the
+  // Register still counted them, and the two screens disagreed by however much had aged out.
+  const totals = openedAt === null ? null : session!.totals;
+  const tenders = (k: ReturnType<typeof settlementOf>) => {
+    const ts = (totals?.tenders ?? []).filter((t) => settlementOf(t.tender) === k);
+    return { amount: sum(ts, (t) => t.amount), bills: sum(ts, (t) => t.bills) };
+  };
+  const billed = totals?.nettSales ?? 0;
+  const billCount = totals?.billCount ?? 0;
+  const avgBill = billCount ? billed / billCount : 0;
+  // Cash is the tender, not the total: a bill charged to staff credit, to a doctor
+  // or to a department is billed value and never reaches this drawer.
+  const cash = tenders("drawer"), bank = tenders("bank"), acct = tenders("account");
+
+  // ---- what was sold, item by item, is not on the X, so it is still read off the bills in the
+  // store - and says so when the session reaches back past them. A bill somebody took back is
+  // not takings and the items on it were not sold; it stays on the bill list, badged.
   const mine = openedAt === null
     ? []
     : s.bills.filter((b) => b.loc === loc && (b.iso ?? "") >= openedAt && !b.voided);
+  const partial = mine.length < billCount;
   // `?? ""` rather than a bare compare: a row that reaches the store without an instant should
   // sort to the bottom, not throw the whole dashboard into the error boundary.
   const latest = mine.slice().sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? ""));
-  const billed = sum(mine, (b) => b.tot);
   const itemsSold = sum(mine, (b) => sum(b.lines, (l) => l.qty));
-  const avgBill = mine.length ? billed / mine.length : 0;
-
-  // Cash is the tender, not the total: a bill charged to staff credit, to a doctor
-  // or to a department is billed value and never reaches this drawer.
-  const cashBills = mine.filter((b) => settlementOf(b.pay) === "drawer");
-  const bankBills = mine.filter((b) => settlementOf(b.pay) === "bank");
-  const acctBills = mine.filter((b) => settlementOf(b.pay) === "account");
-  const cashTaken = sum(cashBills, (b) => b.tot);
-  const banked = sum(bankBills, (b) => b.tot);
-  const charged = sum(acctBills, (b) => b.tot);
+  const recent = <>on the latest {mine.length} of {billCount} bills - the Register has the whole session</>;
 
   const menu = menuOf(s, loc);
   const off = menu
@@ -155,10 +163,10 @@ export default function Dashboard() {
       <Kpis items={[
         ...(!canX ? [] : [
         { l: "Billed this session", v: takings(money0(billed)), d: <>{L.n} · {since}</> },
-        { l: "Cash taken this session", v: takings(money0(cashTaken)), d: <>{cashBills.length} of {mine.length} bill{mine.length === 1 ? "" : "s"}</> },
-        { l: "Bills raised", v: takings(String(mine.length)), d: <>last bill {latest[0]?.t ?? "-"}</> },
-        { l: "Items sold", v: takings(String(itemsSold)), d: <>across {menu.length} listed products</> },
-        { l: "Average bill", v: takings(money0(avgBill)), d: <>{mine.length ? money(avgBill) : "no bills yet"}</> },
+        { l: "Cash taken this session", v: takings(money0(cash.amount)), d: <>{cash.bills} of {billCount} bill{billCount === 1 ? "" : "s"}</> },
+        { l: "Bills raised", v: takings(String(billCount)), d: <>last bill {latest[0]?.t ?? "-"}</> },
+        { l: "Items sold", v: takings(String(itemsSold)), d: partial ? recent : <>across {menu.length} listed products</> },
+        { l: "Average bill", v: takings(money0(avgBill)), d: <>{billCount ? money(avgBill) : "no bills yet"}</> },
         ]),
         // Not a takings figure and never was: a product is off the menu whatever the register says.
         { l: "Products switched off", v: String(off.length), d: <>of {menu.length} on this menu</> },
@@ -264,7 +272,7 @@ export default function Dashboard() {
       <div className="mtop" />
       <Grid cols="g21">
         <div>
-          <Card title="Top five sellers this session" sub={`by revenue at ${L.n}`}>
+          <Card title="Top five sellers this session" sub={partial ? recent : `by revenue at ${L.n}`}>
             <DataTable
               cols={[
                 { h: "Product", cls: "nm", w: "46%" },
@@ -304,7 +312,7 @@ export default function Dashboard() {
         <Card title="This session at this counter" sub={since}
           right={seesRegister && <Btn variant="gh" size="sm" onClick={() => nav("/register")}>Register</Btn>}
           tip={<>
-          <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes since the last Z - add whatever float you
+          <b>Cash taken {money(cash.amount)}</b> is what the till has collected in notes since the last Z - add whatever float you
           were handed to get what should be counted out. Card and UPI are taken here but settle to the hospital
           account; staff, doctor and department bills collect nothing at the counter at all. Neither is cash, which
           is why <b>total billed {money(billed)}</b> is the larger figure.
@@ -322,15 +330,15 @@ export default function Dashboard() {
             <dt>Cost centre</dt><dd className="mono">{L.cc}</dd>
             <dt>Cash bills</dt>
             <dd className="mono">
-              {money(cashTaken)} <span className="mini">({cashBills.length} of {mine.length})</span>
+              {money(cash.amount)} <span className="mini">({cash.bills} of {billCount})</span>
             </dd>
             <dt>Card &amp; UPI</dt>
             <dd className="mono">
-              {money(banked)} <span className="mini">({bankBills.length} bill{bankBills.length === 1 ? "" : "s"})</span>
+              {money(bank.amount)} <span className="mini">({bank.bills} bill{bank.bills === 1 ? "" : "s"})</span>
             </dd>
             <dt>Charged to accounts</dt>
             <dd className="mono">
-              {money(charged)} <span className="mini">({acctBills.length} bill{acctBills.length === 1 ? "" : "s"})</span>
+              {money(acct.amount)} <span className="mini">({acct.bills} bill{acct.bills === 1 ? "" : "s"})</span>
             </dd>
             <dt>Total billed</dt><dd className="mono"><b>{money(billed)}</b></dd>
           </dl>

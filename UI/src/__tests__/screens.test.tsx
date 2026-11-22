@@ -1602,6 +1602,13 @@ const TOTALS: RegisterReport["totals"] = {
   sgst: 111.9, cgst: 111.9, taxTotal: 223.8,
   billCount: 26,
 };
+/** A session that has taken one ₹40 cash bill and nothing else - the dashboards print the X's totals. */
+const ONE_BILL: RegisterReport["totals"] = {
+  ...TOTALS, grossSales: 40, discount: 0, nettSales: 40, creditSales: 0, voidAmount: 0, voidBills: 0,
+  tenders: [{ tender: "Cash", amount: 40, bills: 1 }, { tender: "UPI", amount: 0, bills: 0 }], collected: 40,
+  oldBills: [], oldBillsTotal: 0, sgst: 0.95, cgst: 0.95, taxTotal: 1.9, billCount: 1,
+};
+const NOTHING: RegisterReport["totals"] = { ...ONE_BILL, grossSales: 0, nettSales: 0, tenders: [], collected: 0, sgst: 0, cgst: 0, taxTotal: 0, billCount: 0 };
 const xReport = (over: Partial<RegisterReport> = {}): RegisterReport => ({
   kind: "X", zNo: null, sessionId: "SES-coffee-12", loc: "coffee", previousZNo: "Z-0041",
   openedAt: "2026-09-17T13:00:00.000Z", closedAt: null,
@@ -1788,7 +1795,7 @@ describe("the register", () => {
   it("the counter's dashboard counts from the open session, not from midnight", async () => {
     const now = Date.now();
     const opened = new Date(now - 3 * 3600_000).toISOString();
-    const readXReport = vi.fn(async () => xReport({ openedAt: opened }));
+    const readXReport = vi.fn(async () => xReport({ openedAt: opened, totals: ONE_BILL }));
     act(() => {
       as("counter");
       useApp.setState({
@@ -1806,6 +1813,51 @@ describe("the register", () => {
     expect(kpiValue(ui.host, "Bills raised")).toBe("1");
     // The window is named by the Z it runs from, never by a date.
     expect(ui.text()).toContain("since Z-0041");
+  });
+
+  it("the counter's dashboard prints the X's takings when the session outlives the bills the store holds", async () => {
+    // The Snack Kiosk on 22 Nov: a session open since the 15th, no Z since. The store holds only
+    // the last BILL_DAYS of bills - one here - while the X counts all five. Summing the store
+    // printed ₹120 against the Register's ₹4,598.
+    const now = Date.now();
+    const readXReport = vi.fn(async () => xReport({
+      openedAt: new Date(now - 7.5 * 86400_000).toISOString(),
+      totals: { ...ONE_BILL, nettSales: 4598.2, collected: 4598.2, tenders: [{ tender: "Cash", amount: 4598.2, bills: 5 }], billCount: 5 },
+    }));
+    act(() => {
+      as("counter");
+      useApp.setState({ readXReport, bills: [aBill("CF/1259", new Date(now - 3600_000).toISOString(), 120)] });
+    });
+    const ui = mount(counter.dash);
+    await settle(() => { /* let the X land */ });
+    expect(kpiValue(ui.host, "Billed this session")).toBe("₹4,598");
+    expect(kpiValue(ui.host, "Cash taken this session")).toBe("₹4,598");
+    expect(kpiValue(ui.host, "Bills raised")).toBe("5");
+    expect(kpiValue(ui.host, "Average bill")).toBe("₹920");
+    // What was sold item by item is not on the X: the tile says it covers only the bills it has.
+    expect(ui.text()).toContain("on the latest 1 of 5 bills");
+  });
+
+  it("the manager's dashboard prints each outlet's X takings, not the bills the store still holds", async () => {
+    const now = Date.now();
+    const readXReport = vi.fn(async (loc?: string) => xReport({
+      loc: loc ?? "coffee", openedAt: new Date(now - 10 * 86400_000).toISOString(),
+      totals: loc === "rest" ? { ...ONE_BILL, nettSales: 1078, billCount: 8 } : NOTHING,
+    }));
+    act(() => {
+      as("manager");
+      useApp.setState({ readXReport, bills: [aBill("CF/1238", new Date(now - 3600_000).toISOString(), 205)] });
+    });
+    const ui = mount(manager.dash);
+    await settle(() => { /* let every outlet's X land */ });
+    expect(kpiValue(ui.host, "Billed across open sessions")).toBe("₹1,078");
+  });
+
+  it("names the tenders that took money, not how many tenders exist", async () => {
+    const { ui } = await openRegister("counter");
+    const tile = [...ui.host.querySelectorAll(".kpi")].find((k) => k.querySelector(".kl")?.textContent === "Collected");
+    expect(tile?.textContent).toContain("Cash · UPI");
+    expect(tile?.textContent).not.toMatch(/\d+ tenders?/);
   });
 
   it("the counter's dashboard blanks its takings rather than printing a zero it cannot stand behind", async () => {
@@ -1827,7 +1879,7 @@ describe("the register", () => {
     const opened = new Date(now - 2 * 3600_000).toISOString();
     const readXReport = vi.fn(async (loc?: string) =>
       // The kiosk's register did not answer; the other outlets' did.
-      (loc === "kiosk" ? null : xReport({ loc: loc ?? "coffee", openedAt: opened })));
+      (loc === "kiosk" ? null : xReport({ loc: loc ?? "coffee", openedAt: opened, totals: loc === "coffee" ? ONE_BILL : NOTHING })));
     act(() => {
       as("manager");
       useApp.setState({

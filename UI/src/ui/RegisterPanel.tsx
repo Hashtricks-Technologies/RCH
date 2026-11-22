@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
+import { ACCOUNT_TENDERS } from "@rch/domain";
 import { useApp } from "../store";
 import { fromWireDay, fromWireTime, money, money0 } from "../lib/fmt";
 import { Alert, Btn, Card, DataTable, Field, Kpis, Pill, TableFoot } from "./kit";
 import { RegisterSlip } from "./RegisterSlip";
 import ShiftReports from "./ShiftReports";
 import type { LocKey, RegisterReport } from "../types";
+
+/** The tenders that collected money this session: used, and not charged to an account. */
+const collectedBy = (t: RegisterReport["totals"]) =>
+  t.tenders.filter((x) => x.bills > 0 && !(ACCOUNT_TENDERS as readonly string[]).includes(x.tender)).map((x) => x.tender);
 
 export interface RegisterPanelProps {
   /** The outlet whose register this is; `null` when there is none to read. */
@@ -150,7 +155,9 @@ function Panel({ loc, locName, canX, canZ, canClose, showShifts }: RegisterPanel
           },
           {
             l: "Collected", v: t ? money0(t.collected) : "-",
-            d: t ? <>{t.tenders.length} tender{t.tenders.length === 1 ? "" : "s"}</> : <>-</>,
+            // The tenders that took money, by name. The X lists every tender whether or not it was
+            // used, so its length read "7 tenders" on a session paid in cash alone.
+            d: t ? <>{collectedBy(t).join(" · ") || "nothing collected yet"}</> : <>-</>,
             tip: "What the tenders actually took. A bill charged to an account collects nothing here.",
           },
           {
