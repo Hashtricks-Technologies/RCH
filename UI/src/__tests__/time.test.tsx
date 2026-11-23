@@ -156,7 +156,7 @@ describe("every 'today' figure at the till is today's", () => {
 
     // ₹940 was what this tile read: seven days of takings under one heading.
     const html = await renderSettled(createElement(counter.dash));
-    expect(kpi(html, "Billed this session")).toBe("₹40");
+    expect(kpi(html, "Billed this session")).toBe("₹40.00");
     expect(kpi(html, "Bills raised")).toBe("1");
     expect(kpi(html, "Items sold")).toBe("2");
   });

@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { useSees } from "../../nav";
-import { isToday, money, money0, sum } from "../../lib/fmt";
-import { Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tip, Toolbar } from "../../ui/kit";
+import { fromWireSince, isToday, money, money0, sum } from "../../lib/fmt";
+import { useCan } from "../../lib/selectors";
+import type { RegisterReport } from "../../types";
+import { Alert, Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tip, Toolbar } from "../../ui/kit";
 import { billStatus, settlementOf, type Settlement } from "./status";
 
 const SETTLEMENTS: { k: Settlement; label: string }[] = [
@@ -24,6 +26,25 @@ export default function Bills() {
   const [tender, setTender] = useState<string | null>(null);
   const [settle, setSettle] = useState<Settlement | null>(null);
 
+  // ---- the window. The dashboard and the Register count the open register session - Z to Z,
+  // not midnight to midnight - so this list does too by default; "today" alone showed "No bill
+  // raised at this counter today" beside a dashboard counting the session's bills from an earlier
+  // day (QA 21-Nov-2026). Reading the session needs X reports; without them the list is today's.
+  const canX = useCan("x_report", "view");
+  const readXReport = useApp((x) => x.readXReport);
+  const [session, setSession] = useState<RegisterReport | null | undefined>(undefined);
+  useEffect(() => {
+    if (!canX) return;
+    let live = true;
+    void readXReport(loc).then((r) => { if (live) setSession(r); });
+    return () => { live = false; };
+  }, [readXReport, loc, canX]);
+  const [pick, setPick] = useState<"session" | "today">("session");
+  /** The session's opening instant, or `""` with nothing open (so nothing is in it), or `null`
+   *  when the session is not known - not readable, or not read yet - and the list is today's. */
+  const opened = !canX || !session ? null : session.sessionId ? session.openedAt : "";
+  const bySession = pick === "session" && opened !== null;
+
   // The page says "today" and the counter reads it as today: the server sends seven days of
   // bills, so without this filter Monday's screen carried last Tuesday's takings under that
   // word, and the footer's cash figure with them. Newest first, by the instant rather than the
@@ -31,7 +52,7 @@ export default function Bills() {
   // `?? ""` rather than a bare compare: a row that somehow reaches the store without an instant
   // should sort to the bottom, not throw the whole screen into the error boundary.
   const mine = s.bills
-    .filter((b) => b.loc === loc && isToday(b.iso))
+    .filter((b) => b.loc === loc && (bySession ? opened !== "" && (b.iso ?? "") >= opened : isToday(b.iso)))
     .sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? ""));
   const tenders = Array.from(new Set(mine.map((b) => b.pay))).sort();
   const rows = mine.filter((b) => {
@@ -60,21 +81,36 @@ export default function Bills() {
   const billed = sum(live, (b) => b.tot);
   const cash = sum(live.filter((b) => settlementOf(b.pay) === "drawer"), (b) => b.tot);
   const settleLabel = settle ? SETTLEMENTS.find((x) => x.k === settle)!.label : "All";
+  // The browser holds 7 days of bills; a session open longer has bills this list cannot show.
+  const listed = mine.filter((b) => !b.voided).length;
+  const unlisted = bySession && session ? Math.max(0, session.totals.billCount - listed) : 0;
+  const windowWord = bySession ? (opened ? `this register session (since ${fromWireSince(opened)})` : "this register session") : "today";
 
   return (
     <>
       <PageHead
         crumbs={["Royal Care", L.n, "Bills"]}
         title="Bills"
-        tip="Bills raised at this counter today."
+        tip="Bills raised at this counter in the open register session - since the last Z, which may be an earlier day - or today alone."
         actions={seesPos && <Btn onClick={() => nav("/pos")}>New bill</Btn>}
       />
+      {unlisted > 0 && (
+        <Alert tone="i" label="OLDER">
+          {unlisted} more bill{unlisted === 1 ? " belongs" : "s belong"} to this session but {unlisted === 1 ? "was" : "were"} raised
+          before the last 7 days, which is all this screen holds - the Register counts the whole session.
+        </Alert>
+      )}
       <Card flush>
         <Toolbar
           placeholder="Search bill number, operator, tender, time, payer or customer…"
           value={q}
           onSearch={setQ}
           filters={<>
+            {opened !== null && (
+              <FilterSelect label="Window" value={pick === "session" ? "This session" : "Today"}
+                options={["This session", "Today"]}
+                onChange={(v) => setPick(v === "Today" ? "today" : "session")} />
+            )}
             {tenders.length > 1 && (
               <FilterSelect label="Tender" value={tender ?? "All"}
                 options={["All", ...tenders]}
@@ -137,8 +173,12 @@ export default function Bills() {
               action: <Btn size="sm" onClick={clearAll}>Clear filters</Btn>,
             }
             : {
-              title: "No bill raised at this counter today",
-              sub: "Open the till and print the first bill of the day.",
+              title: unlisted
+                ? "This session's bills are older than this screen holds"
+                : `No bill raised at this counter ${windowWord}`,
+              sub: unlisted
+                ? "The Register has the whole session."
+                : bySession && opened === "" ? "Nothing is open on this register - the next bill opens a session." : "Open the till and print the first bill.",
               action: seesPos ? <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn> : undefined,
             }}
         />

@@ -262,6 +262,8 @@ try {
   counts `Paid` orders at `user.loc` for an edit holder. A bill with `src === "qr"` wears a "QR"
   pill on both Bills lists; the `cbill` drawer names `qo`, pills `refund` (`RefundPill`, exported
   from `QrOrders.tsx`) and offers Retry refund on a `Failed` one to `useHolds("void_bill")`.
+- **The Credit screen prints the server's age for the oldest open bill** (`oldestDays`), never one
+  worked out on the device's clock, and heads the rate column "Discount · limit" with the room left.
 - **The Credit screen's two lists (`store/receivables.ts`) are read, not kept.** `loadReceivables` answers
   `false` rather than throwing and sets `receivablesFailed`, so the screen shows an outage line instead of
   "nobody owes anything" - the distinction `AdminAudit.tsx` draws. `readStatement` answers `null` the way
@@ -297,7 +299,16 @@ try {
   sellers and the last five bills are not on the X and are still read off the stored bills; when
   those are fewer than `totals.billCount` the counter's dashboard says which latest bills it covers.
   The Register's Collected tile names the tenders that took money - the X lists all seven, used or
-  not. Both dashboards read
+  not. Takings and tax print with `money` (to the paisa) on the Register and both dashboards, so a
+  tile never reads ₹4,478 beside ₹4,478.20. A session window that opened before today prints its day
+  with its time (`fromWireSince`), and an outlet with nothing open (empty `sessionId`) says so rather
+  than printing the time it was read. When every bill of a session is older than the store holds,
+  the counter's Top 5, Last 5 and "last bill" say so instead of "nothing billed". **The counter's Bills
+  screen is windowed on the same session** (a Window switch: This session / Today) for a role holding
+  X reports, with an OLDER alert counting the session's bills it cannot list; without X reports it is
+  today's. The counter dashboard's "Products unavailable" splits switched off from out of stock, and
+  its request KPIs and the Requests footer count with `isRequestInProgress` and `isProdOrderOpen`
+  (`@rch/domain`), the kitchen's open orders included. Both dashboards read
   `readXReport` as they mount - for a role holding X reports only - so a test that renders one must
   stub it - unstubbed it reaches `fetch`, and under `vi.useFakeTimers()` it never settles.
   `src/__tests__/time.test.tsx` stubs it once in `beforeEach`. A dashboard is shown to every role on

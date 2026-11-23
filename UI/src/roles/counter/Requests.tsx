@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { sourceOf } from "@rch/domain";
+import { isProdOrderOpen, isRequestInProgress, sourceOf } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, avail, isReqOpen, menuOf, qty, counterNameOf, useCan } from "../../lib/selectors";
+import { activeItems, avail, menuOf, qty, counterNameOf, useCan } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FormRow, ItemImage, PageHead, Pill, Section,
+  Alert, Btn, BtnRow, Card, commitTyping, DataTable, DraftLineInput, Field, FormRow, ItemImage, PageHead, Pill, Section,
   StatusPill, useLineKeys,
 } from "../../ui/kit";
 import type { DraftLine } from "../../types";
@@ -62,6 +62,13 @@ export default function Requests() {
   // The draft, the note and the priority survive a refusal - the store clears only the lines
   // that actually landed, and this clears the rest on the same answer.
   const submit = async () => {
+    // Read the draft as it stands now, not as this render saw it: the press's own mousedown has
+    // just committed the box the operator was typing in (`commitTyping`), so a quantity typed
+    // last counts - the button used to be greyed until the box was left, and that press was lost.
+    if (useApp.getState().draft.filter((l) => !lineErr(l)).length === 0) {
+      s.notify("Add at least one line with a quantity");
+      return;
+    }
     setBusy(true);
     const ok = await s.submitStockRequest(note.trim(), priority === "Urgent", need || undefined);
     setBusy(false);
@@ -90,7 +97,9 @@ export default function Requests() {
   const [askBusy, setAskBusy] = useState<string | null>(null);
 
   const mine = s.req.filter((r) => r.from === loc).slice().sort((a, b) => b.iso.localeCompare(a.iso));
-  const openCount = mine.filter((r) => isReqOpen(r.st)).length;
+  // Still on its way: the dashboard's rule, and the kitchen's orders beside it (QA 21-Nov-2026).
+  const openCount = mine.filter((r) => isRequestInProgress(r.st)).length;
+  const openOrders = s.pord.filter((o) => o.from === loc && isProdOrderOpen(o.st)).length;
   const usable = draft.filter((l) => !lineErr(l)).length;
   const skipped = draft.length - usable;
 
@@ -295,9 +304,12 @@ export default function Requests() {
             placeholder="Milk finished at 09:10, cappuccino and tea are both off." />
         </Field>
         <BtnRow>
-          <Btn disabled={usable === 0 || busy} onClick={submit}>
-            {busy ? "Sending…" : "Submit request"}
-          </Btn>
+          <span onMouseDown={commitTyping}>
+            <Btn disabled={busy} onClick={() => void submit()}
+              tip={usable === 0 ? "Add at least one line with a quantity" : undefined}>
+              {busy ? "Sending…" : "Submit request"}
+            </Btn>
+          </span>
           <Btn variant="gh" disabled={draft.length === 0 && !note} onClick={clearDraft}>Clear</Btn>
         </BtnRow>
       </Card>}
@@ -333,7 +345,8 @@ export default function Requests() {
       <KitchenOrderCard loc={loc} />
 
       <p className="mini mtop">
-        {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open.
+        {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open
+        {" · "}{openOrders} kitchen order{openOrders === 1 ? "" : "s"} still on the kitchen's board.
       </p>
     </>
   );

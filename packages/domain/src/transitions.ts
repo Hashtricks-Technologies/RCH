@@ -54,6 +54,18 @@ export const PROD_ORDER_TRANSITIONS: TransitionTable<PordStatus> = {
   Declined: [],
 };
 
+/**
+ * Still on its way to the shelf: every stock request that is not finished. A request with a
+ * ticket issued, or collected and in transit, is still the counter's to chase - "open" must not
+ * mean only "still cancellable". `Received` is finished too: the legacy word for a request whose
+ * stock has landed. One rule, so the counter's dashboard and its Requests screen count alike.
+ */
+export const isRequestInProgress = (st: ReqStatus): boolean =>
+  !(["Closed", "Rejected", "Cancelled", "Received"] as readonly ReqStatus[]).includes(st);
+
+/** Still on the kitchen's board: an order nobody has dispatched or declined. */
+export const isProdOrderOpen = (st: PordStatus): boolean => st !== "Dispatched" && st !== "Declined";
+
 export const SHOP_ASK_TRANSITIONS: TransitionTable<ShopAskStatus> = {
   Asked: ["Sent", "Declined"],
   // Withdrawing the ticket a grant raised is the one way back. The holding shop granted, changed

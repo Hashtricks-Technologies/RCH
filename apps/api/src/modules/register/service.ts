@@ -8,7 +8,7 @@
 import type { z } from "zod";
 import type { CloseRegisterBodySchema, OldBillLine, RegisterReport, RegisterTotals, TenderLine, WriteResponse } from "@rch/contract";
 import { RegisterTotalsSchema, SettlementModeSchema, TenderSchema } from "@rch/contract";
-import { ACCOUNT_TENDERS, money as inr } from "@rch/domain";
+import { ACCOUNT_TENDERS, money as inr, splitGst } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withReadTransaction, withTransaction, type Reader } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -59,7 +59,7 @@ function buildTotals(sold: SoldLine[], voided: { amount: number; bills: number }
   // roundings of an odd number of paise leave a slip whose two GST lines do not add up to its
   // own tax total, which is the first thing an auditor checks.
   const taxTotal = sum(sold.map((r) => r.tax));
-  const sgst = money(taxTotal / 2);
+  const { sgst, cgst } = splitGst(taxTotal);
 
   return {
     grossSales: money(nettSales + discount), discount, nettSales, creditSales,
@@ -73,7 +73,7 @@ function buildTotals(sold: SoldLine[], voided: { amount: number; bills: number }
     complimentary: 0, unCollected: 0, unCollectedDiscount: 0,
     tenders, collected,
     oldBills, oldBillsTotal: sum(oldBills.map((o) => o.amount)),
-    sgst, cgst: money(taxTotal - sgst), taxTotal,
+    sgst, cgst, taxTotal,
     billCount: sold.reduce((a, r) => a + r.bills, 0),
   };
 }

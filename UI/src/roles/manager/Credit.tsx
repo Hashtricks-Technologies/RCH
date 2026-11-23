@@ -52,10 +52,11 @@ const CLASSES = BillPartySchema.options;
  */
 const NEAR = 0.2;
 
-/** Whole days on the hospital's calendar, both ends. Measuring from `Date.now()` in the host's
- *  own day puts a bill taken at 06:00 IST a day out on a box running in UTC. */
-const daysOld = (iso: string): number => Math.round(
-  (Date.parse(`${istDate(new Date())}T00:00:00+05:30`) - Date.parse(`${istDate(new Date(iso))}T00:00:00+05:30`)) / 86400000,
+/** Whole days on the hospital's calendar, both ends - the server's figure where it sent one, so a
+ *  device whose clock is wrong cannot misstate it (QA 21-Nov-2026: "302 days old" on a bill 65
+ *  days old). The browser's own count is only for a reply from before the server sent it. */
+const daysOld = (r: { oldest?: string; oldestDays?: number }): number => r.oldestDays ?? Math.round(
+  (Date.parse(`${istDate(new Date())}T00:00:00+05:30`) - Date.parse(`${istDate(new Date(r.oldest ?? ""))}T00:00:00+05:30`)) / 86400000,
 );
 /** How old the oldest open bill is, as a whole phrase: "today" is not "0 days old". */
 const ageOf = (n: number) => (n === 0 ? "raised today" : n === 1 ? "1 day old" : `${n} days old`);
@@ -229,7 +230,7 @@ function Owed({ rows, failed, reading, onOpen, onRetry }: {
               cols={[
                 { h: "Name", cls: "nm", w: "22%", sort: "name" },
                 { h: "Category", sort: "category" },
-                { h: "On", tip: "The discount and the credit ceiling that apply to them today - their own where the manager set one, their category's otherwise." },
+                { h: "Discount · limit", tip: "The discount this party gets off every bill and their credit ceiling - their own where the manager set one, their category's otherwise. The room left under the ceiling is beneath it. This is not how much of the ceiling is used." },
                 { h: "Charged", r: true, sort: "charged" },
                 { h: "Settled", r: true, sort: "settled" },
                 { h: "Outstanding", r: true, sort: "outstanding" },
@@ -251,7 +252,10 @@ function Owed({ rows, failed, reading, onOpen, onRetry }: {
                       {!r.active && <> <Pill tone="mu">Deactivated</Pill></>}
                     </>,
                     <Tag>{PARTY_TITLE[r.kind]}</Tag>,
-                    <>{r.pct}% · {ceiling(r.limit)}</>,
+                    <>
+                      {r.pct}% off · {r.limit === null ? "no limit" : <>{ceiling(r.limit)} limit</>}
+                      {left !== null && <small>{money0(left)} left</small>}
+                    </>,
                     money(r.charged),
                     money(r.settled),
                     <>
@@ -263,7 +267,7 @@ function Owed({ rows, failed, reading, onOpen, onRetry }: {
                     </>,
                     r.bills > 0 ? String(r.bills) : <span className="dim">—</span>,
                     r.oldest
-                      ? <span className="mono">{fromWireDay(r.oldest)}<small>{ageOf(daysOld(r.oldest))}</small></span>
+                      ? <span className="mono">{fromWireDay(r.oldest)}<small>{ageOf(daysOld(r))}</small></span>
                       : <span className="dim">—</span>,
                   ],
                 };

@@ -55,7 +55,7 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
         <div className="totrow"><span>On hand</span><span>{held ? <>{fq(on, it)} {U(it)}</> : "-"}</span></div>
         <div className="totrow"><span>Par here</span><span className="dim">{rl > 0 ? fq(rl, it) : "-"}</span></div>
         <div className="totrow"><span>Days of cover</span>
-          <span style={held && a <= 0 ? { color: "var(--crit)" } : undefined}>{held ? `${cover.toFixed(1)} d` : "-"}</span>
+          <span style={held && a <= 0 ? { color: "var(--crit)" } : undefined}>{held && rl > 0 ? `${cover.toFixed(1)} d` : "-"}</span>
         </div>
         <div className="totrow"><span>State</span>
           <span>{held

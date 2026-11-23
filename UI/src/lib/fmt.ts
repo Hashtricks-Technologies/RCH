@@ -75,6 +75,12 @@ export const isToday = (iso: string): boolean => {
   return !Number.isNaN(d.getTime()) && istDate(d) === istDate(new Date());
 };
 
+/** When a window opened, for a line that reads "since …": the time alone when that was today,
+ *  the hospital's day and the time otherwise. A register left open since 15-Nov printed just
+ *  "17:36", and QA read it as this morning (21-Nov-2026). */
+export const fromWireSince = (iso: string): string =>
+  isToday(iso) ? fromWireTime(iso) : `${fromWireDay(iso)} ${fromWireTime(iso)}`;
+
 /** "2026-08-31" -> "31-Aug-2026". The wording lives in `@rch/domain` because a purchase order's
  *  expected date is printed in the server's toast as well as in this table. */
 export const fromWireDate = dmy;

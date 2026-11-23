@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IT, LOC } from "../../data/master";
+import { LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { useSees } from "../../nav";
-import { canCancelTicket, canReceiveTicket, itemMatches, useCan } from "../../lib/selectors";
-import { fq, sum } from "../../lib/fmt";
+import { canCancelTicket, canReceiveTicket, counterNameOf, itemMatches, useCan } from "../../lib/selectors";
+import { fq, unitTotal } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
 import type { LocKey, TktStatus } from "../../types";
 
@@ -103,7 +103,7 @@ export default function Tickets() {
             { h: "", w: "7%" },
           ]}
           rows={rows.map((t) => {
-            const first = IT[t.lines[0]?.it]?.n ?? "-";
+            const first = t.lines[0] ? counterNameOf(t.lines[0].it) : "-";
             const more = t.lines.length - 1;
             return {
               key: t.id,
@@ -113,7 +113,7 @@ export default function Tickets() {
                 <span className="mono">{t.req}</span>,
                 LOC[t.from].n,
                 <>{first}{more > 0 ? ` +${more} more` : ""}</>,
-                t.lines.length === 1 ? fq(t.lines[0].qty, t.lines[0].it) : sum(t.lines, (l) => l.qty),
+                t.lines.length === 1 ? fq(t.lines[0].qty, t.lines[0].it) : unitTotal(t.lines),
                 <StatusPill status={t.st} />,
                 may && canReceiveTicket(t.st)
                   ? <Btn size="xs" onClick={() => s.receiveTicket(t.id)}>Receive</Btn>
@@ -153,7 +153,7 @@ export default function Tickets() {
                 { h: "", w: "12%" },
               ]}
               rows={sent.map((t) => {
-                const first = IT[t.lines[0]?.it]?.n ?? "-";
+                const first = t.lines[0] ? counterNameOf(t.lines[0].it) : "-";
                 const more = t.lines.length - 1;
                 return {
                   key: "out:" + t.id,
@@ -162,7 +162,7 @@ export default function Tickets() {
                     <b className="mono">{t.id}</b>,
                     LOC[t.to].n,
                     <>{first}{more > 0 ? ` +${more} more` : ""}</>,
-                    t.lines.length === 1 ? fq(t.lines[0].qty, t.lines[0].it) : sum(t.lines, (l) => l.qty),
+                    t.lines.length === 1 ? fq(t.lines[0].qty, t.lines[0].it) : unitTotal(t.lines),
                     <StatusPill status={t.st} />,
                     <Btn size="xs" variant="gh" onClick={() => s.openDrawer("ctkt", t.id)}>
                       {may && canCancelTicket(t.st) ? "Withdraw" : "Open"}

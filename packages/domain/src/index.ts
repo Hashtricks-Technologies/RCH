@@ -10,14 +10,14 @@ export { availOf, fq } from "./availability.js";
 export { committed, freeToPromise } from "./promise.js";
 export { bestBeforeAt, bestBeforeText } from "./shelf.js";
 export { planBill, type BillPlan } from "./billing.js";
-export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, ADJUSTMENT_REQUEST_TRANSITIONS, QR_ORDER_TRANSITIONS, REFUND_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
+export { isProdOrderOpen, isRequestInProgress, REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, ADJUSTMENT_REQUEST_TRANSITIONS, QR_ORDER_TRANSITIONS, REFUND_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
 export { planApproval, approvedStatus, planPrqApproval, prqStatus, type ApprovalLine, type ApprovalPlan } from "./approval.js";
 export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } from "./credit.js";
 // ---- who is being billed, what comes off their bill, and what settles what they owe.
 export { ACCOUNT_TENDERS, TILL_TENDERS, isAccountTender, normalizePhone, PARTY_LABEL, PARTY_TITLE, partyOf, payerKindForTender, phoneRefusal } from "./party.js";
 export { MAX_DISCOUNT_PCT, creditLimitFor, creditLimitRefusal, discountOn, discountPctFor, discountRefusal, validCreditLimit, validDiscountPct } from "./discount.js";
 export { allocateSettlement, nothingOwedMessage, settlementOverpayMessage, type OpenBill, type SettlementAllocation } from "./settlement.js";
-export { money, money0, dmy, istDate, unitTotal } from "./format.js";
+export { money, money0, dmy, istDate, istDaysBetween, splitGst, unitTotal } from "./format.js";
 export { foldClaims, releaseClaim, shortfallClaims, type ClaimSrc } from "./claims.js";
 export { checkReceiptLine, netReceived, receiptStatus, RECEIPT_TOLERANCE, type ReceiptCheckInput, type ReceiptCheckLine } from "./receipt.js";
 export { contractInWindow, etaFrom, isPurchased, needsApproval, poValue, rateFor } from "./purchasing.js";

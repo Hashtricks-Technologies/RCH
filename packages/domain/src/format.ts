@@ -22,6 +22,23 @@ export const istDate = (d: Date): string => {
   return `${get("year")}-${get("month")}-${get("day")}`;
 };
 
+/** Whole hospital calendar days from `from` to `to` (IST), never below zero - how old a bill
+ *  is. Computed on the server, so a device whose clock is wrong cannot age a 65-day-old bill
+ *  302 days (QA 21-Nov-2026). */
+export const istDaysBetween = (from: Date, to: Date): number => {
+  const day = (d: Date) => Date.parse(`${istDate(d)}T00:00:00Z`);
+  return Math.max(0, Math.round((day(to) - day(from)) / 86_400_000));
+};
+
+/** A bill's or a session's GST as its two halves: SGST is half rounded to the paisa, CGST the
+ *  remainder - never a second division - so the two printed lines always add up to the total.
+ *  The register and the till both print it this way (QA 21-Nov-2026). */
+export const splitGst = (tax: number): { sgst: number; cgst: number } => {
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const sgst = r2(tax / 2);
+  return { sgst, cgst: r2(tax - sgst) };
+};
+
 /** "2026-08-31" -> "31-Aug-2026", the form every purchase order and contract is read in.
  *  Anything that is not a wire date passes straight through, so a value already in this form
  *  survives a second pass.

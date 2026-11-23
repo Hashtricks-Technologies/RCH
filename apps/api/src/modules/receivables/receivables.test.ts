@@ -293,6 +293,12 @@ describe("taking a payment back", () => {
     const voided = st.settlements.find((x) => x.id === id);
     expect(voided?.lines).toEqual([{ no: bill, amount: 200 }]);
     expect(voided?.voidReason).toBe("Keyed against the wrong consultant");
+
+    // And the bill it closed is open again - on the statement and on the list - so the next
+    // payment has something to be laid over.
+    expect(st.open.map((b) => ({ no: b.no, owed: b.owed }))).toEqual([{ no: bill, owed: 200 }]);
+    expect(await rowFor("doctor", DOCTOR.id)).toMatchObject({ outstanding: 200, bills: 1 });
+    expect((await write("POST", "u2", "/settlements", { kind: "doctor", id: DOCTOR.id, amount: 200, mode: "Cash" })).statusCode).toBe(200);
   });
 
   it("needs a reason, and refuses a second void", async () => {
@@ -350,6 +356,35 @@ describe("who owes what", () => {
     expect(row.outstanding).toBe(0);
     expect(row.bills).toBe(0);
     expect(row.oldest).toBeUndefined();
+  });
+
+  // QA 21-Nov-2026 (X1): the count and the oldest are the bills still open, as the contract says -
+  // a settled bill is neither "open" nor the thing to chase.
+  it("counts only the bills still open, and dates the oldest of those", async () => {
+    const DAY = 86_400_000;
+    const first = new Date(Date.now() - 40 * DAY);
+    const second = new Date(Date.now() - 10 * DAY);
+    await given.bill(app.db, { loc: "coffee", tender: "Doctor credit", payer: DOCTOR, total: 120, at: first });
+    await given.bill(app.db, { loc: "coffee", tender: "Doctor credit", payer: DOCTOR, total: 80, at: second });
+    expect(await rowFor("doctor", DOCTOR.id)).toMatchObject({ bills: 2, oldest: first.toISOString() });
+
+    // Oldest first: the 120 closes the first bill and leaves the second open.
+    expect((await write("POST", "u2", "/settlements", { kind: "doctor", id: DOCTOR.id, amount: 120, mode: "Cash" })).statusCode).toBe(200);
+    expect(await rowFor("doctor", DOCTOR.id)).toMatchObject({ charged: 200, settled: 120, outstanding: 80, bills: 1, oldest: second.toISOString() });
+
+    expect((await write("POST", "u2", "/settlements", { kind: "doctor", id: DOCTOR.id, amount: 80, mode: "UPI" })).statusCode).toBe(200);
+    const paid = await rowFor("doctor", DOCTOR.id);
+    expect(paid).toMatchObject({ outstanding: 0, bills: 0 });
+    expect(paid.oldest).toBeUndefined();
+    expect(paid.oldestDays).toBeUndefined();
+  });
+
+  // QA 21-Nov-2026 (V9): the age is the server's, in IST days, so a device whose clock is wrong
+  // cannot print "302 days old" against a bill taken 65 days ago.
+  it("ages the oldest open bill in IST days on the server", async () => {
+    const at = new Date(Date.now() - 65 * 86_400_000);
+    await given.bill(app.db, { loc: "coffee", tender: "Doctor credit", payer: DOCTOR, total: 50, at });
+    expect((await rowFor("doctor", DOCTOR.id)).oldestDays).toBe(65);
   });
 
   it("sorts what is owed to the top", async () => {
