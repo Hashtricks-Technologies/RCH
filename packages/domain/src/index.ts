@@ -17,7 +17,7 @@ export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } f
 export { ACCOUNT_TENDERS, TILL_TENDERS, isAccountTender, normalizePhone, PARTY_LABEL, PARTY_TITLE, partyOf, payerKindForTender, phoneRefusal } from "./party.js";
 export { MAX_DISCOUNT_PCT, creditLimitFor, creditLimitRefusal, discountOn, discountPctFor, discountRefusal, validCreditLimit, validDiscountPct } from "./discount.js";
 export { allocateSettlement, nothingOwedMessage, settlementOverpayMessage, type OpenBill, type SettlementAllocation } from "./settlement.js";
-export { money, money0, dmy, istDate, unitTotal } from "./format.js";
+export { money, money0, dmy, istDate, istDaysBetween, splitGst, unitTotal } from "./format.js";
 export { foldClaims, releaseClaim, shortfallClaims, type ClaimSrc } from "./claims.js";
 export { checkReceiptLine, netReceived, receiptStatus, RECEIPT_TOLERANCE, type ReceiptCheckInput, type ReceiptCheckLine } from "./receipt.js";
 export { contractInWindow, etaFrom, isPurchased, needsApproval, poValue, rateFor } from "./purchasing.js";

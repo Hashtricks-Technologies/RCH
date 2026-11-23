@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dmy, istDate, money, money0, unitTotal } from "./format.js";
+import { dmy, istDate, istDaysBetween, money, money0, splitGst, unitTotal } from "./format.js";
 
 describe("money", () => {
   it("prints rupees the way every screen already prints them", () => {
@@ -27,6 +27,29 @@ describe("istDate", () => {
     // 19:00Z on the 4th, and a host in UTC would call that the 4th. The hospital would not.
     expect(istDate(new Date("2026-09-04T18:00:00.000Z"))).toBe("2026-09-04");
     expect(istDate(new Date("2026-09-04T19:00:00.000Z"))).toBe("2026-09-05");
+  });
+});
+
+describe("istDaysBetween (QA 21-Nov-2026, V9)", () => {
+  it("counts hospital calendar days, whatever the host's zone", () => {
+    // 17-Sep 21:54 IST to 21-Nov 11:30 IST: 65 days - what the receivables list should read.
+    expect(istDaysBetween(new Date("2026-09-17T16:24:45Z"), new Date("2026-11-21T06:00:00Z"))).toBe(65);
+    // Past 18:30Z it is already the 22nd in IST.
+    expect(istDaysBetween(new Date("2026-09-17T16:24:45Z"), new Date("2026-11-21T18:31:00Z"))).toBe(66);
+  });
+  it("is zero on the same IST day, even across UTC midnight", () => {
+    expect(istDaysBetween(new Date("2026-11-20T19:00:00Z"), new Date("2026-11-21T17:00:00Z"))).toBe(0);
+  });
+  it("never goes negative for an instant after the reference", () => {
+    expect(istDaysBetween(new Date("2026-11-22T06:00:00Z"), new Date("2026-11-21T06:00:00Z"))).toBe(0);
+  });
+});
+
+describe("splitGst (QA 21-Nov-2026, V3)", () => {
+  it("halves the tax and gives the remainder to CGST, so the two lines always add up", () => {
+    expect(splitGst(205.15)).toEqual({ sgst: 102.58, cgst: 102.57 });
+    expect(splitGst(210.86)).toEqual({ sgst: 105.43, cgst: 105.43 });
+    expect(splitGst(0)).toEqual({ sgst: 0, cgst: 0 });
   });
 });
 

@@ -67,6 +67,9 @@ export const ReceivableSchema = z.strictObject({
   /** How many bills are still open, and when the oldest of them was taken - what turns a
    *  balance into a conversation. Absent when nothing is open. */
   bills: z.number().int(), oldest: IsoTime.optional(),
+  /** How many hospital (IST) days old that oldest open bill is, counted by the server - so a
+   *  device whose clock is wrong cannot misstate it. Absent with `oldest`. */
+  oldestDays: z.number().int().nonnegative().optional(),
   /** What the rate card says about them today, so the list can show a doctor on 25% beside one
    *  on the category's 20% without a second read. */
   pct: DiscountPctSchema, limit: Money.nullable(),

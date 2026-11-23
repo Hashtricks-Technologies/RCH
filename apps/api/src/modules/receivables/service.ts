@@ -13,12 +13,12 @@ import type {
 } from "@rch/contract";
 import {
   allocateSettlement, can, creditLimitFor, creditLimitRefusal, discountPctFor, discountRefusal,
-  dmy, istDate, money as inr, nothingOwedMessage, PARTY_LABEL, settlementOverpayMessage,
+  dmy, istDate, istDaysBetween, money as inr, nothingOwedMessage, PARTY_LABEL, settlementOverpayMessage,
   validCreditLimit, validDiscountPct,
 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { auditBefore } from "../../lib/audit.js";
-import { openBillsFor, lockPayerCredit, outstandingFor, settlementLinesOf } from "../../lib/credit.js";
+import { openBillsByPayer, openBillsFor, lockPayerCredit, outstandingFor, settlementLinesOf } from "../../lib/credit.js";
 import { withReadTransaction, withTransaction } from "../../lib/db.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
@@ -155,6 +155,7 @@ export function createReceivablesService(db: Db) {
       return withReadTransaction(db, async (tx) => {
         const charged = await repo.chargedByPayer(tx);
         const settled = await repo.settledByPayer(tx);
+        const open = await openBillsByPayer(tx);
         const register = await repo.allPayers(tx);
         const terms = await readTerms(tx);
 
@@ -162,6 +163,15 @@ export function createReceivablesService(db: Db) {
         const own = new Map(terms.payers.map((t) => [`${t.kind}:${t.id}`, t]));
         const chargedBy = new Map(charged.map((c) => [`${c.kind}:${c.id}`, c]));
         const settledBy = new Map(settled.map((s) => [`${s.kind}:${s.id}`, s.settled]));
+        // The bills each party still owes on, oldest first - the statement's own rule, so the
+        // list's count and age agree with what opening the row shows.
+        const openBy = new Map<string, { bills: number; oldest: Date }>();
+        for (const b of open) {
+          const k = `${b.kind}:${b.id}`;
+          const seen = openBy.get(k);
+          openBy.set(k, { bills: (seen?.bills ?? 0) + 1, oldest: seen?.oldest ?? b.at });
+        }
+        const now = new Date();
 
         // The register, plus anybody charged who is no longer on it. A payer deleted from the
         // roster cannot happen - they are switched off, never removed - but a charged party with
@@ -176,6 +186,7 @@ export function createReceivablesService(db: Db) {
         return rows.map((p): Receivable => {
           const key = `${p.kind}:${p.id}`;
           const c = chargedBy.get(key);
+          const o = openBy.get(key);
           const cls = byCls.get(p.kind);
           const mine = own.get(key);
           const paid = settledBy.get(key) ?? 0;
@@ -183,8 +194,8 @@ export function createReceivablesService(db: Db) {
           return {
             kind: p.kind, id: p.id, name: p.name, active: p.active,
             charged: total, settled: paid, outstanding: Math.max(0, money(total - paid)),
-            bills: c?.bills ?? 0,
-            ...(c?.oldest ? { oldest: iso(c.oldest) } : {}),
+            bills: o?.bills ?? 0,
+            ...(o ? { oldest: iso(o.oldest), oldestDays: istDaysBetween(o.oldest, now) } : {}),
             pct: discountPctFor(cls?.pct ?? 0, mine?.pct),
             limit: creditLimitFor(cls?.limit ?? null, mine?.limit),
           };

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { PayerKind } from "@rch/contract";
 import { ACCOUNT_TENDERS } from "@rch/domain";
 import * as s from "../db/schema/index.js";
@@ -78,31 +78,45 @@ export async function outstandingFor(
  */
 export async function openBillsFor(
   db: Db | Tx, kind: PayerKind, payerId: string,
-): Promise<{ no: string; loc: string; at: Date; total: number; settled: number; owed: number }[]> {
+): Promise<OpenBill[]> {
+  return (await openAccountBills(db, and(eq(s.bills.payerKind, kind), eq(s.bills.payerId, payerId))))
+    .map(({ no, loc, at, total, settled, owed }) => ({ no, loc, at, total, settled, owed }));
+}
+
+/** Every payer's open bills at once, oldest first - the receivables list's "open bills" and
+ *  "oldest", by exactly the rule a statement and a settlement use (QA 21-Nov-2026, X1). */
+export async function openBillsByPayer(db: Db | Tx): Promise<(OpenBill & { kind: PayerKind; id: string })[]> {
+  return openAccountBills(db);
+}
+
+type OpenBill = { no: string; loc: string; at: Date; total: number; settled: number; owed: number };
+
+async function openAccountBills(db: Db | Tx, narrow?: SQL): Promise<(OpenBill & { kind: PayerKind; id: string })[]> {
   const rows = await db.select({
+    kind: s.bills.payerKind, id: s.bills.payerId,
     no: s.bills.no, loc: s.bills.loc, at: s.bills.at, total: s.bills.total,
-    // Only the lines of settlements nobody voided. A left join with the filter in the `on`
-    // clause rather than the `where`, so a bill with no settlement at all still comes back.
-    settled: sql<string>`coalesce(sum(${s.settlementLines.amount}), 0)`,
+    // Only the lines of settlements nobody voided. The settlement is joined with the filter in
+    // the `on` clause, so a bill with no settlement at all still comes back - and the sum is
+    // filtered on that join having matched, because a voided settlement's lines are still on the
+    // table (badged, never erased) and summing them regardless kept a bill its void had reopened
+    // looking closed: owed but on no statement, and with nothing for the next payment to land on.
+    settled: sql<string>`coalesce(sum(${s.settlementLines.amount}) filter (where ${s.settlements.id} is not null), 0)`,
   }).from(s.bills)
     .leftJoin(s.settlementLines, eq(s.settlementLines.billNo, s.bills.no))
     .leftJoin(s.settlements, and(eq(s.settlements.id, s.settlementLines.settlementId), isNull(s.settlements.voidedAt)))
-    .where(and(
-      inArray(s.bills.tender, [...ACCOUNT_TENDERS]),
-      eq(s.bills.payerKind, kind), eq(s.bills.payerId, payerId), isNull(s.bills.voidedAt),
-    ))
-    .groupBy(s.bills.no, s.bills.loc, s.bills.at, s.bills.total)
+    .where(and(inArray(s.bills.tender, [...ACCOUNT_TENDERS]), isNull(s.bills.voidedAt), narrow))
+    .groupBy(s.bills.payerKind, s.bills.payerId, s.bills.no, s.bills.loc, s.bills.at, s.bills.total)
     .orderBy(s.bills.at, s.bills.no);
 
-  return rows
-    .map((r) => {
-      const settled = money(r.settled);
-      // `at` through a `new Date`: a grouped select with a raw `sum` beside it hands the
-      // timestamp back as the string `pg` parsed it from, not as the `Date` the column's own
-      // mode would give, and everything downstream expects an instant it can format.
-      return { no: r.no, loc: r.loc, at: new Date(r.at), total: r.total, settled, owed: Math.round((r.total - settled) * 100) / 100 };
-    })
-    .filter((r) => r.owed > 0);
+  return rows.flatMap((r) => {
+    if (!r.kind || !r.id) return [];
+    const settled = money(r.settled);
+    const owed = Math.round((r.total - settled) * 100) / 100;
+    // `at` through a `new Date`: a grouped select with a raw `sum` beside it hands the
+    // timestamp back as the string `pg` parsed it from, not as the `Date` the column's own
+    // mode would give, and everything downstream expects an instant it can format.
+    return owed > 0 ? [{ kind: r.kind, id: r.id, no: r.no, loc: r.loc, at: new Date(r.at), total: r.total, settled, owed }] : [];
+  });
 }
 
 /** A settlement's own allocation, for the statement and for the void that has to undo it. */
