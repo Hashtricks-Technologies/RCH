@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { QrOrderStatus } from "@rch/contract";
-import { ADJUSTMENT_REQUEST_TRANSITIONS, PO_TRANSITIONS, QR_ORDER_TRANSITIONS, REFUND_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, REQUISITION_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
+import { isProdOrderOpen, isRequestInProgress, ADJUSTMENT_REQUEST_TRANSITIONS, PO_TRANSITIONS, QR_ORDER_TRANSITIONS, REFUND_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, REQUISITION_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
 
 describe("request transitions", () => {
   it("walks the chain the outlet actually walks", () => {
@@ -199,5 +199,22 @@ describe("refund transitions", () => {
     expect(REFUND_TRANSITIONS.Processed).toEqual([]);
     expect(canTransition(REFUND_TRANSITIONS, "Pending", "Processed")).toBe(false);
     expect(canTransition(REFUND_TRANSITIONS, "Failed", "Sent")).toBe(false);
+  });
+});
+
+// QA 21-Nov-2026 (V5): the counter's dashboard said "0 still open" beside a kitchen order sitting
+// New for days, and its two screens counted a request's "open" two different ways.
+describe("what counts as still open", () => {
+  it("is every stock request not finished - a ticketed or collected one is still on its way", () => {
+    for (const st of ["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected"] as const) {
+      expect(isRequestInProgress(st), st).toBe(true);
+    }
+    for (const st of ["Closed", "Rejected", "Cancelled", "Received"] as const) {
+      expect(isRequestInProgress(st), st).toBe(false);
+    }
+  });
+  it("is every kitchen order still on the board - dispatched or declined is done", () => {
+    for (const st of ["New", "Accepted", "In kitchen", "Ready"] as const) expect(isProdOrderOpen(st), st).toBe(true);
+    for (const st of ["Dispatched", "Declined"] as const) expect(isProdOrderOpen(st), st).toBe(false);
   });
 });

@@ -10,7 +10,7 @@ export { availOf, fq } from "./availability.js";
 export { committed, freeToPromise } from "./promise.js";
 export { bestBeforeAt, bestBeforeText } from "./shelf.js";
 export { planBill, type BillPlan } from "./billing.js";
-export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, ADJUSTMENT_REQUEST_TRANSITIONS, QR_ORDER_TRANSITIONS, REFUND_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
+export { isProdOrderOpen, isRequestInProgress, REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, ADJUSTMENT_REQUEST_TRANSITIONS, QR_ORDER_TRANSITIONS, REFUND_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
 export { planApproval, approvedStatus, planPrqApproval, prqStatus, type ApprovalLine, type ApprovalPlan } from "./approval.js";
 export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } from "./credit.js";
 // ---- who is being billed, what comes off their bill, and what settles what they owe.

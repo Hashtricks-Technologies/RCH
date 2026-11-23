@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ACCOUNT_TENDERS } from "@rch/domain";
 import { useApp } from "../store";
-import { fromWireDay, fromWireTime, money, money0 } from "../lib/fmt";
+import { fromWireDay, fromWireTime, money } from "../lib/fmt";
 import { Alert, Btn, Card, DataTable, Field, Kpis, Pill, TableFoot } from "./kit";
 import { RegisterSlip } from "./RegisterSlip";
 import ShiftReports from "./ShiftReports";
@@ -149,12 +149,12 @@ function Panel({ loc, locName, canX, canZ, canClose, showShifts }: RegisterPanel
       {canX && (
         <Kpis items={[
           {
-            l: "Nett sales this session", v: t ? money0(t.nettSales) : "-",
+            l: "Nett sales this session", v: t ? money(t.nettSales) : "-",
             d: !x ? (reading ? <>reading…</> : <>not read</>) : x.sessionId ? <>since {stamp(x.openedAt)}</> : <>nothing open</>,
             tip: "Gross sales less discount, for everything billed since the last Z closed this register.",
           },
           {
-            l: "Collected", v: t ? money0(t.collected) : "-",
+            l: "Collected", v: t ? money(t.collected) : "-",
             // The tenders that took money, by name. The X lists every tender whether or not it was
             // used, so its length read "7 tenders" on a session paid in cash alone.
             d: t ? <>{collectedBy(t).join(" · ") || "nothing collected yet"}</> : <>-</>,
@@ -165,15 +165,15 @@ function Panel({ loc, locName, canX, canZ, canClose, showShifts }: RegisterPanel
             d: t ? <>{t.voidBills} voided · {money(t.voidAmount)}</> : <>-</>,
           },
           {
-            l: "Credit sales", v: t ? money0(t.creditSales) : "-",
+            l: "Credit sales", v: t ? money(t.creditSales) : "-",
             tip: "Billed to a staff member, a department or a doctor - money owed, not money taken.",
           },
           {
-            l: "Old bills collected", v: t ? money0(t.oldBillsTotal) : "-",
+            l: "Old bills collected", v: t ? money(t.oldBillsTotal) : "-",
             tip: "Taken in this session against bills from an earlier one. It is collection, not sale, and is never added into nett sales.",
           },
           {
-            l: "Tax", v: t ? money0(t.taxTotal) : "-",
+            l: "Tax", v: t ? money(t.taxTotal) : "-",
             d: t ? <>SGST {money(t.sgst)} · CGST {money(t.cgst)}</> : <>-</>,
           },
         ]} />

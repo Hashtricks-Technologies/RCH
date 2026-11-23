@@ -175,7 +175,9 @@ export default function Stock() {
                     <div className="stkcard-stat" style={{ gridColumn: "1 / -1" }}>
                       <span className="k">Days of cover</span>
                       <span className={`v${r.held && r.a <= 0 ? " crit" : ""}`}>
-                        {r.held ? <>{r.cover.toFixed(1)}<small>days</small></> : <span className="muted">-</span>}
+                        {/* Cover is measured against the par; with no par set there is nothing to measure,
+                            and dividing by a stand-in printed 10000.0 days for ten units. */}
+                        {r.held && r.rl > 0 ? <>{r.cover.toFixed(1)}<small>days</small></> : <span className="muted">-</span>}
                       </span>
                       {r.held && (
                         <span className="covermeter">
@@ -200,7 +202,7 @@ export default function Stock() {
         )}
 
         <div className="tfoot">
-          <span>Showing <b className="mono">{rows.length}</b> of <b className="mono">{rows.length}</b></span>
+          <span>Showing <b className="mono">{rows.length}</b> of <b className="mono">{all.length}</b></span>
           <span className="mini">{L.n} · {L.c} · {L.floor} · stock at cost {money0(value)}</span>
         </div>
       </Card>

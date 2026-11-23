@@ -4,15 +4,14 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, counterNameOf, useCan } from "../../lib/selectors";
 import { useSees } from "../../nav";
-import { fromWireTime, money, money0, sum, unitTotal } from "../../lib/fmt";
+import { fromWireSince, money, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, AlertStack, Avatar, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, StatusPill,
 } from "../../ui/kit";
 import CloseShift from "../../ui/CloseShift";
+import { isProdOrderOpen, isRequestInProgress } from "@rch/domain";
 import { settlementOf } from "./status";
-import type { RegisterReport, ReqStatus } from "../../types";
-
-const SETTLED: ReqStatus[] = ["Closed", "Cancelled", "Rejected", "Received"];
+import type { RegisterReport } from "../../types";
 
 export default function Dashboard() {
   const s = useApp();
@@ -27,6 +26,7 @@ export default function Dashboard() {
   const seesTill = useSees("pos");
   const seesBills = useSees("bills");
   const seesRegister = useSees("register");
+  const seesStock = useSees("outlet-stock");
   const seesRequests = useSees("outlet-requests");
   const seesTickets = useSees("outlet-tickets");
 
@@ -85,11 +85,16 @@ export default function Dashboard() {
   const off = menu
     .map((it) => ({ it, a: availOf(s, loc, it) }))
     .filter((r) => !r.a.ok);
+  // A switch somebody pressed (here or at the kitchen) against a shelf that is simply empty.
+  const offManual = off.filter((r) => r.a.mode === "Manual").length;
 
   // Requests are not a "today" figure - an ask raised on Friday is still open on Monday - so
   // the whole list stands. Only the order is by instant, newest first.
   const myReq = s.req.filter((r) => r.from === loc);
-  const openReq = myReq.filter((r) => !SETTLED.includes(r.st));
+  const openReq = myReq.filter((r) => isRequestInProgress(r.st));
+  // What this counter asked the kitchen for is a request too, and one sitting New for days is
+  // exactly what the counter should see (QA 21-Nov-2026: "0 still open" beside one).
+  const openOrders = s.pord.filter((o) => o.from === loc && isProdOrderOpen(o.st));
   const rejected = myReq.filter((r) => r.st === "Rejected");
   const withManager = myReq.filter((r) => r.st === "Request sent" || r.st === "Draft");
   const awaitingTicket = myReq.filter(
@@ -113,8 +118,9 @@ export default function Dashboard() {
   const top = Object.entries(rev).sort((a, b) => b[1].amt - a[1].amt).slice(0, 5);
 
   /** How the session is described under every takings figure, in the counter's own terms: the Z
-   *  it runs from, or the fact that nothing has closed this register yet. Never a date - the
-   *  window is not a day. */
+   *  it runs from, or the fact that nothing has closed this register yet. The window is not a
+   *  day, but when it opened on an earlier one that day is printed with the time - "17:36" alone
+   *  read as this morning for a session open since 15-Nov (QA 21-Nov-2026). */
   const since = !session
     ? reading ? "reading the register…" : "the register could not be read"
     // An empty `sessionId` is the server saying nothing is open here. Printing a time for it
@@ -122,10 +128,17 @@ export default function Dashboard() {
     : !session.sessionId
       ? session.previousZNo ? `nothing taken since ${session.previousZNo}` : "the register opens on the first sale"
       : session.previousZNo
-        ? `since ${session.previousZNo} at ${fromWireTime(session.openedAt)}`
-        : `since this register first opened, ${fromWireTime(session.openedAt)}`;
+        ? `since ${session.previousZNo} at ${fromWireSince(session.openedAt)}`
+        : `since this register first opened, ${fromWireSince(session.openedAt)}`;
   /** A takings figure only exists once the session does. */
   const takings = (v: string) => (openedAt === null ? "-" : v);
+
+  // A session older than the 7 days of bills this browser holds has bills it cannot list. Its
+  // tables say so rather than "nothing billed" beside a count of eight (QA 21-Nov-2026).
+  const agedOut = {
+    title: "This session's bills are older than this screen holds",
+    sub: `All ${billCount} bill${billCount === 1 ? "" : "s"} of this session were raised before the last 7 days - the Register has the whole session.`,
+  };
 
   const feed = latest.slice(0, 5).map((b) => ({
     key: b.no,
@@ -162,21 +175,29 @@ export default function Dashboard() {
 
       <Kpis items={[
         ...(!canX ? [] : [
-        { l: "Billed this session", v: takings(money0(billed)), d: <>{L.n} · {since}</> },
-        { l: "Cash taken this session", v: takings(money0(cash.amount)), d: <>{cash.bills} of {billCount} bill{billCount === 1 ? "" : "s"}</> },
-        { l: "Bills raised", v: takings(String(billCount)), d: <>last bill {latest[0]?.t ?? "-"}</> },
+        // Two decimals, as the Register and the session card below print the same figures:
+        // a tile rounded to the rupee beside ₹4,478.20 read as a mismatch (QA 21-Nov-2026).
+        { l: "Billed this session", v: takings(money(billed)), d: <>{L.n} · {since}</> },
+        { l: "Cash taken this session", v: takings(money(cash.amount)), d: <>{cash.bills} of {billCount} bill{billCount === 1 ? "" : "s"}</> },
+        { l: "Bills raised", v: takings(String(billCount)), d: <>last bill {latest[0]?.t ?? (billCount ? "before the last 7 days" : "-")}</> },
         { l: "Items sold", v: takings(String(itemsSold)), d: partial ? recent : <>across {menu.length} listed products</> },
-        { l: "Average bill", v: takings(money0(avgBill)), d: <>{billCount ? money(avgBill) : "no bills yet"}</> },
+        { l: "Average bill", v: takings(money(avgBill)), d: <>{billCount ? `over ${billCount} bill${billCount === 1 ? "" : "s"}` : "no bills yet"}</> },
         ]),
         // Not a takings figure and never was: a product is off the menu whatever the register says.
-        { l: "Products switched off", v: String(off.length), d: <>of {menu.length} on this menu</> },
+        // "Unavailable", not "switched off": most of these are simply out of stock, and nobody
+        // pressed a switch (QA 21-Nov-2026).
+        {
+          l: "Products unavailable", v: String(off.length),
+          d: off.length ? <>{offManual} switched off · {off.length - offManual} out of stock</> : <>of {menu.length} on this menu</>,
+        },
       ]} />
 
       {/* Four stacks, each capped: none of these lists is bounded by anything. `off` is as long
           as the menu on a morning the shelf is empty, and `rejected` is every request ever turned
           down at this counter - `myReq` is deliberately not filtered by date, because a Friday ask
           is still Monday's to chase. The KPIs above still count the whole of each. */}
-      <AlertStack tone="c" label="OFF">
+      <AlertStack tone="c" label="OFF"
+        action={seesStock && <Btn size="xs" variant="gh" onClick={() => nav("/outlet-stock")}>See stock</Btn>}>
         {off.map((r) => (
           <Alert key={"off-" + r.it} tone="c" label="OFF">
             <b>{counterNameOf(r.it)}</b> is not sellable - {r.a.why ?? "unavailable"} ({r.a.mode.toLowerCase()} check).
@@ -221,6 +242,7 @@ export default function Dashboard() {
           // Not "today": a request raised on Friday is still open on Monday and is still this
           // counter's to chase, so the whole list is counted rather than one day of it.
           { l: "Requests raised", v: String(myReq.length), d: <>{openReq.length} still open</> },
+          { l: "Kitchen orders open", v: String(openOrders.length), tip: <>asked of the kitchen and not yet dispatched</> },
           { l: "With the outlet manager", v: String(withManager.length), tip: <>awaiting approval</> },
           { l: "Approved, no ticket yet", v: String(awaitingTicket.length), tip: <>waiting on the store keeper</> },
           { l: "Tickets to collect", v: String(waiting.length), tip: <>stock reserved at the store</> },
@@ -243,7 +265,7 @@ export default function Dashboard() {
             { h: "Status", w: "23%" },
           ]}
           rows={recentReq.map((r) => {
-            const first = IT[r.lines[0]?.it]?.n ?? "-";
+            const first = r.lines[0] ? counterNameOf(r.lines[0].it) : "-";
             const more = r.lines.length - 1;
             const appr = sum(r.lines, (l) => l.appr);
             return {
@@ -289,7 +311,7 @@ export default function Dashboard() {
                   money(v.amt),
                 ],
               }))}
-              empty={{
+              empty={billCount ? agedOut : {
                 title: "Nothing billed at this counter yet",
                 sub: "Open the till - the first bill of the session starts this table.",
                 action: seesTill ? <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn> : undefined,
@@ -299,7 +321,9 @@ export default function Dashboard() {
           <div className="mtop" />
           <Card title="Last five bills" sub="this counter" right={seesBills && <Btn variant="gh" size="sm" onClick={() => nav("/bills")}>All bills</Btn>}>
             {feed.length ? <Feed items={feed} /> : (
-              <p className="mini">Nothing billed in this session. The first bill will appear here.</p>
+              <p className="mini">{billCount
+                ? agedOut.sub
+                : "Nothing billed in this session. The first bill will appear here."}</p>
             )}
           </Card>
         </div>

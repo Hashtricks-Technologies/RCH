@@ -160,6 +160,31 @@ describe("the Credit screen's three views", () => {
     expect(ui.text()).toContain("Payroll deduction");
   });
 
+  // QA 21-Nov-2026 (V9): a testing device read "302 days old" against a bill 65 days old - the
+  // age was worked out on the device's clock. The server's figure is the one printed.
+  it("prints the server's age for the oldest open bill, not one off the device's clock", async () => {
+    serve({ ...LISTS, "GET /api/v1/receivables": () => json([{ ...RAO, oldestDays: 65 }, KAVITHA]) });
+    ui = await mount(createElement(Credit));
+    expect(ui.text()).toContain("65 days old");
+    expect(ui.text()).not.toContain("14 days old");
+  });
+
+  it("ages it on the hospital's calendar when a reply carries no age", async () => {
+    serve(LISTS);
+    ui = await mount(createElement(Credit));
+    expect(ui.text()).toContain("14 days old");
+  });
+
+  // QA 21-Nov-2026 (V6): "45%" next to a ₹10,000 ceiling was read as how much of it was used.
+  it("labels the rate as a discount and the ceiling as a limit, with the room left under it", async () => {
+    serve({ ...LISTS, "GET /api/v1/receivables": () => json([{ ...RAO, outstanding: 462, pct: 45, limit: 10000 }, KAVITHA]) });
+    ui = await mount(createElement(Credit));
+    expect(ui.text()).toContain("Discount · limit");
+    expect(ui.text()).toContain("45% off · ₹10,000 limit");
+    expect(ui.text()).toContain("₹9,538 left");
+    expect(ui.text()).not.toContain("45% · ₹10,000");
+  });
+
   it("says the read failed rather than that nobody owes anything", async () => {
     serve({ "GET /api/v1/receivables": () => json({ error: { code: "internal", message: "no" } }, 500) });
     ui = await mount(createElement(Credit));

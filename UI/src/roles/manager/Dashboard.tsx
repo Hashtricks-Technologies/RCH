@@ -4,7 +4,7 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { allOutlets, availOf, isTicketOpen, menuOf, openOutlets, stockValue, useCan, useHolds } from "../../lib/selectors";
 import { useSees } from "../../nav";
-import { fromWireTime, lakh, money, money0, sum, unitTotal } from "../../lib/fmt";
+import { fromWireSince, lakh, money, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
@@ -125,9 +125,14 @@ export default function Dashboard() {
   /** The window one outlet is being measured over, in that outlet's own terms. */
   const windowOf = (r: (typeof outlets)[number]) =>
     r.session
-      ? r.session.previousZNo
-        ? `since ${r.session.previousZNo}, ${fromWireTime(r.session.openedAt)}`
-        : `since it first opened, ${fromWireTime(r.session.openedAt)}`
+      // An empty `sessionId` is nothing open: the server stamps such a reading with the time it
+      // was read, which printed "since it first opened, 09:33" for an outlet that has not
+      // opened at all (QA 21-Nov-2026). And a session that opened on an earlier day says so.
+      ? !r.session.sessionId
+        ? r.session.previousZNo ? `nothing taken since ${r.session.previousZNo}` : "nothing billed yet"
+        : r.session.previousZNo
+          ? `since ${r.session.previousZNo}, ${fromWireSince(r.session.openedAt)}`
+          : `since it first opened, ${fromWireSince(r.session.openedAt)}`
       : !readKeys.includes(r.loc) ? "-" : reading ? "reading…" : "register not read";
   const offAll: Off = {
     n: sum(outlets, (r) => r.off.n),
@@ -284,7 +289,7 @@ export default function Dashboard() {
           Calling it "today" would name a fourth window, and the one nobody settles against. */}
       <Kpis items={[
         ...(!showSales ? [] : [{
-          l: "Billed across open sessions", v: money0(total),
+          l: "Billed across open sessions", v: money(total),
           d: <>{reporting.length} of {readKeys.length} register{readKeys.length === 1 ? "" : "s"} reporting</>,
           tip: "The sum of every outlet's currently-open session. Each outlet's window runs from its own last Z, so the windows are not the same length and did not all start at the same time.",
         },
@@ -326,7 +331,7 @@ export default function Dashboard() {
               <>{r.name}<small>{LOC[r.loc].c} · {LOC[r.loc].cc}</small></>,
               r.floor,
               ...(!showSales ? [] : [
-                r.session ? <b>{money0(r.sales)}</b> : <span className="dim">-</span>,
+                r.session ? <b>{money(r.sales)}</b> : <span className="dim">-</span>,
                 <small className={r.session ? undefined : "dim"}>{windowOf(r)}</small>,
                 r.session ? r.bills : <span className="dim">-</span>,
                 r.session ? money(r.bills ? r.sales / r.bills : 0) : <span className="dim">-</span>,
@@ -342,7 +347,7 @@ export default function Dashboard() {
         <TableFoot
           count={outlets.length}
           extra={showSales ? <>
-            Sales {money0(total)} across {reporting.length} open session{reporting.length === 1 ? "" : "s"},
+            Sales {money(total)} across {reporting.length} open session{reporting.length === 1 ? "" : "s"},
             each since its own Z · stock at counters {lakh(sum(outlets, (r) => r.value))}
           </> : <>Stock at counters {lakh(sum(outlets, (r) => r.value))}</>}
         />

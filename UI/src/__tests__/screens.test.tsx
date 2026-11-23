@@ -1662,7 +1662,7 @@ describe("the register", () => {
     expect(ui.text()).toContain("Take X-report");
     // The session it follows, so the window is Z to Z and says so.
     expect(ui.text()).toContain("Z-0041");
-    expect(kpiValue(ui.host, "Nett sales this session")).toBe("₹4,700");
+    expect(kpiValue(ui.host, "Nett sales this session")).toBe("₹4,700.00");
     // Closing the day is the super admin's until a role is given Z reports: no list, no close,
     // and the list is never even asked for.
     expect(readZReports).not.toHaveBeenCalled();
@@ -1809,7 +1809,7 @@ describe("the register", () => {
     });
     const ui = mount(counter.dash);
     await settle(() => { /* let the X land */ });
-    expect(kpiValue(ui.host, "Billed this session")).toBe("₹40");
+    expect(kpiValue(ui.host, "Billed this session")).toBe("₹40.00");
     expect(kpiValue(ui.host, "Bills raised")).toBe("1");
     // The window is named by the Z it runs from, never by a date.
     expect(ui.text()).toContain("since Z-0041");
@@ -1830,10 +1830,10 @@ describe("the register", () => {
     });
     const ui = mount(counter.dash);
     await settle(() => { /* let the X land */ });
-    expect(kpiValue(ui.host, "Billed this session")).toBe("₹4,598");
-    expect(kpiValue(ui.host, "Cash taken this session")).toBe("₹4,598");
+    expect(kpiValue(ui.host, "Billed this session")).toBe("₹4,598.20");
+    expect(kpiValue(ui.host, "Cash taken this session")).toBe("₹4,598.20");
     expect(kpiValue(ui.host, "Bills raised")).toBe("5");
-    expect(kpiValue(ui.host, "Average bill")).toBe("₹920");
+    expect(kpiValue(ui.host, "Average bill")).toBe("₹919.64");
     // What was sold item by item is not on the X: the tile says it covers only the bills it has.
     expect(ui.text()).toContain("on the latest 1 of 5 bills");
   });
@@ -1850,7 +1850,7 @@ describe("the register", () => {
     });
     const ui = mount(manager.dash);
     await settle(() => { /* let every outlet's X land */ });
-    expect(kpiValue(ui.host, "Billed across open sessions")).toBe("₹1,078");
+    expect(kpiValue(ui.host, "Billed across open sessions")).toBe("₹1,078.00");
   });
 
   it("names the tenders that took money, not how many tenders exist", async () => {
@@ -1893,7 +1893,7 @@ describe("the register", () => {
     const ui = mount(manager.dash);
     await settle(() => { /* let every outlet's X land */ });
     // One outlet's session, summed - not seven days of bills, and not "today".
-    expect(kpiValue(ui.host, "Billed across open sessions")).toBe("₹40");
+    expect(kpiValue(ui.host, "Billed across open sessions")).toBe("₹40.00");
     expect(ui.text()).toContain("each since its own Z");
     expect(ui.text()).toContain("since Z-0041");
     // The outlet whose register failed is named, and is not reported as having sold nothing.

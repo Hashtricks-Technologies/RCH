@@ -322,7 +322,9 @@ report, the Credit screen and the receivables list. A screen showing a rate the 
 the whole defect it exists to prevent, so nobody else resolves one.
 
 `lib/credit.ts` holds the balance: `outstandingFor` (every account-tender bill less every live settlement),
-`openBillsFor` (what a settlement is laid over, oldest first) and `lockPayerCredit`, the advisory lock both
+`openBillsFor` (what a settlement is laid over, oldest first; `openBillsByPayer` is the same rule for
+every payer at once, which the receivables list counts its open bills and dates its oldest by, with
+`oldestDays` in IST worked out here) and `lockPayerCredit`, the advisory lock both
 a credit sale and a settlement take before they read. Neither a voided bill nor a voided settlement counts.
 
 `modules/receivables/` owns the rate card's two writes, the two lists and the settlement pair. None of them

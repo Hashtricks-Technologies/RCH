@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { breachesCredit, counterName, creditBreachMessage, discountOn, isAccountTender, normalizePhone, PARTY_LABEL, payerKindForTender, TILL_TENDERS } from "@rch/domain";
+import { breachesCredit, counterName, creditBreachMessage, discountOn, isAccountTender, normalizePhone, PARTY_LABEL, payerKindForTender, splitGst, TILL_TENDERS } from "@rch/domain";
 import { DEPTS, DOCTORS, IT, LOC, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { activeBill, MAX_OPEN_BILLS, tillOf, type OpenBill } from "../../store/till";
@@ -432,8 +432,10 @@ export default function Pos() {
             </>
           )}
           <div className="totrow"><span>Taxable value</span><span>{money(taxable)}</span></div>
-          <div className="totrow"><span>CGST</span><span>{money(tax / 2)}</span></div>
-          <div className="totrow"><span>SGST</span><span>{money(tax / 2)}</span></div>
+          {/* The register's own split - SGST half, CGST the remainder - so the two lines add up
+              to the tax and match the X; `tax / 2` twice could not (QA 21-Nov-2026). */}
+          <div className="totrow"><span>CGST</span><span>{money(splitGst(tax).cgst)}</span></div>
+          <div className="totrow"><span>SGST</span><span>{money(splitGst(tax).sgst)}</span></div>
           <div className="totrow big"><span>Total</span><span>{money(total)}</span></div>
 
           <FormRow cols="f2">

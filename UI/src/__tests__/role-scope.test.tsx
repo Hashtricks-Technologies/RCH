@@ -90,7 +90,7 @@ describe("the counter's dashboard", () => {
     const ui = await mount(CounterDashboard);
     expect(readX).not.toHaveBeenCalled();
     expect(ui.kpis()).not.toContain("Billed this session");
-    expect(ui.kpis()).toContain("Products switched off");
+    expect(ui.kpis()).toContain("Products unavailable");
     expect(ui.alerts().some((a) => a.includes("OUTAGE"))).toBe(false);
     expect(ui.text()).not.toContain("Last five bills");
     expect(ui.has("Register")).toBe(false);
