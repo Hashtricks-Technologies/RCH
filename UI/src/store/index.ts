@@ -1,15 +1,15 @@
 import { create } from "zustand";
 import { KITCHEN, QUARANTINE, routes, STORE } from "@rch/contract";
 import { sourceOf } from "@rch/domain";
-import { ApiError, call, closeSessionChannel } from "../api/client";
-import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
+import { announce, ApiError, call, closeSessionChannel } from "../api/client";
+import { getAccessToken, onSessionLost, onSessionMoved, setAccessToken } from "../api/session";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { IT, LOC } from "../data/master";
 import type {
   Adjustment, AdjustmentRequest, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
   Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, RegisterReport, Requisition, StockLedgerRow, StockLoc,
-  SignInEntry, StockRequest, Tender, Ticket, Trailed, User, Vendor,
+  SignInEntry, StockRequest, SwitchSideBody, Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
@@ -90,6 +90,14 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
   /** Boot: turn the refresh cookie back into a session. Silent when there is no cookie. */
   restore: () => Promise<void>;
   loadSnapshot: () => Promise<void>;
+  /** A two-sided role choosing Billing at an outlet, or Inventory - after the password and from the
+   *  header. `true` once the session stands there and its data is on screen. `landed` runs as the
+   *  session moves, behind the splash, so the page is already one the new side has when it is drawn
+   *  - the old one would be refused out loud on the way past. */
+  switchSide: (to: SwitchSideBody, landed?: (u: User) => void) => Promise<boolean>;
+  /** This session was moved from somewhere else (another tab): take the new place's data before
+   *  anything is drawn, or asked, against the old one. */
+  rejoin: () => Promise<void>;
   changePassword: (current: string, next: string) => Promise<boolean>;
   notify: (m: string) => void;
   dismissToast: () => void;
@@ -333,7 +341,9 @@ export const useApp = create<AppState>((set, get) => ({
     // server answers every operational read - this one included - with a 404 for its token.
     // Guarded here rather than in each caller, so sign-in, restore, a password change and any
     // later refresh all reach "ready" without asking for a snapshot that cannot come.
-    if (get().user?.admin) { set({ auth: "ready" }); return; }
+    //
+    // Nor has a two-sided session that has not chosen a side: the choice is the next screen.
+    if (get().user?.admin || get().user?.sides?.at === null) { set({ auth: "ready" }); return; }
     if (Object.keys(LOC).length === 0) set({ auth: "loading" });
     try { applySnapshot(await call(routes.snapshot)); set({ auth: "ready" }); }
     catch (e) {
@@ -353,6 +363,35 @@ export const useApp = create<AppState>((set, get) => ({
       // this was a refresh that did not land, not a start that did not happen.
       set({ auth: "ready" });
       get().notify(e instanceof ApiError ? e.message : "Could not refresh - showing the last data loaded.");
+    }
+  },
+  switchSide: async (to, landed) => {
+    try {
+      const r = await call(routes.switchSide, { body: to });
+      setAccessToken(r.accessToken);
+      announce(r.accessToken);
+      // The splash for the length of the snapshot: the screens are drawn off the old place until it
+      // lands. Open bills stay, each with its own counter; the request being written belongs to none.
+      set({ user: r.user, postings: r.postings, auth: "loading", drawer: null, draft: [], shopFilter: null });
+      landed?.(r.user);
+      await get().loadSnapshot();
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : UNREACHABLE);
+      return false;
+    }
+  },
+  rejoin: async () => {
+    if (!get().user) return;
+    set({ auth: "loading", drawer: null, draft: [], shopFilter: null });
+    try {
+      const r = await call(routes.me);
+      set({ user: r.user });
+      await get().loadSnapshot();
+    } catch {
+      // A 401 has already signed the tab out (`onSessionLost`); anything else is a page that cannot
+      // be drawn for the place it is now in, and says so with a Retry.
+      if (get().user) set({ auth: "failed" });
     }
   },
   logout: async () => {
@@ -862,3 +901,4 @@ onSessionLost(() => {
   useApp.setState({ user: null, auth: "signed-out" });
   useApp.getState().notify("Your session ended - sign in again.");
 });
+onSessionMoved(() => { void useApp.getState().rejoin(); });

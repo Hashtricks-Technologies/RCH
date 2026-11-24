@@ -1,4 +1,5 @@
-import type { Access, Action, Feature, Level, Permissions, Role } from "@rch/contract";
+import type { Access, Action, Feature, Level, Location, Permissions, Role, Side } from "@rch/contract";
+import { outletKeys } from "./locations.js";
 
 /**
  * Roles & permissions: the catalogue, the seeded roles, and the one reading of "may this person use
@@ -206,6 +207,78 @@ export function grantRefusal(desk: Role, perms: Permissions): string | null {
   }
   return null;
 }
+
+/**
+ * A two-sided role: one person who sells at the outlets **and** does the central store's and
+ * purchasing's work. The role stays on the counter desk - its `perms` are its Billing side - and
+ * carries a second set, `inventory`, held at the store desk. A session works one side at a time: its
+ * desk says which, so every rule that asks a desk and permissions is asked about that side alone.
+ */
+export type RoleGrants = { desk: Role; perms: Permissions; inventory?: Permissions | null };
+
+/** The desk each side of a two-sided role works at. */
+export const SIDE_DESK: Readonly<Record<Side, Role>> = { billing: "counter", inventory: "store" };
+
+/** Which side a session on this desk is working. */
+export const sideOf = (desk: Role): Side => (desk === SIDE_DESK.inventory ? "inventory" : "billing");
+
+/** Why a role on this desk cannot have this Inventory side, or `null`. `grantRefusal` is the rule for
+ *  the Billing side, as for any role. */
+export function sideRefusal(desk: Role, inventory: Permissions | null | undefined): string | null {
+  if (!inventory) return null;
+  if (desk !== SIDE_DESK.billing) return `Only a role on the ${DESK_WORD.counter} desk can have an Inventory side - this one works at the ${DESK_WORD[desk]} desk.`;
+  return grantRefusal(SIDE_DESK.inventory, inventory);
+}
+
+/** What a session on this desk may do under this role, or `null` when the role does not work there:
+ *  the account was moved, or its Inventory side taken away, since the session opened. */
+export function permsAt(role: RoleGrants, desk: Role): Permissions | null {
+  if (desk === role.desk) return role.perms;
+  return role.inventory && desk === SIDE_DESK.inventory ? role.inventory : null;
+}
+
+/**
+ * Every outlet an account may stand at to sell, by name: those it is posted to that are open - or,
+ * for a two-sided role that works for every outlet, every open one, so an outlet opened tomorrow
+ * needs nobody to post them to it. An ordinary role with `all_outlets` still stands only where it
+ * is posted: its every-outlet reach is in what it may read and act on, not in where its till is.
+ */
+export function standsAt(role: RoleGrants, postings: readonly string[], locations: Record<string, Pick<Location, "n" | "type" | "active">>): string[] {
+  const open = outletKeys(locations, { open: true });
+  return role.inventory && holds(role.perms, "all_outlets") ? open : open.filter((k) => postings.includes(k));
+}
+
+/**
+ * The Admin role the super admin can start from: everything each side's desk may be given. Billing is
+ * the counter's and the outlet manager's work, for every outlet; Inventory is the store keeper's and
+ * the procurement officer's. It opens nothing on `/admin`: that is the super admin's alone.
+ */
+export const ADMIN_PRESET: Readonly<{ name: string; desk: Role; perms: Permissions; inventory: Permissions }> = {
+  name: "Admin",
+  desk: SIDE_DESK.billing,
+  perms: {
+    f: {
+      ...edit(
+        "billing", "z_report", "credit", "settlements", "qr_orders",
+        "approvals", "items_stock", "menu", "prices", "availability", "item_photos",
+        "outlet_stock", "outlet_requests", "outlet_tickets",
+      ),
+      ...view("x_report", "shift_reports", "stock_ledger"),
+    },
+    a: ["void_bill", "void_settlement", "all_outlets"],
+  },
+  inventory: {
+    f: {
+      ...edit(
+        "issue_desk", "store_requisitions", "adjustments", "goods_receipt",
+        "requisitions", "procurement_list", "purchase_orders", "rate_contracts", "vendors",
+        "item_master", "new_products",
+      ),
+      ...view("store_stock", "store_reports", "inventory", "stock_ledger"),
+    },
+    a: [],
+  },
+};
 
 /** The one sentence for a feature held at view when a door needs edit. Both sides print it. */
 export const permissionRefusal = (f: Feature): string =>

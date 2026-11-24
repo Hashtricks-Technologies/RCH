@@ -51,6 +51,16 @@ someone works - the counter's till, its Close shift and the counter-only display
 `atOutlet(desk)` (`@rch/domain`) says whether a desk sits at an outlet. `scripts/check-boundaries.sh` fails on
 any equality against `"manager"` outside a test.
 
+**A two-sided role** (`user.sides`) is drawn by the side its session works: `user.r`, `loc` and `perms` are that
+side's, so the sidebar and every gate follow with no special case. While `sides.at` is null, `App` draws
+`pages/ChooseSide.tsx` in place of every page, `loadSnapshot` waits and no event stream opens.
+`ui/SideSwitcher.tsx` is the header's switcher, drawn only with `sides`. The store's `switchSide(to, landed)`
+keeps the open bills (each is a counter's) and clears `draft` (which is not - the switcher asks first); the
+splash stands while the new side's snapshot loads. **A session can move under a tab**: the token's place is
+compared (`movedBetween` in `api/session.ts`) whenever another tab's token or a refresh replaces it, a move
+runs `rejoin()`, and a write that met a 401 is not sent again from a different place. The role drawer draws
+`PermMatrix` twice for such a role, the second prefixed "Inventory - ".
+
 **A screen held at `view` is read-only, and says so.** Its `PageHead` takes `readOnly={!may && "<feature>"}`,
 which draws a "View only" badge whose tip is `permissionRefusal(feature)` - the sentence the server refuses
 the write with. Buttons that open a form or write are not drawn at all (a drawer's decision buttons, a

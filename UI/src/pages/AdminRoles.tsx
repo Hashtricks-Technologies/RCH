@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DESK_DEFAULTS } from "@rch/domain";
+import { ADMIN_PRESET, DESK_DEFAULTS } from "@rch/domain";
 import { useApp } from "../store";
 import { Btn, Card, DataTable, Field, FormRow, PageHead, Pill, TableFoot } from "../ui/kit";
 import { DESKS, DESK_LABEL } from "../lib/desks";
@@ -12,7 +12,8 @@ const DID: Partial<Record<AdminAction["action"], string>> = {
   role_reactivate: "switched back on", role_delete: "deleted",
 };
 
-const emptyForm = { name: "", desk: "counter" as Role };
+/** What a new role starts from: its desk's own seeded role, or everything on two sides. */
+const emptyForm = { name: "", desk: "counter" as Role, admin: false };
 
 /**
  * Roles & permissions. A role is a name, the desk its holders work at, and what it lets them see
@@ -48,7 +49,9 @@ export default function AdminRoles() {
     if (form.name.trim().length < 2) { notify("Give the role a name of at least two letters before creating it"); return; }
     setBusy("create");
     try {
-      const made = await createRole({ name: form.name.trim(), desk: form.desk, perms: DESK_DEFAULTS[form.desk].perms });
+      const made = await createRole(form.admin
+        ? { name: form.name.trim(), desk: ADMIN_PRESET.desk, perms: ADMIN_PRESET.perms, inventory: ADMIN_PRESET.inventory }
+        : { name: form.name.trim(), desk: form.desk, perms: DESK_DEFAULTS[form.desk].perms });
       // A refusal (a name already taken, most often) leaves the form exactly as typed.
       if (!made) return;
       setForm(emptyForm);
@@ -72,10 +75,19 @@ export default function AdminRoles() {
         tip="What each role lets its holders see and change. A change reaches every holder on their next click." />
 
       <Card title="Create a role" tip="It starts with what the desk's own seeded role holds - the matrix opens as soon as it is created, to tailor it">
-        <FormRow cols="f2">
+        <FormRow cols="f3">
+          <Field label="Start from" tip="The desk's usual role, or an Admin: billing and stock requests at any outlet, and the central store and purchasing - its holders choose which after signing in.">
+            <select value={form.admin ? "admin" : "desk"} onChange={(e) => {
+              const admin = e.target.value === "admin";
+              setForm({ name: admin && !form.name.trim() ? ADMIN_PRESET.name : form.name, desk: admin ? ADMIN_PRESET.desk : form.desk, admin });
+            }}>
+              <option value="desk">The desk's usual role</option>
+              <option value="admin">Admin (billing + inventory)</option>
+            </select>
+          </Field>
           <Field label="Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Desk" tip="Where its holders work and what their sign-in opens. Fixed once the role has been given to anybody.">
-            <select value={form.desk} onChange={(e) => setForm({ ...form, desk: e.target.value as Role })}>
+            <select value={form.desk} disabled={form.admin} onChange={(e) => setForm({ ...form, desk: e.target.value as Role })}>
               {DESKS.map((d) => <option key={d} value={d}>{DESK_LABEL[d]}</option>)}
             </select>
           </Field>
@@ -94,7 +106,7 @@ export default function AdminRoles() {
             key: r.id,
             cells: [
               <><b>{r.name}</b><small className="mono">{r.id}</small></>,
-              DESK_LABEL[r.desk],
+              r.inventory ? `${DESK_LABEL[r.desk]} + Inventory` : DESK_LABEL[r.desk],
               <>{r.holders}</>,
               r.active ? <Pill tone="ok">Active</Pill> : <Pill tone="mu">Switched off</Pill>,
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

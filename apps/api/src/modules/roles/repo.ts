@@ -35,11 +35,11 @@ export const rolesRepo = {
   async holders(tx: Tx, id: string): Promise<Array<{ name: string; emp: string }>> {
     return tx.select({ name: users.name, emp: users.empNo }).from(users).where(holding(id)).orderBy(asc(users.empNo));
   },
-  async insert(tx: Tx, row: { id: string; name: string; desk: Role; perms: unknown }): Promise<RoleRow> {
+  async insert(tx: Tx, row: { id: string; name: string; desk: Role; perms: unknown; inventoryPerms: unknown }): Promise<RoleRow> {
     const [r] = await tx.insert(roles).values(row).returning();
     return r;
   },
-  async update(tx: Tx, id: string, set: Partial<Pick<RoleRow, "name" | "desk" | "perms" | "active">>): Promise<RoleRow> {
+  async update(tx: Tx, id: string, set: Partial<Pick<RoleRow, "name" | "desk" | "perms" | "inventoryPerms" | "active">>): Promise<RoleRow> {
     const [r] = await tx.update(roles).set({ ...set, version: sql`${roles.version} + 1`, updatedAt: new Date() }).where(eq(roles.id, id)).returning();
     return r;
   },

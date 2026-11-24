@@ -8,7 +8,9 @@ import type { Reader } from "./db.js";
  * role is still active. Read per request (through the cache below), never from the token - so a
  * change the super admin makes to a role reaches the very next request of everyone holding it.
  */
-export type RoleAccess = { roleId: string; desk: Role; perms: Permissions; active: boolean };
+/** `inventory` is a two-sided role's second set, held at the store desk; absent or null for every
+ *  other role. Which of the two a request runs under is its token's desk (`permsAt`). */
+export type RoleAccess = { roleId: string; desk: Role; perms: Permissions; inventory?: Permissions | null; active: boolean };
 
 /** How long an entry stands without a `roles` notice. The notice is what makes a change take
  *  effect at once; this bounds how stale a pod can be if one is ever missed. */
@@ -19,9 +21,9 @@ const ACCESS_TTL_MS = 60_000;
  *  may not have run out yet, but the gate answers `null` with a 401 on the very next request, so
  *  switching someone off takes effect at once rather than when the token expires. */
 export async function loadAccess(db: Reader, userId: string): Promise<RoleAccess | null> {
-  const [row] = await db.select({ roleId: roles.id, desk: roles.desk, perms: roles.perms, active: roles.active, userActive: users.active })
+  const [row] = await db.select({ roleId: roles.id, desk: roles.desk, perms: roles.perms, inventory: roles.inventoryPerms, active: roles.active, userActive: users.active })
     .from(users).innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.id, userId));
-  return row?.userActive ? { roleId: row.roleId, desk: row.desk, perms: row.perms as Permissions, active: row.active } : null;
+  return row?.userActive ? { roleId: row.roleId, desk: row.desk, perms: row.perms as Permissions, inventory: row.inventory as Permissions | null, active: row.active } : null;
 }
 
 export type AccessCache = {

@@ -3195,3 +3195,29 @@ order on the counter's QR orders screen.
    switch fails against the live keys. Let the test-mode queue drain before switching.
 
 Posters do not change: the codes are RCH's, not Razorpay's.
+
+## 20. Migration 0029: the Admin role (Billing and Inventory)
+
+Migration `0029_role_sides` adds two nullable columns and a check, and changes no row:
+`roles.inventory_perms` (a two-sided role's permissions at the central store; only a counter-desk role may
+have them) and `refresh_tokens.desk` (which side a session is working). No role is created by it. Live
+sessions and every existing role go on as they were.
+
+To give somebody the role, as the super admin:
+
+1. `/admin` → **Roles** → *Start from* **Admin (billing + inventory)** → Create role. The drawer opens on both
+   matrices; narrow either one there.
+2. `/admin` → **Accounts** → create the account (or move one) onto that role. Its location is only its home:
+   with "Works for every outlet" it may bill at every open outlet, including one opened later.
+
+They change the temporary password, then choose Billing or Inventory. Each choice and each later switch is
+one line in the Audit log ("Chose where to work").
+
+**Whoever holds it can raise, approve, issue and receive the same stock request**, and raise and receive the
+same purchase order. The log names each step; the void of a bill still needs somebody other than who took it.
+
+Switching the Inventory side off on the role ends it for live sessions on their next request: an Inventory
+session goes back to its home counter.
+
+The image before this one cannot read a second side: it would refuse an Inventory session as a moved account
+(a 401) and treat the role as an ordinary counter role. Rolling back loses no data.

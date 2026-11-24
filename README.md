@@ -36,6 +36,11 @@ given it.
 | Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters, switching on/off-only products for every outlet, recording wastage |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
 
+The super admin may also make an **Admin** role (Roles, "Start from: Admin (billing + inventory)"): one account
+that, after signing in, chooses **Billing** - bills, stock requests, approvals and registers at any open
+outlet - or **Inventory** - the central store and purchasing - and switches side or outlet from the header
+without signing out. It reaches neither the kitchen's screens nor `/admin`.
+
 The store keeper, the buyer and the kitchen share the operational half of the item master - a
 product's name, group, HSN code and reorder level - while the manager owns its commercial half and
 the display name the counters read on the till ("50/50-5" for "Britannia 50/50"). A new product's
@@ -127,7 +132,8 @@ taken.
 ends when they press **Close Shift**: a confirmation shows what they billed there since signing in -
 the bills, the amount per tender (cash, UPI, card and each account) and the total - with a Print;
 confirming stores those figures, prints the slip and signs them out, so the next shift starts with a
-fresh sign-in. Signing in at another counter with a shift still open closes that one automatically.
+fresh sign-in. Signing in at another counter with a shift still open closes that one automatically, and so does an
+Admin moving to another outlet or to Inventory.
 Nobody counts a drawer on it; the Z still settles the outlet's day - taken by the super admin from
 **Admin → Registers**, or by any role it has given Z reports. The outlet manager's bell names
 each close ("Kavitha Raman closed their shift at Coffee Shop · ₹4,320"), and a Shift reports card on

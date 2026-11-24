@@ -226,6 +226,11 @@ nobody has started. The manager reads the queue without the buttons. On Bills a 
 "QR" badge; its drawer names the order and, once voided, the refund's state - and a failed refund
 offers Retry refund to whoever may void a bill.
 
+**Billing or Inventory.** A role with two sides is asked which after its password (`pages/ChooseSide.tsx`), and
+for Billing which outlet. The header then carries a switcher (`ui/SideSwitcher.tsx`): the same screen at
+another outlet, or the other side's home. Open bills wait at their own counter; a stock request being
+written is asked about and cleared. A second tab follows the move.
+
 **Close Shift.** A counter operator's shift opens with their sign-in at a counter. **Close shift** - in
 the sidebar's foot, and on the counter's Dashboard and Register - opens a dialog over the live report:
 the window, the bills and the amount per tender, with a Print. Confirming closes the shift on the

@@ -5,7 +5,7 @@
 // change reaches the next request of everyone holding the role, not their next sign-in.
 import { randomUUID } from "node:crypto";
 import type { AdminRole, CreateRoleBody, Permissions, UpdateRoleBody, WriteResponse } from "@rch/contract";
-import { grantRefusal } from "@rch/domain";
+import { grantRefusal, sideRefusal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { auditBefore } from "../../lib/audit.js";
 import { isUniqueViolation, withTransaction, type Tx } from "../../lib/db.js";
@@ -21,6 +21,7 @@ const CHANGED = ["roles"] as const;
 const toAdminRole = (r: RoleRow, holders: number): AdminRole => ({
   id: r.id, name: r.name, desk: r.desk, active: r.active, perms: r.perms as Permissions,
   holders, everAssigned: r.everAssigned, updatedAt: iso(r.updatedAt),
+  ...(r.inventoryPerms ? { inventory: r.inventoryPerms as Permissions } : {}),
 });
 
 /** At most this many names in a refusal; past it, a count. The sentence is read in a toast. */
@@ -39,6 +40,9 @@ const samePerms = (a: Permissions, b: Permissions): boolean => {
   const fb = Object.entries(b.f).sort(([x], [y]) => x.localeCompare(y));
   return JSON.stringify(fa) === JSON.stringify(fb) && JSON.stringify([...a.a].sort()) === JSON.stringify([...b.a].sort());
 };
+
+/** The same Inventory side, or neither has one. */
+const sameSide = (a: Permissions | null, b: Permissions | null): boolean => (a && b ? samePerms(a, b) : a === b);
 
 /** `roles_name_uq` decides; the pre-check only gives the sentence, and a save that races another
  *  past it hears the same one. */
@@ -61,8 +65,8 @@ export function createRolesService(db: Db, committed: () => void) {
   };
   const log = (tx: Tx, actorId: string, action: string, name: string, details: Record<string, unknown>) =>
     rolesRepo.logAction(tx, { id: randomUUID(), actorId, action, targetName: name, details });
-  const refuseGrant = (desk: RoleRow["desk"], perms: Permissions) => {
-    const refusal = grantRefusal(desk, perms);
+  const refuseGrant = (desk: RoleRow["desk"], perms: Permissions, inventory: Permissions | null) => {
+    const refusal = grantRefusal(desk, perms) ?? sideRefusal(desk, inventory);
     if (refusal) throw new RuleError(refusal);
   };
   const refuseTaken = async (tx: Tx, name: string, self?: string) => {
@@ -83,10 +87,11 @@ export function createRolesService(db: Db, committed: () => void) {
     create(claims: AccessClaims, body: CreateRoleBody): Promise<WriteResponse<AdminRole>> {
       return after(withTransaction(db, async (tx) => {
         await refuseTaken(tx, body.name);
-        refuseGrant(body.desk, body.perms);
+        const inventory = body.inventory ?? null;
+        refuseGrant(body.desk, body.perms, inventory);
         const id = await allocateId(tx, "role");
-        const row = await refuseClash(body.name, () => rolesRepo.insert(tx, { id, name: body.name, desk: body.desk, perms: body.perms }));
-        await log(tx, claims.sub, "role_create", body.name, { id, desk: body.desk });
+        const row = await refuseClash(body.name, () => rolesRepo.insert(tx, { id, name: body.name, desk: body.desk, perms: body.perms, inventoryPerms: inventory }));
+        await log(tx, claims.sub, "role_create", body.name, { id, desk: body.desk, ...(inventory ? { inventory: true } : {}) });
         await emitChanged(tx, CHANGED);
         return { result: toAdminRole(row, 0), changed: [...CHANGED], message: `Created the role ${body.name} (${id}).` };
       }));
@@ -103,18 +108,23 @@ export function createRolesService(db: Db, committed: () => void) {
         const holders = await rolesRepo.holders(tx, id);
         auditBefore(toAdminRole(row, holders.length));
         const perms = row.perms as Permissions;
-        const next = { name: body.name ?? row.name, desk: body.desk ?? row.desk, perms: body.perms ?? perms };
+        const inventory = row.inventoryPerms as Permissions | null;
+        const next = {
+          name: body.name ?? row.name, desk: body.desk ?? row.desk, perms: body.perms ?? perms,
+          inventory: body.inventory === undefined ? inventory : body.inventory,
+        };
         const renamed = next.name !== row.name;
         const moved = next.desk !== row.desk;
-        const regranted = !samePerms(next.perms, perms);
+        const resided = !sameSide(next.inventory, inventory);
+        const regranted = resided || !samePerms(next.perms, perms);
         if (!renamed && !moved && !regranted) throw new RuleError(`Nothing to save - ${row.name} already reads that way`);
         if (moved && row.everAssigned) throw new RuleError(`Refused - ${row.name} has been given to staff, so its desk can no longer change. Create a new role for the other desk instead.`);
         if (renamed) await refuseTaken(tx, next.name, id);
-        refuseGrant(next.desk, next.perms);
-        const fresh = await refuseClash(next.name, () => rolesRepo.update(tx, id, { name: next.name, desk: next.desk, perms: next.perms }));
+        refuseGrant(next.desk, next.perms, next.inventory);
+        const fresh = await refuseClash(next.name, () => rolesRepo.update(tx, id, { name: next.name, desk: next.desk, perms: next.perms, inventoryPerms: next.inventory }));
         if (renamed) await rolesRepo.relabel(tx, id, next.name);
         await log(tx, claims.sub, "role_update", next.name, {
-          id, ...(renamed ? { name: [row.name, next.name] } : {}), ...(moved ? { desk: [row.desk, next.desk] } : {}), ...(regranted ? { perms: true } : {}),
+          id, ...(renamed ? { name: [row.name, next.name] } : {}), ...(moved ? { desk: [row.desk, next.desk] } : {}), ...(regranted ? { perms: true } : {}), ...(resided ? { inventory: next.inventory !== null } : {}),
         });
         await emitChanged(tx, CHANGED);
         const reach = regranted && holders.length > 0 ? ` It takes effect for ${holders.length === 1 ? "its 1 holder" : `its ${holders.length} holders`} straight away.` : "";

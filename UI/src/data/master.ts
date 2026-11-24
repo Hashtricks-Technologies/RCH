@@ -111,7 +111,9 @@ export function hydrateMaster(m: MasterData): void {
  * at once - as does any counter or manager role given every outlet - and a
  * procurement officer is not tied to a single counter either.
  */
-export function homeLabel(u: UserMin & { perms?: Permissions }): string | null {
+export function homeLabel(u: UserMin & { perms?: Permissions; sides?: unknown }): string | null {
+  // A two-sided role works for every outlet, but stands at one: the one its bills are raised at.
+  if (u.sides) return LOC[u.loc].n;
   if (u.r === "buyer") return null;
   if (atOutlet(u.r) && readsWide(u.r, u.perms ?? DESK_DEFAULTS[u.r].perms, "bills")) return "All outlets";
   return LOC[u.loc].n;

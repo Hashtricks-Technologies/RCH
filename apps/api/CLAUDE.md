@@ -476,7 +476,16 @@ role; `truncateAll` in the test harness keeps `roles` too.
   `all_outlets` is held to its own outlet's X. Only desk *mechanics* still read `req.user.role`: which
   shelf `createItem` books to (and that a kitchen's `MTO` is on/off only and its `FG` opening a batch) and which types it may add (`mayCreateType`), which shelves
   `createAdjustment` may touch (store: `STORE` and `QUARANTINE`; prod: the kitchen), the shift a counter's
-  sign-in opens, the till `pay` rings on (always the session's), and the word in a location refusal.
+  sign-in (or a two-sided session's move to a till) opens, the till `pay` rings on (always the session's), and the word in a location refusal.
+- **A two-sided role** (`roles.inventory_perms`, counter desk only by `roles_inventory_perms_ck`) is two sets of
+  permissions on one row; `permsAt(role, claims.role)` picks the request's, and a desk the role does not work
+  is the same **401** as a moved account. `lib/standing.ts` is the one place a session's desk and location are
+  resolved (`placeOf`: sign-in, refresh, password change) and the caller's own record is built from them
+  (`wireUserAt`: sign-in, `/me`, the snapshot) - never off `users.role`/`users.loc`. `auth.switchSide` locks
+  the refresh row `FOR UPDATE`, then the outlet, then the shifts, and rotates nothing; `markUsed` answers the
+  row's `desk` and `loc` from its own `RETURNING`, so a refresh racing a switch carries the new place. An
+  `unplaced` token (the row's `desk` null) is a **403** everywhere but `allowMcp`/`allowUnplaced` routes. The
+  audit actor's `loc` is the token's, so an event says where the work was done.
 - **`modules/roles/`** serves `/admin/roles`. Each write locks the role `FOR UPDATE`, calls `auditBefore`,
   applies the rules (a name clash - `roles_name_uq` decides; `grantRefusal`; no desk change once
   `ever_assigned`; no deactivation while any active account holds it, naming them; no delete once

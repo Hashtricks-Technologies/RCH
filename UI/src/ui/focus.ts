@@ -151,3 +151,18 @@ export function useFocusTrap(
     }
   };
 }
+
+/** Escape, or a click anywhere outside, puts a popover away. */
+export function useDismiss(on: boolean, close: () => void, box: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    if (!on) return;
+    const out = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) close(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("pointerdown", out);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", out);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [on, close, box]);
+}

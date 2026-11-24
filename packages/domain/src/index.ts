@@ -43,7 +43,10 @@ export { REASON_LABEL } from "./adjustments.js";
 export { HSN_CODES, gstForHsn, hsnGroups, type HsnEntry } from "./hsn.js";
 export { defaultSourceFor, sourceOf } from "./routing.js";
 // ---- roles & permissions: the feature catalogue, the seeded roles, and who may use which door.
-export { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsBills, readsWide, type ReadCollection } from "./permissions.js";
+export {
+  ACTIONS, ADMIN_PRESET, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, permsAt, readsBills, readsWide,
+  SIDE_DESK, sideOf, sideRefusal, standsAt, type ReadCollection, type RoleGrants,
+} from "./permissions.js";
 // ---- QR ordering: the path an order walks, when an outlet takes orders, the caps and the words.
 export {
   customerPhoneRefusal, hoursRefusal, nextQrStep, paise, pausedRefusal, QR_MAX_LINES, QR_MAX_QTY, QR_MAX_RUPEES, QR_PENDING_PER_IP, QR_PENDING_PER_PHONE,

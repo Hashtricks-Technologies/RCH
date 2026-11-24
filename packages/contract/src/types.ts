@@ -134,7 +134,9 @@ export type Statement = z.infer<typeof V.StatementSchema>;
 export type RecordSettlementBody = z.infer<typeof V.RecordSettlementBodySchema>;
 /** One line of the public sign-in picker. */
 export type SignInEntry = z.infer<typeof Auth.SignInEntrySchema>;
-export type SignInCounter = z.infer<typeof Auth.SignInCounterSchema>;
+export type SignInCounter = z.infer<typeof C.SignInCounterSchema>;
+export type Side = z.infer<typeof C.SideSchema>;
+export type SwitchSideBody = z.infer<typeof Auth.SwitchSideBodySchema>;
 
 // ---- QR ordering: a customer's order from a code at an outlet, paid online.
 export type QrMode = z.infer<typeof Q.QrModeSchema>;

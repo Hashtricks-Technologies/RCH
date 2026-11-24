@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListIdSchema, Qty, RoleSchema, SourceSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListIdSchema, Qty, RoleSchema, SideSchema, SignInCounterSchema, SourceSchema, StockLocSchema, TenderSchema } from "./common.js";
 import { PermissionsSchema } from "./permissions.js";
 import { BillSourceSchema, RefundStatusSchema } from "./qr.js";
 
@@ -80,6 +80,10 @@ export const UserSchema = z.object({
   // desk and `rl` the role's name.
   rid: z.string().optional(),
   perms: PermissionsSchema.optional(),
+  // ---- two-sided roles. Present only for a role with an Inventory side: which side this session
+  // is working (null until the person has chosen), and every outlet its Billing side may stand at.
+  // `r`, `loc` and `perms` above are that side's own.
+  sides: z.strictObject({ at: SideSchema.nullable(), outlets: z.array(SignInCounterSchema) }).optional(),
 });
 /** What one colleague sees of another. Email, employee number and phone belong to the person
  *  they describe: the caller's own record travels whole, in `snapshot.user`, and nobody else's does. */

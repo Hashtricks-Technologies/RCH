@@ -99,10 +99,12 @@ export function targetOf(action: string, params: unknown, body: unknown, result:
  * - No user (a sign-in for a number nobody holds): `id` null and, where one was typed, the employee
  *   number the caller gave, capped at 64.
  * - A user id with no row (deleted while its token was still live): the id alone.
+ * - `at` is where the session stood, when a token said: somebody selling at another counter, or a
+ *   two-sided role on its Inventory side, acted there and not at home.
  * - The super admin: `Super Admin` and no location - its `role`/`loc` columns are placeholders
  *   nothing acts on (`lib/wire.ts`), and printing one would put it at a desk it never sits at.
  */
-export async function actorOf(db: Reader, userId: string | null, typedEmp = ""): Promise<AuditActor> {
+export async function actorOf(db: Reader, userId: string | null, typedEmp = "", at?: string): Promise<AuditActor> {
   const emp = typedEmp.slice(0, 64);
   if (userId === null) return { id: null, emp, name: "", role: "", loc: "" };
   const [u] = await db
@@ -110,7 +112,7 @@ export async function actorOf(db: Reader, userId: string | null, typedEmp = ""):
     .from(users)
     .where(eq(users.id, userId));
   if (!u) return { id: userId, emp, name: "", role: "", loc: "" };
-  return { id: userId, emp: u.empNo, name: u.name, role: roleLabelOf(u), loc: u.admin || u.system ? "" : u.loc };
+  return { id: userId, emp: u.empNo, name: u.name, role: roleLabelOf(u), loc: u.admin || u.system ? "" : at ?? u.loc };
 }
 
 /**
@@ -137,7 +139,7 @@ const userAgentOf = (headers: Record<string, string | string[] | undefined>): st
 };
 
 /**
- * A sign-in, sign-out or password change. The auth routes are public or `write: false`, so `mount()`
+ * A sign-in, sign-out, password change or change of side. The auth routes are public or `write: false`, so `mount()`
  * never audits them and `modules/auth` records each one itself.
  *
  * No password is ever passed in. `request`, when given, is stored (masked) as what was sent; left
@@ -145,17 +147,21 @@ const userAgentOf = (headers: Record<string, string | string[] | undefined>): st
  * body's `current` and `next` are not `SECRET_KEYS`.
  */
 export type AuthEvent = {
-  action: "login" | "logout" | "changePassword"; outcome: AuditOutcome; status: number; message: string;
+  action: "login" | "logout" | "changePassword" | "switchSide"; outcome: AuditOutcome; status: number; message: string;
   cause?: string | null; actorId: string | null; typedEmp?: string; request?: unknown;
+  /** Where the actor stands, when it is not where their token said - a switch of side, done. */
+  actorLoc?: string;
+  /** The place a switch of side named. */
+  targetLoc?: string;
 };
 
 export async function recordAuthEvent(db: Db, req: FastifyRequest, e: AuthEvent): Promise<void> {
   const url = req.routeOptions.url ?? req.url;
   await insertAuditEvent(db, {
     at: new Date().toISOString(), requestId: req.id,
-    actor: await actorOf(db, e.actorId, e.typedEmp),
+    actor: await actorOf(db, e.actorId, e.typedEmp, e.actorLoc ?? req.user?.loc),
     action: e.action, method: req.method, path: url.startsWith(API_PREFIX) ? url.slice(API_PREFIX.length) : url,
-    target: "", targetLoc: "",
+    target: "", targetLoc: e.targetLoc ?? "",
     outcome: e.outcome, status: e.status, message: e.message, cause: e.cause ?? null,
     request: maskSecrets(e.request ?? { params: req.params ?? {}, query: req.query ?? {} }),
     before: null, result: null, changed: [],
@@ -212,6 +218,8 @@ export type AuditRequestContext = {
   requestId: string; ip: string; userAgent: string;
   params: unknown; query: unknown; body: unknown;
   actorId: string | null;
+  /** Where the token says the actor stands. */
+  actorLoc?: string;
   before: unknown | null;
   pending: boolean;
   recorded: boolean;
@@ -223,7 +231,7 @@ declare module "fastify" { interface FastifyRequest { audit?: AuditRequestContex
 type AuditedRequest = {
   id: string; ip: string; headers: Record<string, string | string[] | undefined>;
   params: unknown; query: unknown; body: unknown;
-  user?: { sub: string } | null;
+  user?: { sub: string; loc: string } | null;
 };
 
 /** A fresh context for one request. `user` is null until a token has been verified (`@fastify/jwt`
@@ -233,7 +241,7 @@ export function auditContextOf(req: AuditedRequest, route: { action: string; met
     action: route.action, method: route.method, path: route.path,
     requestId: req.id, ip: req.ip, userAgent: userAgentOf(req.headers),
     params: req.params ?? {}, query: req.query ?? {}, body: req.body ?? null,
-    actorId: req.user?.sub ?? null,
+    actorId: req.user?.sub ?? null, actorLoc: req.user?.loc,
     before: null, pending: false, recorded: false,
   };
 }
@@ -259,7 +267,7 @@ export async function auditEventOf(
   const { target, targetLoc } = targetOf(a.action, a.params, a.body, o.result);
   return {
     at: new Date().toISOString(), requestId: a.requestId,
-    actor: await actorOf(db, a.actorId),
+    actor: await actorOf(db, a.actorId, "", a.actorLoc),
     action: a.action, method: a.method, path: a.path, target, targetLoc,
     outcome: o.outcome, status: o.status, message: o.message, cause: o.cause,
     request: maskSecrets({ params: a.params, query: a.query, body: a.body }),

@@ -6,12 +6,13 @@ import type { LocKey, Role } from "@rch/contract";
 import type { Config } from "../config.js";
 import { UnauthenticatedError } from "../lib/errors.js";
 
-export type AccessClaims = { sub: string; role: Role; loc: LocKey; mcp: boolean; admin: boolean };
+/** `unplaced` is a two-sided role's session that has not chosen a side: absent on every other token. */
+export type AccessClaims = { sub: string; role: Role; loc: LocKey; mcp: boolean; admin: boolean; unplaced?: boolean };
 declare module "@fastify/jwt" { interface FastifyJWT { payload: AccessClaims; user: AccessClaims } }
 declare module "fastify" {
   interface FastifyInstance {
     authenticate: (req: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply) => Promise<void>;
-    signAccess: (u: { id: string; role: Role; loc: LocKey; mcp: boolean; admin: boolean }) => Promise<string>;
+    signAccess: (u: { id: string; role: Role; loc: LocKey; mcp: boolean; admin: boolean; unplaced?: boolean }) => Promise<string>;
   }
 }
 
@@ -47,7 +48,7 @@ export default fp<{ config: Config }>(async (app, { config }) => {
       throw new UnauthenticatedError(code === "FST_JWT_AUTHORIZATION_TOKEN_EXPIRED" ? "Your session has expired - sign in again." : "Sign in to continue.");
     }
   });
-  app.decorate("signAccess", async (u) => app.jwt.sign({ sub: u.id, role: u.role, loc: u.loc, mcp: u.mcp, admin: u.admin }));
+  app.decorate("signAccess", async (u) => app.jwt.sign({ sub: u.id, role: u.role, loc: u.loc, mcp: u.mcp, admin: u.admin, ...(u.unplaced ? { unplaced: true } : {}) }));
 }, { name: "auth", dependencies: ["errors"] });
 
 function extractBearer(h: string | undefined): string {

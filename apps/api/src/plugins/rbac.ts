@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import type { FastifyRequest } from "fastify";
 import type { Access, LocKey, Permissions } from "@rch/contract";
-import { admits } from "@rch/domain";
+import { admits, permsAt } from "@rch/domain";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "../lib/errors.js";
 import type { AccessClaims } from "./auth.js";
 
@@ -22,6 +22,9 @@ type GateOptions = {
    *  the manifest's own `admitAdmin` (the register's X, Z list and close); `/events`
    *  (`plugins/sse.ts`) passes it by hand, because the admin's own screens refresh live too. */
   admitAdmin?: boolean;
+  /** Let a two-sided session that has not chosen a side through - the choice itself, and nothing
+   *  else. An `allowMcp` route is reachable then too. */
+  allowUnplaced?: boolean;
 };
 
 /** A super admin holds no role and so no permissions; where it is admitted it is admitted past
@@ -50,13 +53,17 @@ export default fp(async (app) => {
       req.actor = { ...claims, perms: NO_PERMS, wide: true };
     } else {
       const role = await app.access.of(claims.sub);
-      if (!role || !role.active || role.desk !== claims.role) throw new UnauthenticatedError("Your account was changed - sign in again.", "role changed");
+      // A two-sided role works two desks, and the token says which: its own permissions there are
+      // the request's. An unplaced token whose role has only one side left is stale the same way.
+      const perms = role?.active ? permsAt(role, claims.role) : null;
+      if (!role || !perms || (claims.unplaced && !role.inventory)) throw new UnauthenticatedError("Your account was changed - sign in again.", "role changed");
       // `admits` (@rch/domain) is the rule for every form: `any`, `{ desk }` and `{ needs }`.
-      const verdict = admits(access, role.desk, role.perms);
+      const verdict = admits(access, claims.role, perms);
       if (!verdict.ok) throw verdict.status === 404 ? nothingAt(req) : new ForbiddenError(verdict.message);
-      req.actor = { ...claims, perms: role.perms, wide: verdict.wide };
+      req.actor = { ...claims, perms, wide: verdict.wide };
     }
     if (claims.mcp && !allowMcp) throw new ForbiddenError("Change your password before you carry on.");
+    if (claims.unplaced && !allowMcp && !opts.allowUnplaced) throw new ForbiddenError("Choose Billing or Inventory before you carry on.");
   });
 }, { name: "rbac", dependencies: ["auth", "access"] });
 

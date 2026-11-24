@@ -11,6 +11,12 @@ import { z } from "zod";
  */
 export const LocKeySchema = z.string().regex(/^(?!quarantine$)[a-z][a-z0-9-]{0,23}$/, "Not a location an operator can act at");
 export const RoleSchema = z.enum(["counter", "manager", "store", "prod", "buyer"]);
+/** The two halves of a two-sided role's job: selling at an outlet, and the central store's and
+ *  purchasing's work. A session works one at a time. Ordinary roles have no sides at all. */
+export const SideSchema = z.enum(["billing", "inventory"]);
+/** One counter as a screen with no location registry yet names it: the key the wire uses, and the
+ *  name and code the operator reads off the outlet itself. */
+export const SignInCounterSchema = z.strictObject({ k: LocKeySchema, n: z.string(), c: z.string() });
 export const ItemTypeSchema = z.enum(["RAW", "PACK", "MRP", "FG", "MTO"]);
 /** Which desk a counter's stock request for this item is auto-routed to - the central store or
  *  the central kitchen - set on the item master and read by `@rch/domain`'s `sourceOf`. Optional

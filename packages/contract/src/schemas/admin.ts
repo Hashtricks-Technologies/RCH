@@ -124,13 +124,18 @@ const roleName = z.string().trim().min(2).max(60);
 export const AdminRoleSchema = z.strictObject({
   id: z.string(), name: z.string(), desk: RoleSchema, active: z.boolean(), perms: PermissionsSchema,
   holders: z.number().int().min(0), everAssigned: z.boolean(), updatedAt: IsoTime,
+  /** What a two-sided role holds at the central store; `perms` is then its Billing side. Absent for
+   *  every other role. */
+  inventory: PermissionsSchema.optional(),
 });
 /** No `id`: the server numbers a role (`ROLE-00n`). Whether each grant suits the desk is the
  *  domain's `grantRefusal`, refused as a sentence rather than a 400. */
-export const CreateRoleBodySchema = z.strictObject({ name: roleName, desk: RoleSchema, perms: PermissionsSchema });
+export const CreateRoleBodySchema = z.strictObject({ name: roleName, desk: RoleSchema, perms: PermissionsSchema, inventory: PermissionsSchema.optional() });
 /** Every field optional, one by one and with no defaults, so a field left out is never reset.
  *  A desk change is refused by the service once the role has been given to anybody. */
 export const UpdateRoleBodySchema = z.strictObject({
   name: roleName.optional(), desk: RoleSchema.optional(), perms: PermissionsSchema.optional(),
+  /** `null` takes the Inventory side away; left out, it stays as it is. */
+  inventory: PermissionsSchema.nullable().optional(),
 });
 export const RoleIdParamsSchema = z.strictObject({ id: RoleIdSchema });

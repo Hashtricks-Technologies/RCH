@@ -1,8 +1,9 @@
 import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import type { Role } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import type { Tx } from "../../lib/db.js";
-import { locations, refreshTokens, userPostings, users } from "../../db/schema/index.js";
+import { locations, refreshTokens, roles, userPostings, users } from "../../db/schema/index.js";
 
 export const authRepo = {
   userByEmp: async (db: Db | Tx, emp: string) => (await db.select().from(users).where(eq(users.empNo, emp)))[0],
@@ -21,31 +22,30 @@ export const authRepo = {
     const home = alias(locations, "home_loc");
     const rows = await db.select({
       emp: users.empNo, n: users.name,
+      // A two-sided account is asked Billing or Inventory after the password, and where after that, so
+      // there is no counter to choose here - and the public list says nothing about its role.
+      twoSided: sql<boolean>`coalesce(bool_or(${roles.inventoryPerms} is not null), false)`,
       homeLoc: sql<{ k: string; n: string; c: string }>`json_build_object('k', ${home.key}, 'n', ${home.name}, 'c', ${home.code})`,
       locs: sql<{ k: string; n: string; c: string }[]>`coalesce(json_agg(json_build_object('k', ${locations.key}, 'n', ${locations.name}, 'c', ${locations.code}) order by ${locations.key}) filter (where ${locations.key} is not null), '[]')`,
     }).from(users)
       .innerJoin(home, eq(home.key, users.loc))
+      .leftJoin(roles, eq(roles.id, users.roleId))
       .leftJoin(userPostings, eq(userPostings.userId, users.id))
       .leftJoin(locations, eq(locations.key, userPostings.loc))
       .where(and(eq(users.active, true), eq(users.admin, false), eq(users.system, false)))
       .groupBy(users.empNo, users.name, home.key, home.name, home.code)
       .orderBy(asc(users.empNo));
-    return rows.map((r) => ({ emp: r.emp, n: r.n, locs: r.locs.length ? r.locs : [r.homeLoc] }));
+    return rows.map((r) => ({ emp: r.emp, n: r.n, locs: r.locs.length && !r.twoSided ? r.locs : [r.homeLoc] }));
   },
-  /** Where this account may work, in key order - its home row and every counter it has been
-   *  posted to besides. One row is the ordinary case; the sign-in screen shows no picker for it.
-   *  Every account has at least its home row (`lib/users-admin.ts` writes it with the account,
-   *  migration 0023 backfilled it for every account that predates the table), so an empty answer
-   *  means the row was removed by hand, not that the account may work anywhere. */
-  postingsFor: async (db: Db | Tx, userId: string): Promise<string[]> =>
-    (await db.select({ loc: userPostings.loc }).from(userPostings).where(eq(userPostings.userId, userId)).orderBy(asc(userPostings.loc))).map((r) => r.loc),
-  insertRefresh: (tx: Tx, v: { userId: string; family: string; tokenHash: string; expiresAt: Date; userAgent?: string; ip?: string; loc: string }) => tx.insert(refreshTokens).values(v),
+  insertRefresh: (tx: Tx, v: { userId: string; family: string; tokenHash: string; expiresAt: Date; userAgent?: string; ip?: string; loc: string; desk: Role | null }) => tx.insert(refreshTokens).values(v),
   refreshByHash: async (db: Db | Tx, tokenHash: string) => (await db.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash)))[0],
-  /** Moves a live session to another counter. Keyed on the token hash, which is unique, so it
-   *  moves the one session the caller is holding and none of that account's others - a consultant
-   *  signed in at two tills at once moves only the one they pressed the button on. */
-  setRefreshLoc: (tx: Tx, tokenHash: string, loc: string) =>
-    tx.update(refreshTokens).set({ loc }).where(and(eq(refreshTokens.tokenHash, tokenHash), isNull(refreshTokens.revokedAt))),
+  /** The live session behind a cookie, locked: a rotation of the same row waits for the switch, and
+   *  a switch that loses to one finds the row used. */
+  refreshForUpdate: async (tx: Tx, tokenHash: string) => (await tx.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash)).for("update"))[0],
+  /** Moves one two-sided session to another side or outlet. By row, so none of that account's other
+   *  sessions moves with it. */
+  setStanding: (tx: Tx, id: string, at: { desk: Role; loc: string }) =>
+    tx.update(refreshTokens).set({ desk: at.desk, loc: at.loc }).where(eq(refreshTokens.id, id)),
   /** When the family's very first token was issued - undefined if the family has no rows yet
    *  (a brand-new login, about to insert its own first row). Caps how long a refresh chain
    *  can be kept alive by rotation alone: see `issue()` in service.ts.
@@ -57,9 +57,11 @@ export const authRepo = {
   },
   /** Atomic claim: only flips `used_at` if it is still null, and reports whether it won.
    *  Two concurrent refreshes of the same token race this UPDATE, not a prior SELECT - the
-   *  loser's WHERE no longer matches once the winner commits, so it claims zero rows. */
+   *  loser's WHERE no longer matches once the winner commits, so it claims zero rows. Answers where
+   *  the session stands as the claim found it, not as an earlier read did: a switch of side may have
+   *  committed in between. */
   markUsed: (tx: Tx, id: string) =>
-    tx.update(refreshTokens).set({ usedAt: new Date() }).where(and(eq(refreshTokens.id, id), isNull(refreshTokens.usedAt))).returning({ id: refreshTokens.id }),
+    tx.update(refreshTokens).set({ usedAt: new Date() }).where(and(eq(refreshTokens.id, id), isNull(refreshTokens.usedAt))).returning({ desk: refreshTokens.desk, loc: refreshTokens.loc }),
   revokeFamily: (tx: Tx, family: string) => tx.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.family, family), isNull(refreshTokens.revokedAt))),
   revokeAllForUser: (tx: Tx, userId: string) => tx.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt))),
   setPassword: (tx: Tx, userId: string, passwordHash: string) => tx.update(users).set({ passwordHash, mustChangePassword: false, updatedAt: new Date() }).where(eq(users.id, userId)),
