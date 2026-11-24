@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Action, Feature, Level, Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
-import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
+import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema, SwitchSideBodySchema } from "./schemas/auth.js";
 import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, TermsResponseSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
 import { CloseRegisterBodySchema, CreditParamsSchema, CreditResponseSchema, RegisterQuerySchema, RegisterReportSchema, RegisterReportsResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema, ZReportsQuerySchema } from "./schemas/reports.js";
 import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminRoleSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, CreateRoleBodySchema, OutletKeyParamsSchema, RoleIdParamsSchema, SetAdminUserPostingsBodySchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema, UpdateRoleBodySchema } from "./schemas/admin.js";
@@ -47,6 +47,9 @@ export interface Route<P extends z.ZodTypeAny, Q extends z.ZodTypeAny, B extends
   write?: W;
   /** Reachable while must_change_password is set. Only auth and /me. */
   allowMcp?: boolean;
+  /** Reachable while a two-sided role's session has not chosen a side yet. Only the choice itself:
+   *  the `allowMcp` routes are reachable then too. */
+  allowUnplaced?: true;
   /** Which deployable answers the route. Absent means `"api"` (`serviceOf`). */
   service?: S;
   /** Let the super admin through a route that is not `access: "admin"`, past every permission -
@@ -65,6 +68,9 @@ export const routes = {
   logout:         defineRoute({ method: "POST",  path: "/auth/logout",          access: "public", response: OkResponseSchema, write: false, allowMcp: true }),
   signInDirectory: defineRoute({ method: "GET",  path: "/auth/directory",       access: "public", response: SignInDirectorySchema }),
   changePassword: defineRoute({ method: "POST",  path: "/auth/change-password", access: "any",    body: ChangePasswordBodySchema, response: AuthResponseSchema, write: false, allowMcp: true }),
+  // `write: false` like the rest of `/auth`: its answer carries an access token, which must never be
+  // stored in an idempotency record. `modules/auth` records its audit event itself.
+  switchSide:     defineRoute({ method: "POST",  path: "/auth/side",            access: "any",    body: SwitchSideBodySchema, response: AuthResponseSchema, write: false, allowUnplaced: true }),
   me:             defineRoute({ method: "GET",   path: "/me",                   access: "any",    response: MeResponseSchema, allowMcp: true }),
   patchMe:        defineRoute({ method: "PATCH", path: "/me",                   access: "any",    body: PatchMeBodySchema, response: MeResponseSchema, allowMcp: true }),
   snapshot:       defineRoute({ method: "GET",   path: "/snapshot",             access: "any",    response: SnapshotSchema }),

@@ -116,9 +116,12 @@ export default function AdminUsers() {
   const formRoleId = form.roleId
     || [...adminRoles].filter((r) => r.active).sort((a, b) => DESKS.indexOf(a.desk) - DESKS.indexOf(b.desk))[0]?.id || "";
   const formDesk = deskOf(formRoleId, "counter");
+  /** A two-sided role chooses its outlet after signing in, from every one it works - there are no
+   *  counters to tick, and the sign-in screen asks nothing before the password. */
+  const twoSided = (roleId: string): boolean => Boolean(adminRoles.find((r) => r.id === roleId)?.inventory);
   const formLoc = form.loc || placesFor(formDesk, LOCS)[0] || "";
   /** The other counters ticked on the create form, never the one it is already standing at. */
-  const formAlso = form.also.filter((l) => l !== formLoc && placesFor(formDesk, LOCS).includes(l));
+  const formAlso = twoSided(formRoleId) ? [] : form.also.filter((l) => l !== formLoc && placesFor(formDesk, LOCS).includes(l));
 
   const create = async () => {
     if (!form.name.trim() || !form.email.trim()) {
@@ -180,7 +183,7 @@ export default function AdminUsers() {
 
   const saveRoleLoc = async (a: AdminUser) => {
     const next = editOf(a);
-    const also = next.also.filter((l) => l !== next.loc && places(deskOf(next.roleId, a.r), a.loc).includes(l));
+    const also = twoSided(next.roleId) ? [] : next.also.filter((l) => l !== next.loc && places(deskOf(next.roleId, a.r), a.loc).includes(l));
     const movedPlaces = !sameSet(also, alsoOf(a));
     const movedRoleLoc = next.roleId !== (a.rid ?? "") || next.loc !== a.loc;
     if (!movedRoleLoc && !movedPlaces) { notify(`${a.n} is already ${a.rl} at ${label(a.loc)}`); return; }
@@ -244,7 +247,7 @@ export default function AdminUsers() {
         {/* Nothing is drawn for a role with one place to work. A counter operator or an outlet
             manager may be posted to several: the location above is where the account starts, and
             every other counter ticked here is one it may sign in at instead. */}
-        {placesFor(formDesk, LOCS).length > 1 && (
+        {placesFor(formDesk, LOCS).length > 1 && !twoSided(formRoleId) && (
           <Field label="Counters this account works" tip="Tick every outlet this account may take a shift at. With more than one ticked, the sign-in screen asks which counter before the till opens, and the header offers the others mid-shift.">
             <AlsoAt
               places={placesFor(formDesk, LOCS)} at={formLoc} also={formAlso} name={label}
@@ -303,11 +306,11 @@ export default function AdminUsers() {
                   </div>
                   {/* Which counters this account may stand at - the select above is the one it
                       stands at now, and Save sends both. Never drawn for a role with one place. */}
-                  <AlsoAt
+                  {!twoSided(e.roleId) && <AlsoAt
                     places={places(eDesk, a.loc)} at={e.loc} also={e.also} name={label}
                     disabled={busy === a.id}
                     onToggle={(l) => setEdit({ ...edit, [a.id]: { ...e, also: e.also.includes(l) ? e.also.filter((x) => x !== l) : [...e.also, l] } })}
-                  />
+                  />}
                 </div>,
                 a.active
                   ? (a.mustChangePassword ? <Pill tone="wn">Must change password</Pill> : <Pill tone="ok">Active</Pill>)

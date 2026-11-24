@@ -649,6 +649,26 @@ td.aud-two small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-
    popover (`.pw`/`.pop`/`.po`) on the same plate as the `.org` badge beside it, made pressable. */
 .lgpick-list.lgpick-here{position:static;margin-bottom:0;max-height:min(300px,46vh)}
 .lgpick-list.lgpick-here:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* ---------- a two-sided role: Billing or Inventory ----------
+   The choice after the password (pages/ChooseSide.tsx) and the header's switcher (ui/SideSwitcher.tsx),
+   which is the bell's popover on the `.org` plate made pressable. */
+.sidepick{display:grid;gap:10px}
+.sideopt{display:grid;gap:4px;justify-items:start;text-align:left;padding:16px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
+.sideopt .ic{color:var(--accent);margin-bottom:4px}
+.sideopt b{font-size:15px;font-weight:600}
+.sideopt span{font-size:12.5px;line-height:1.45;color:var(--ink-3)}
+.sideopt.sm{display:flex;align-items:baseline;gap:12px;padding:11px 14px}
+.sideopt.sm b{font-size:13.5px}
+.sideopt.sm .mono{min-width:5.5em}
+.sideopt:hover:not(:disabled){border-color:var(--accent);background:var(--accent-soft)}
+.sideopt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sideopt:disabled{opacity:.55;cursor:not-allowed}
+.sidebtn{background:var(--surface);font-family:inherit;cursor:pointer}
+.sidebtn b{color:var(--ink)}
+.sidebtn .lbl{max-width:14ch;overflow:hidden;text-overflow:ellipsis}
+.sidebtn:hover,.sidebtn[aria-expanded=true]{border-color:var(--accent);color:var(--accent)}
+.sidebtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+@media(max-width:700px){.sidebtn{padding:6px 7px;gap:4px}.pop.sidepop{position:fixed;left:13px;right:13px;top:58px;width:auto}}
 /* the manager's counter price grid (roles/manager/CounterPrices.tsx) */
 .cp-cell{padding:4px 6px;border-radius:6px;border:1px solid transparent}
 .cp-cell .hint{margin-top:3px}

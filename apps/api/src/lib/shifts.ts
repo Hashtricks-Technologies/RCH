@@ -101,6 +101,18 @@ export async function closeShiftRow(tx: Tx, row: ShiftRow, at: Date, auto: boole
 }
 
 /**
+ * A two-sided operator leaving the tills for the central store: whatever shift is open is closed
+ * where it stands, its figures stored and marked `auto`. Nothing open is nothing to do.
+ */
+export async function endShift(tx: Tx, userId: string): Promise<void> {
+  await lockShiftsOf(tx, userId);
+  const held = await openShiftOf(tx, userId);
+  if (!held) return;
+  await closeShiftRow(tx, held, new Date(), true);
+  await emitChanged(tx, ["shifts"]);
+}
+
+/**
  * The sign-in's half: make sure the person has a shift open at the counter this session stands
  * at. Signing in again at the same counter - a second tab, a reload, the next morning without a
  * close - keeps the shift that is open. One left open at a **different** counter is closed

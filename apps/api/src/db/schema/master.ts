@@ -53,6 +53,9 @@ export const roles = pgTable("roles", {
   name: text("name").notNull(),
   desk: roleEnum("desk").notNull(),
   perms: jsonb("perms").notNull(),
+  /** A two-sided role's Inventory side: what it holds at the central store, beside `perms` for its
+   *  Billing side. Null for every other role. */
+  inventoryPerms: jsonb("inventory_perms"),
   active: boolean("active").notNull().default(true),
   everAssigned: boolean("ever_assigned").notNull().default(false),
   version: integer("version").notNull().default(1),
@@ -60,6 +63,7 @@ export const roles = pgTable("roles", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [
   unique("roles_id_desk_uq").on(t.id, t.desk),
+  check("roles_inventory_perms_ck", sql`${t.inventoryPerms} is null or ${t.desk} = 'counter'`),
   uniqueIndex("roles_name_uq").on(sql`lower(${t.name})`),
 ]);
 

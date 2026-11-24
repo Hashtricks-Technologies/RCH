@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { UserSchema } from "./documents.js";
-import { LocKeySchema } from "./common.js";
+import { LocKeySchema, SignInCounterSchema } from "./common.js";
 
 /** Request bodies are strict: an unknown key is a client bug (a renamed field, a stale build),
  *  and silently dropping it hides the mistake until someone wonders why the value never saved. */
@@ -17,9 +17,6 @@ export const LoginBodySchema = z.strictObject({
  *  role, email or phone, and never an admin-flagged or deactivated account. The counters are on it
  *  because the screen asks which one before the password, and that question cannot wait for a
  *  token; it is the same roster the outlet prints on its own wall. */
-/** One counter on the sign-in screen: the key the wire uses, and the name and code the operator
- *  reads off the outlet itself. */
-export const SignInCounterSchema = z.strictObject({ k: LocKeySchema, n: z.string(), c: z.string() });
 export const SignInEntrySchema = z.strictObject({
   emp: z.string(), n: z.string(),
   /** Every counter this account works, each carrying its own printed name and code.
@@ -46,6 +43,15 @@ export const AuthResponseSchema = z.object({
   accessToken: z.string(), user: UserSchema, mustChangePassword: z.boolean(),
   postings: PostingsSchema.default([]),
 });
+/**
+ * Where a two-sided role's session works next: Billing at a named outlet, or Inventory, which is
+ * always the central store. The choice after the password and every later switch send the same
+ * body. One per side rather than an optional `loc`, so Billing with no outlet is a 400.
+ */
+export const SwitchSideBodySchema = z.discriminatedUnion("side", [
+  z.strictObject({ side: z.literal("billing"), loc: LocKeySchema }),
+  z.strictObject({ side: z.literal("inventory") }),
+]);
 /** The floor every new password clears, wherever one is set: the change-password form below and
  *  the two administrator commands behind `pnpm --filter @rch/api users` (`createUser` and
  *  `resetPassword`, apps/api/src/lib/users-admin.ts). One number rather than two literals, so a

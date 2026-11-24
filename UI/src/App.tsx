@@ -9,6 +9,7 @@ import Shell from "./ui/Shell";
 import Toast from "./ui/Toast";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
+import ChooseSide from "./pages/ChooseSide";
 import AdminDashboard from "./pages/AdminDashboard";
 import { Btn } from "./ui/kit";
 
@@ -141,6 +142,9 @@ function Page() {
       </div>
     );
   }
+  // A two-sided role that has not said which side it is working has no screen to draw yet - every
+  // one of them belongs to a side. After a forced password change, never before it.
+  if (user && !mcp && user.sides?.at === null) return <ChooseSide />;
   // Where a signed-in account lands: `/admin` for the capability, never `homeFor(user)` - an
   // admin-flagged account's nominal role is bookkeeping the schema needs, not an identity this
   // app shows it (root CLAUDE.md).

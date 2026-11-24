@@ -1,6 +1,6 @@
 import type { z } from "zod";
-import { API_PREFIX, routes, type AnyRoute } from "@rch/contract";
-import { getAccessToken, onSessionLost, sessionLost, setAccessToken } from "./session";
+import { API_PREFIX, isWriteRoute, routes, type AnyRoute } from "@rch/contract";
+import { getAccessToken, movedBetween, onSessionLost, sessionLost, sessionMoved, setAccessToken } from "./session";
 
 /**
  * The server's error envelope, thrown. `message` is written for the person at
@@ -94,7 +94,11 @@ function sessionChannel(): BroadcastChannel | null {
     // the sign-in screen, or one whose family was revoked, holds nothing - and on a shared
     // terminal adopting here would let the next person at the keyboard walk into the session
     // of whoever is signed in in the tab beside it.
-    if (typeof t === "string" && t && getAccessToken() !== null) setAccessToken(t);
+    if (typeof t === "string" && t && getAccessToken() !== null) {
+      const had = getAccessToken();
+      setAccessToken(t);
+      if (movedBetween(had, t)) sessionMoved();
+    }
   };
   return channel;
 }
@@ -111,7 +115,7 @@ export function closeSessionChannel(): void {
 onSessionLost(closeSessionChannel);
 
 /** Say so, without letting a closed or refused channel turn a successful refresh into a failure. */
-function announce(accessToken: string): void {
+export function announce(accessToken: string): void {
   try { sessionChannel()?.postMessage({ accessToken }); } catch { /* the token is set either way */ }
 }
 
@@ -129,6 +133,7 @@ async function refreshInLock(had: string | null): Promise<boolean> {
     const b = (await r.json()) as { accessToken: string };
     setAccessToken(b.accessToken);
     announce(b.accessToken);
+    if (movedBetween(had ?? now, b.accessToken)) sessionMoved();
     return true;
   } catch { return false; }
 }
@@ -153,6 +158,14 @@ export async function refreshOnce(had: string | null = null): Promise<boolean> {
   return refreshing;
 }
 
+/** A write that met a 401 and came back with a token standing somewhere else is not sent again: it
+ *  was composed for the old place, and what a request or a count is raised *from* is the token's. */
+const MOVED = "Your session moved to another place, so nothing was sent. Check where you are working and try again.";
+
+/** Auth routes answer their own 401s - except the choice of side, whose token may simply have aged
+ *  out while the person was thinking, and which names the place it wants whichever token sends it. */
+const refreshable = (route: AnyRoute): boolean => !route.path.startsWith("/auth/") || route.path === routes.switchSide.path;
+
 /** The customer-facing QR ordering routes: public, and under `/public/`. */
 const isCustomerRoute = (route: AnyRoute): boolean => route.access === "public" && route.path.startsWith("/public/");
 
@@ -169,9 +182,11 @@ export async function call<R extends AnyRoute>(route: R, input: Input = {}): Pro
   const stamps: Stamps = { idempotencyKey: idempotencyKeyFor(route), requestId: crypto.randomUUID() };
   const had = customer ? null : getAccessToken();
   let res = await raw(route, input, had, stamps);
-  if (res.status === 401 && !customer && !route.path.startsWith("/auth/")) {
-    if (await refreshOnce(had)) res = await raw(route, input, getAccessToken(), stamps);
-    else { sessionLost(); }
+  if (res.status === 401 && !customer && refreshable(route)) {
+    if (await refreshOnce(had)) {
+      if (isWriteRoute(route) && movedBetween(had, getAccessToken())) throw new ApiError("conflict", MOVED, 409, undefined, stamps.requestId);
+      res = await raw(route, input, getAccessToken(), stamps);
+    } else { sessionLost(); }
   }
   return parse(res, stamps.requestId) as Promise<z.infer<R["response"]>>;
 }

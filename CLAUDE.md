@@ -199,7 +199,7 @@ excepted.
   counters are on the public `GET /auth/directory` because that question cannot wait for a token.
   **A session's counter is fixed at sign-in and does not move**: a shift at another till is a
   fresh sign-in there, so there is no switcher in the shell and no route that moves a live
-  session. The chosen location is stored on the refresh-token row, so a silent refresh
+  session - except for a two-sided role (below), which has both. The chosen location is stored on the refresh-token row, so a silent refresh
   does not move somebody back to their home counter. Changing an account's postings revokes its
   sessions, because a live token may assert a counter the new list has just removed.
 - **A counter works its QR orders on its own screen.** QR Orders (`qr-orders`, feature `qr_orders`: the
@@ -246,6 +246,19 @@ excepted.
   issue desk and the store's own screens are that desk's alone). A central-store desk has no outlet of its
   own, so it holds an outlet's own (local) feature only together with `all_outlets`; `grantRefusal` refuses
   it otherwise. The till's edit stays the counter's.
+- **A two-sided role works Billing and Inventory from one account.** A counter-desk role may carry a second
+  set of permissions (`roles.inventory_perms`), its Inventory side, held on the store desk; `perms` is its
+  Billing side. After the password (and a forced change) its holder is asked which, and Billing asks which
+  outlet: with `all_outlets` every open one, otherwise its postings (`standsAt` in `@rch/domain`). The choice
+  is `POST /auth/side`, and the header's switcher sends the same body later. The session's token names the
+  side it works - `counter` at the outlet, or `store` at the central store - so every gate and location rule
+  reads one desk and one place as always; the refresh row keeps both (`desk`, `loc`). Until the choice the
+  token is `unplaced` and reaches nothing but `/me`, a password change and the choice (**403**). A move to a
+  till starts the shift there and closes one left elsewhere; a move to Inventory closes it. Each move is one
+  audit event (`switchSide`). An account with any other role gets a **404** on the route. The super admin
+  makes one at `/admin`, Roles, "Start from: Admin (billing + inventory)" (`ADMIN_PRESET`: both sides at
+  everything their desks may hold, the Z included, the kitchen and `/admin` excluded). One person holding it
+  may raise, approve, issue and receive the same request; they still never void a bill they took.
 - **Staff pick themselves at sign-in.** `GET /auth/directory` is public and lists active, non-admin accounts
   as number and name only. The super admin signs in through a typed id instead.
 - **A role with Product photos sets a photo only for items on its own outlet's menu** (403 otherwise), unless

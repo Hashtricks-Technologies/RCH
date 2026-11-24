@@ -10,7 +10,7 @@ export const AUDIT_GROUPS: Record<AuditGroup, string> = {
 // `defineRoute` keeps `method`, `write` and `service` as literals, so write-ness is readable off
 // the manifest's own type: `write` when the entry says, else anything but a GET - the same
 // reading as `isWriteRoute`. The auth routes say `write: false` and fall out here; sign-in,
-// sign-out and a password change come back in below as actions of their own.
+// sign-out, a password change and a change of side come back in below as actions of their own.
 type WriteFlag<T extends AnyRoute> = Exclude<T["write"], undefined>;
 type IsWrite<T extends AnyRoute> = [WriteFlag<T>] extends [never] ? (T["method"] extends "GET" ? false : true) : WriteFlag<T>;
 type IsAudit<T extends AnyRoute> = T["service"] extends "audit" ? true : false;
@@ -23,8 +23,8 @@ export type WriteRouteName = {
  *  refunded, and a refund's journey through the gateway. Written by `recordSystemEvent` with the
  *  system's account as the actor. */
 export type SystemAuditAction = "qrOrderPaid" | "qrOrderRefunded" | "qrRefundSent" | "qrRefundProcessed" | "qrRefundFailed";
-/** Every manifest route that is a write (method !== "GET" unless `write` says otherwise, `write: false` excluded), plus the three auth events and the system's own. */
-export type AuditAction = WriteRouteName | "login" | "logout" | "changePassword" | SystemAuditAction;
+/** Every manifest route that is a write (method !== "GET" unless `write` says otherwise, `write: false` excluded), plus the four auth events and the system's own. */
+export type AuditAction = WriteRouteName | "login" | "logout" | "changePassword" | "switchSide" | SystemAuditAction;
 export type AuditLabel = { label: string; refused?: string; group: AuditGroup };
 
 /**
@@ -39,6 +39,7 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   login:                  { label: "Signed in", refused: "Failed sign-in", group: "accounts" },
   logout:                 { label: "Signed out", group: "accounts" },
   changePassword:         { label: "Changed their password", group: "accounts" },
+  switchSide:             { label: "Chose where to work", refused: "Failed to change where they work", group: "accounts" },
   patchMe:                { label: "Changed their own details", group: "accounts" },
   createAdminUser:        { label: "Created a staff account", group: "accounts" },
   resetAdminUserPassword: { label: "Reset a staff account's password", group: "accounts" },

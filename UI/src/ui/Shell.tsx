@@ -1,5 +1,5 @@
 import {
-  useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject,
+  useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode,
 } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { bestBeforeAt, type ReadCollection } from "@rch/domain";
@@ -17,8 +17,10 @@ import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton, Tip } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import { markSeen, useSeen } from "./seen";
 import Drawer from "./Drawer";
+import { useDismiss } from "./focus";
 import ErrorBoundary from "./ErrorBoundary";
 import CloseShift from "./CloseShift";
+import SideSwitcher from "./SideSwitcher";
 import mark from "../assets/eateszy-mark.png";
 
 /** What the header's dot says, per stream state. The colour is inline rather than a class
@@ -135,9 +137,11 @@ export default function Shell({ children }: { children: ReactNode }) {
             {/* Where this session is standing. Named, not offered: the counter is decided at
                 sign-in and does not move - somebody taking a shift at another till signs in
                 there. */}
-            <span className="lbl">Royal Care{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span>
+            <span className="lbl">Royal Care{homeLabel(user) && !user.sides ? ` · ${homeLabel(user)}` : ""}</span>
             <Tip text={STREAM[live].why} label="Connection" />
           </div>
+          {/* The one exception to a counter fixed at sign-in: a role with two sides. */}
+          {user.sides && <SideSwitcher user={user} />}
           {/* Nothing is shown while the stream is live: a badge that is always there stops being read. */}
           {live === "reconnecting" && <Pill tone="wn">Reconnecting</Pill>}
           <ThemeButton />
@@ -154,21 +158,6 @@ export default function Shell({ children }: { children: ReactNode }) {
       <Drawer />
     </div>
   );
-}
-
-/** Escape, or a click anywhere outside, puts a popover away. */
-function useDismiss(on: boolean, close: () => void, box: RefObject<HTMLDivElement | null>) {
-  useEffect(() => {
-    if (!on) return;
-    const out = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) close(); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
-    document.addEventListener("pointerdown", out);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("pointerdown", out);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [on, close, box]);
 }
 
 /* ---------- global search (P3) ---------- */

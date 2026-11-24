@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { act, desk, need, routes, type Access, type Feature, type Permissions, type Role, type RouteName } from "@rch/contract";
-import { ACTIONS, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, readsBills, readsWide, type ReadCollection } from "./permissions";
+import { ACTIONS, ADMIN_PRESET, admits, can, DESK_DEFAULTS, FEATURES, grantRefusal, holds, permissionRefusal, permsAt, readsBills, readsWide, sideOf, sideRefusal, standsAt, type ReadCollection } from "./permissions";
 
 const DESKS: readonly Role[] = ["counter", "manager", "store", "prod", "buyer"];
 const none: Permissions = { f: {}, a: [] };
@@ -382,5 +382,77 @@ describe("permissionRefusal", () => {
     expect(permissionRefusal("prices")).toBe("You can see Prices but not change them - ask the administrator for edit access.");
     expect(permissionRefusal("credit")).toBe("You can see Discounts & credit limits but not change them - ask the administrator for edit access.");
     expect(permissionRefusal("settlements")).toBe("You can see Receivables & settlements but not change them - ask the administrator for edit access.");
+  });
+});
+
+describe("two-sided roles", () => {
+  const { perms, inventory } = ADMIN_PRESET;
+  const locations = {
+    store: { n: "Central Store", type: "Store" as const, active: true },
+    coffee: { n: "Coffee Shop", type: "Outlet" as const, active: true },
+    kiosk: { n: "Snack Kiosk", type: "Outlet" as const, active: true },
+    old: { n: "Old Canteen", type: "Outlet" as const, active: false },
+  };
+
+  it("the Admin preset is grantable as it stands", () => {
+    expect(grantRefusal(ADMIN_PRESET.desk, perms)).toBeNull();
+    expect(sideRefusal(ADMIN_PRESET.desk, inventory)).toBeNull();
+  });
+
+  it("the Admin preset holds everything each side's desk may be given in its own sections", () => {
+    // The catalogue decides: a feature added to one of these sections fails here until somebody
+    // says whether the Admin holds it.
+    const best = (desk: Role, sections: readonly string[]) => Object.fromEntries(
+      (Object.keys(FEATURES) as Feature[]).filter((f) => sections.includes(FEATURES[f].section))
+        .flatMap((f) => {
+          const l = (["edit", "view"] as const).find((x) => FEATURES[f].levels[x]?.includes(desk));
+          return l ? [[f, l]] : [];
+        }),
+    );
+    expect(perms.f).toEqual({ ...best("counter", ["Sales", "Outlets", "My counter"]), stock_ledger: "view" });
+    expect(inventory.f).toEqual(best("store", ["Central store", "Purchasing", "Items"]));
+    expect([...perms.a].sort()).toEqual(["all_outlets", "void_bill", "void_settlement"]);
+  });
+
+  it("keeps the kitchen off both sides", () => {
+    for (const f of (Object.keys(FEATURES) as Feature[]).filter((x) => FEATURES[x].section === "Kitchen")) {
+      expect(can(perms, f), f).toBe(false);
+      expect(can(inventory, f), f).toBe(false);
+    }
+  });
+
+  it("only a counter role has an Inventory side, and the side obeys the store desk's own limits", () => {
+    expect(sideRefusal("manager", inventory)).toBe("Only a role on the counter desk can have an Inventory side - this one works at the outlet manager desk.");
+    expect(sideRefusal("manager", null)).toBeNull();
+    expect(sideRefusal("counter", undefined)).toBeNull();
+    expect(sideRefusal("counter", { f: { billing: "edit" }, a: [] })).toBe("The store desk can't be given edit access to Bills.");
+  });
+
+  it("gives a session its own side's permissions, and nothing at a desk the role does not work", () => {
+    expect(permsAt(ADMIN_PRESET, "counter")).toBe(perms);
+    expect(permsAt(ADMIN_PRESET, "store")).toBe(inventory);
+    expect(permsAt(ADMIN_PRESET, "buyer")).toBeNull();
+    const oneSided = { desk: "counter" as const, perms, inventory: null };
+    expect(permsAt(oneSided, "store")).toBeNull();
+    expect(permsAt({ desk: "store", perms: DESK_DEFAULTS.store.perms }, "store")).toBe(DESK_DEFAULTS.store.perms);
+  });
+
+  it("neither side opens the other's doors", () => {
+    expect(admits(routes.pay.access, "counter", perms).ok).toBe(true);
+    expect(admits(routes.pay.access, "store", inventory)).toEqual({ ok: false, status: 404, message: "There is nothing here." });
+    expect(admits(routes.issueTicket.access, "store", inventory).ok).toBe(true);
+    expect(admits(routes.issueTicket.access, "counter", perms)).toEqual({ ok: false, status: 404, message: "There is nothing here." });
+    expect(admits(routes.adminUsers.access, "counter", perms).ok).toBe(false);
+  });
+
+  it("reads the side off the desk", () => {
+    expect(sideOf("counter")).toBe("billing");
+    expect(sideOf("store")).toBe("inventory");
+  });
+
+  it("stands at every open outlet when two-sided with every outlet, and only where it is posted otherwise", () => {
+    expect(standsAt(ADMIN_PRESET, ["coffee"], locations)).toEqual(["coffee", "kiosk"]);
+    expect(standsAt({ ...ADMIN_PRESET, inventory: null }, ["coffee"], locations)).toEqual(["coffee"]);
+    expect(standsAt({ ...ADMIN_PRESET, perms: { f: perms.f, a: [] } }, ["kiosk", "old"], locations)).toEqual(["kiosk"]);
   });
 });

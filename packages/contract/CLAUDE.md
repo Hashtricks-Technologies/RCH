@@ -63,13 +63,18 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
 - **`write`** defaults to `method !== "GET"`. A write carries an `Idempotency-Key`. The auth routes set
   `write: false`. `isWriteRoute(r)` is the one runtime reading of that rule, and `defineRoute` keeps `method`
   and `write` as literal types so `AuditAction` can apply the same rule at the type level.
-- **`allowMcp: true`** marks the few routes a must-change-password token can still reach.
+- **`allowMcp: true`** marks the few routes a must-change-password token can still reach. `allowUnplaced: true`
+  marks the one more a two-sided session without a side can reach: `switchSide` (`POST /auth/side`), which is
+  `write: false` like the rest of `/auth` because its answer carries an access token.
+- **A two-sided role's wire shape is additive.** `AdminRoleSchema.inventory` and `UserSchema.sides` are absent
+  for every other role. `UserSchema.r`, `loc` and `perms` are then the side the session is working, and
+  `sides.at` is null until one is chosen. `UpdateRoleBodySchema.inventory` is nullable: `null` takes it away.
 - **A write's response is `writeResponse(Result)`**, which is `{ result, changed, message }`. `changed` is an
   array of `CollectionSchema` members, the closed list of slices the UI's `refetch` knows. **If you add a
   collection, also add a narrow reader for it in `UI/src/api/refetch.ts`.** Without one, every write naming it
   costs a full snapshot.
 - **Every write has an audit label.** `AUDIT_LABELS` is a `Record<AuditAction, AuditLabel>`, and `AuditAction`
-  is the name of every manifest write route plus `login`, `logout` and `changePassword`. A new write route
+  is the name of every manifest write route plus `login`, `logout`, `changePassword` and `switchSide`. A new write route
   without a label fails `typecheck`. A label is past tense ("Changed a price"), names its `group` (a key of
   `AUDIT_GROUPS`), and carries `refused` only where a refusal means something else (`login` → "Failed
   sign-in"). A route removed from the manifest loses its label; `auditLabelOf` then prints the stored action

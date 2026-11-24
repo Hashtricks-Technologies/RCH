@@ -204,6 +204,13 @@
       "when": 1790310559936,
       "tag": "0028_kitchen_wastage",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1795525930067,
+      "tag": "0029_role_sides",
+      "breakpoints": true
     }
   ]
 }

@@ -6,8 +6,7 @@ import type { Tx } from "../../lib/db.js";
 import { withReadTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { readTerms } from "../../lib/terms.js";
-import { toWireUser } from "../../lib/wire.js";
-import { loadAccess } from "../../lib/access.js";
+import { wireUserAt } from "../../lib/standing.js";
 import type { Actor } from "../../plugins/rbac.js";
 import { snapshotRepo } from "./repo.js";
 import { redactOtps, scope, scopeAdjustmentRequests, scopeAdjustments, scopeBatches, scopeBills, scopeBuying, scopePayers, scopeProdOrders, scopeProductRequests, scopeRequests, scopeRoster, scopeShopAsks, scopeStock, scopeTerms, scopeTickets, whoOf } from "./scope.js";
@@ -88,7 +87,7 @@ export function createSnapshotService(db: Db) {
         // the one the token names, which may not be their home. Reading the home location here
         // would hand the browser a different counter from the one its own token authorises, and
         // the next snapshot load would quietly move them back mid-shift.
-        const full: Snapshot = { user: { ...toWireUser(u, await loadAccess(tx, u.id)), loc: claims.loc }, items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, terms, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments, adjReq };
+        const full: Snapshot = { user: await wireUserAt(tx, u, claims), items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, terms, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments, adjReq };
         return scope(full, { ...whoOf(claims), sub: claims.sub }, support.owners);
       });
     },

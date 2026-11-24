@@ -8,6 +8,7 @@ import { isWriteRoute, need, routes, serviceOf } from "./routes";
 const SAMPLES: Record<string, Record<string, unknown>> = {
   login: { emp: "RC-4471", password: "changeme" },
   changePassword: { current: "changeme", next: "a-much-longer-secret" },
+  switchSide: { side: "billing", loc: "coffee" },
   patchMe: { n: "Kavitha Raman" },
   pay: { loc: "kitchen", tender: "Cash", lines: [{ it: "SKU-1", qty: 2 }] },
   toggleAvail: { loc: "kitchen", it: "SKU-1" },

@@ -1,10 +1,10 @@
 import fp from "fastify-plugin";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { routes } from "@rch/contract";
+import { routes, STORE } from "@rch/contract";
 import { mount } from "../../routes.js";
 import { recordAuthEvent, type AuthEvent } from "../../lib/audit.js";
 import { AppError, RateLimitedError, UnauthenticatedError } from "../../lib/errors.js";
-import { createAuthService, LoginRefused } from "./service.js";
+import { createAuthService, LoginRefused, type Standing } from "./service.js";
 import { clearRefreshCookie, REFRESH_COOKIE, setRefreshCookie } from "./cookies.js";
 
 /** Per client IP, per pod, like the login limit - but kept apart from it and far looser. The
@@ -43,7 +43,7 @@ export default fp(async (app) => {
   const meta = (req: { headers: Record<string, unknown>; ip: string }) => ({ userAgent: String(req.headers["user-agent"] ?? "").slice(0, 200), ip: req.ip });
   /** The `AuthResponse` every one of these routes answers with: the access token minted from the
    *  session's own claim, the caller, and every counter they may stand at. */
-  const authResponse = async (s: Awaited<ReturnType<typeof svc.login>>) =>
+  const authResponse = async (s: Standing) =>
     ({ accessToken: await app.signAccess(s.claims), user: s.user, mustChangePassword: s.mustChangePassword, postings: s.postings });
   const respond = async (reply: FastifyReply, s: Awaited<ReturnType<typeof svc.login>>) => {
     setRefreshCookie(reply, app.config, s.refreshToken, s.expiresAt);
@@ -107,12 +107,30 @@ export default fp(async (app) => {
   // The reply carries a whole new session: the change revoked every token the caller held.
   mount(app, routes.changePassword, async (req, reply) => {
     try {
-      const body = await respond(reply, await svc.changePassword(req.user.sub, req.body.current, req.body.next, meta(req)));
+      const body = await respond(reply, await svc.changePassword(req.user, req.body.current, req.body.next, meta(req)));
       await audit(req, { action: "changePassword", outcome: "done", status: 200, message: PASSWORD_CHANGED, actorId: req.user.sub, request: {} });
       return body;
     } catch (e) {
       if (e instanceof AppError) {
         await audit(req, { action: "changePassword", outcome: "refused", status: e.status, message: e.message, cause: e.cause ?? null, actorId: req.user.sub, request: {} });
+      }
+      throw e;
+    }
+  });
+
+  // A two-sided role choosing Billing at an outlet, or Inventory. The cookie stays the one it has.
+  mount(app, routes.switchSide, async (req) => {
+    const request = { body: req.body };
+    const targetLoc = req.body.side === "billing" ? req.body.loc : STORE;
+    try {
+      const { message, ...standing } = await svc.switchSide(req.user.sub, req.cookies[REFRESH_COOKIE], req.body);
+      const body = await authResponse(standing);
+      await audit(req, { action: "switchSide", outcome: "done", status: 200, message, actorId: req.user.sub, actorLoc: standing.claims.loc, targetLoc, request });
+      return body;
+    } catch (e) {
+      // A 401 is not an event: the browser refreshes and tries again, and that is the event.
+      if (e instanceof AppError && e.status !== 401) {
+        await audit(req, { action: "switchSide", outcome: "refused", status: e.status, message: e.message, cause: e.cause ?? null, actorId: req.user.sub, targetLoc, request });
       }
       throw e;
     }

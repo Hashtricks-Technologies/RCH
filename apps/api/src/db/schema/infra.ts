@@ -1,5 +1,6 @@
 import { bigint, check, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { roleEnum } from "./enums.js";
 import { locations, ts, users } from "./master.js";
 
 export const documentHistory = pgTable("document_history", {
@@ -53,6 +54,10 @@ export const refreshTokens = pgTable("refresh_tokens", {
   // consultant back to their home counter in the middle of a shift. Null means "use the home
   // location", which is every session opened before postings existed.
   loc: text("loc").references(() => locations.key),
+  // ---- two-sided roles. Which desk this session is working, so a refresh does not walk somebody
+  // from Inventory back to a till. Null is a two-sided session that has not chosen a side yet (and
+  // every session opened before the column existed).
+  desk: roleEnum("desk"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, (t) => [
   // Every refresh and logout looks a token up by its hash; without this index that is a

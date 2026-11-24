@@ -3,11 +3,11 @@ import { AUDIT_GROUP_KEYS } from "./schemas/audit";
 import { AUDIT_GROUPS, AUDIT_LABELS, AUDIT_PATH, actionsInGroup, auditLabelOf, type AuditAction, type WriteRouteName } from "./audit";
 import { isWriteRoute, routes, serviceOf } from "./routes";
 
-const AUTH_ACTIONS = ["login", "logout", "changePassword"];
+const AUTH_ACTIONS = ["login", "logout", "changePassword", "switchSide"];
 const SYSTEM_ACTIONS = ["qrOrderPaid", "qrOrderRefunded", "qrRefundSent", "qrRefundProcessed", "qrRefundFailed"];
 
 describe("AUDIT_LABELS", () => {
-  it("labels exactly the writes the API answers, plus sign-in, sign-out, a password change and the system's own", () => {
+  it("labels exactly the writes the API answers, plus sign-in, sign-out, a password change, a change of side and the system's own", () => {
     // The runtime twin of `Record<AuditAction, AuditLabel>`: the type catches a missing label at
     // typecheck, this catches a route whose `write` flag and method disagree with the type's reading.
     const writes = Object.entries(routes).filter(([, r]) => isWriteRoute(r) && serviceOf(r) === "api").map(([name]) => name);

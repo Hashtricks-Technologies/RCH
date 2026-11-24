@@ -82,7 +82,9 @@ need more context than their names give:
   against a desk and permissions: `{ ok, wide }` or a 404/403), `readsWide` (whether a desk and permissions read one
   collection - bills, stock, requests, tickets, shop asks, kitchen orders, adjustment requests, product
   requests - hospital-wide or at its own location), `readsBills` (whether they read the till roll at all) and
-  `permissionRefusal`. `permissions.test.ts` holds `LEGACY_ACCESS`, the role list every gated
+  `permissionRefusal`. Two-sided roles are here too: `SIDE_DESK`/`sideOf`, `sideRefusal` (only a counter role
+  has an Inventory side, checked as a store role's grants), `permsAt` (what a session on this desk holds, or
+  `null`), `standsAt` (the outlets its till may stand at) and `ADMIN_PRESET`. `permissions.test.ts` holds `LEGACY_ACCESS`, the role list every gated
   route carried before roles were configurable, frozen, and pins the seeded roles to it through the
   manifest itself, route by route and desk by desk (the Z excepted).
 - `items.ts`'s `ITEM_FIELD_FEATURES` is who may change which field on the item master: the commercial

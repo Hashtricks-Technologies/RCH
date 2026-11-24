@@ -144,12 +144,14 @@ function stop(): void {
 /**
  * Follow the session: a stream opens when one is ready and closes when it ends. Watching `auth`
  * rather than hooking `login()` also covers `restore()` and `changePassword()`, both of which
- * reach "ready" without passing through it.
+ * reach "ready" without passing through it. A two-sided session that has not chosen a side is
+ * "ready" with nothing to follow: the server admits it nowhere but the choice.
  */
 export function startEventStream(): () => void {
   const react = (auth: string) => {
-    if (auth === "ready" && !controller && !timer) connect();
-    else if (auth === "signed-out") stop();
+    const placed = useApp.getState().user?.sides?.at !== null;
+    if (auth === "ready" && placed) { if (!controller && !timer) connect(); }
+    else if (auth === "signed-out" || auth === "ready") stop();
   };
   react(useApp.getState().auth);
   const off = useApp.subscribe((s, prev) => { if (s.auth !== prev.auth) react(s.auth); });
