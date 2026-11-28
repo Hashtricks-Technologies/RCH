@@ -66,7 +66,7 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a commit id: $sha"; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "Deploying $(git log --oneline -1 "$sha")"
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v5
         with: { role-to-assume: "${{ vars.BOX_DEPLOY_ROLE_ARN }}", aws-region: ap-south-1 }
       - name: Release on the box
         env:
